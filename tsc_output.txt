@@ -1,0 +1,8 @@
+components/crm/CRM.tsx(441,10): error TS17008: JSX element 'div' has no corresponding closing tag.
+components/crm/CRM.tsx(581,14): error TS1381: Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+components/crm/CRM.tsx(583,14): error TS1005: '}' expected.
+components/crm/CRM.tsx(585,31): error TS1382: Unexpected token. Did you mean `{'>'}` or `&gt;`?
+components/crm/CRM.tsx(604,31): error TS1382: Unexpected token. Did you mean `{'>'}` or `&gt;`?
+components/crm/CRM.tsx(671,29): error TS1382: Unexpected token. Did you mean `{'>'}` or `&gt;`?
+components/crm/CRM.tsx(770,1): error TS1381: Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+components/crm/CRM.tsx(770,3): error TS1005: '</' expected.
