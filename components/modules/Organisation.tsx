@@ -588,7 +588,7 @@ export const MASTER_CONFIG: Record<string, MasterTableConfig> = {
             { key: 'name', label: 'Stage Name', type: 'text', required: true },
             { key: 'position', label: 'Position Order', type: 'number', required: true },
             { key: 'win_probability', label: 'Win Probability (%)', type: 'number', required: true },
-            { key: 'status', label: 'Status', type: 'select', required: true, options: ['Active', 'Inactive'] }
+            { key: 'status', label: 'Status', type: 'select', required: true, options: [{label: 'Active', value: 'Active'}, {label: 'Inactive', value: 'Inactive'}] }
         ],
         columns: [
             { key: 'position', label: 'Order' },
@@ -2402,87 +2402,60 @@ export const Organisation: React.FC = () => {
 
         const selectedEmployeeId = formData.get('employeeId') as string;
 
-        const payload: any = {
-            full_name: formData.get('name') as string,
-            role: roleName,
-        };
-
-        // Link employee from dropdown selection
-        if (selectedEmployeeId) {
-            payload.employee_id = selectedEmployeeId;
-        } else if (editingUser && !editingUser.employeeId) {
-            // Fallback: auto-link by email match
-            const email = editingUser.email;
+        // Auto-link by email match if no employee selected
+        let linkedEmployeeId = selectedEmployeeId || null;
+        const email = formData.get('email') as string;
+        if (!linkedEmployeeId && email) {
             const { data: emp } = await supabase.from('employees').select('id').eq('email', email).maybeSingle();
-            if (emp) payload.employee_id = emp.id;
+            if (emp) linkedEmployeeId = emp.id;
         }
 
+        const name = formData.get('name') as string;
+
         if (editingUser) {
-            const { error } = await supabase.from('profiles').update(payload).eq('id', editingUser.id);
-            if (error) alert("Error updating user: " + error.message);
-            else {
+            // Update User via RPC to bypass RLS
+            const { error } = await supabase.rpc('admin_update_user', {
+                p_user_id: editingUser.id,
+                p_full_name: name,
+                p_role: roleName,
+                p_employee_id: linkedEmployeeId
+            });
+            
+            if (error) {
+                alert("Error updating user: " + error.message);
+            } else {
+                // Ensure role is updated in user_company_access
+                await supabase.from('user_company_access')
+                    .update({ role_id: roleId })
+                    .eq('user_id', editingUser.id)
+                    .eq('company_id', currentCompanyId);
+
                 alert("User updated successfully");
                 setShowAddUser(false);
                 setEditingUser(null);
                 refreshData();
             }
         } else {
-            // Create new user via supabase.auth.signUp
-            const email = formData.get('email') as string;
-            const name = formData.get('name') as string;
+            // Create new user via RPC to avoid logging out current admin
             if (!email) { alert('Email is required'); return; }
 
             try {
-                const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-                    email: email,
-                    password: '654321',
-                    options: {
-                        data: { full_name: name }
-                    }
+                const { data: result, error } = await supabase.rpc('admin_create_user', {
+                    p_email: email,
+                    p_password: 'Password123!',
+                    p_full_name: name,
+                    p_role: roleName,
+                    p_company_id: currentCompanyId,
+                    p_role_id: roleId,
+                    p_employee_id: linkedEmployeeId
                 });
 
-                if (signUpError) {
-                    alert('Error creating user: ' + signUpError.message);
+                if (error) {
+                    alert('Error creating user: ' + error.message);
                     return;
                 }
 
-                if (signUpData?.user) {
-                    // Try to find matching employee record to link
-                    let linkedEmployeeId = selectedEmployeeId || null;
-                    if (!linkedEmployeeId) {
-                        const { data: matchingEmp } = await supabase.from('employees')
-                            .select('id').eq('email', email).eq('company_id', currentCompanyId).maybeSingle();
-                        if (matchingEmp) linkedEmployeeId = matchingEmp.id;
-                    }
-
-                    // Create/update profile record with employee link
-                    const profilePayload: any = {
-                        id: signUpData.user.id,
-                        full_name: name,
-                        role: roleName,
-                        company_id: currentCompanyId,
-                    };
-                    if (linkedEmployeeId) profilePayload.employee_id = linkedEmployeeId;
-
-                    const { error: profileError } = await supabase.from('profiles').upsert(profilePayload);
-
-                    if (profileError) {
-                        console.error('Profile creation error:', profileError);
-                        alert('User created but profile setup failed: ' + profileError.message);
-                    } else {
-                        // Ensure user_company_access is granted
-                        await supabase.from('user_company_access').upsert({
-                            user_id: signUpData.user.id,
-                            company_id: currentCompanyId,
-                            role_id: roleId,
-                            is_default: true,
-                            status: 'active'
-                        });
-
-                        alert(`User "${name}" created successfully with default password 654321. They will receive a confirmation email.`);
-                    }
-                }
-
+                alert(`User "${name}" created successfully with default password "Password123!".`);
                 setShowAddUser(false);
                 setEditingUser(null);
                 refreshData();

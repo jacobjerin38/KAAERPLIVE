@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, BarChart2, Calendar, Trash2, CheckCircle, XCircle } from 'lucide-react';
-import { supabase } from '../../../../lib/supabase';
+import { supabase } from '../../../lib/supabase';
 import { AddPollModal } from './AddPollModal';
 
 interface Poll {
