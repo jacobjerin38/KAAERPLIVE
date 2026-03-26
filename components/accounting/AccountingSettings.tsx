@@ -29,9 +29,13 @@ export const AccountingSettings: React.FC = () => {
     const fetchConfig = async () => {
         try {
             setLoading(true);
+            const userProfile = await supabase.from('profiles').select('company_id').eq('id', user?.id).single();
+            const company_id = userProfile.data?.company_id;
+
             const { data, error } = await supabase
                 .from('inventory_account_config')
                 .select('*')
+                .eq('company_id', company_id)
                 .maybeSingle();
 
             if (data) {

@@ -97,8 +97,8 @@ export const Dashboard: React.FC = () => {
             // Fallback: fetch HR stats directly if RPC not yet deployed
             const today = new Date().toISOString().split('T')[0];
             const [empRes, attRes] = await Promise.allSettled([
-              supabase.from('employees').select('*', { count: 'exact', head: true }).eq('status', 'Active'),
-              supabase.from('attendance').select('*', { count: 'exact', head: true }).eq('date', today).eq('status', 'Present'),
+              supabase.from('employees').select('*', { count: 'exact', head: true }).eq('status', 'Active').eq('company_id', currentCompanyId),
+              supabase.from('attendance').select('*', { count: 'exact', head: true }).eq('date', today).eq('status', 'Present').eq('company_id', currentCompanyId),
             ]);
             const empCount = empRes.status === 'fulfilled' ? (empRes.value.count ?? 0) : 0;
             const attCount = attRes.status === 'fulfilled' ? (attRes.value.count ?? 0) : 0;
