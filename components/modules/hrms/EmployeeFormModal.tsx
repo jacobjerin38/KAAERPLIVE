@@ -110,7 +110,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
 
     const fetchEmpSalaryComponents = async () => {
         if (!initialData?.id) return;
-        const { data } = await supabase
+        const { data } = await (supabase as any)
             .from('employee_salary_components')
             .select(`
                 *,
@@ -134,19 +134,19 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
             is_active: true
         };
 
-        const { error } = await supabase.from('employee_salary_components').insert([payload]);
+        const { error } = await (supabase as any).from('employee_salary_components').insert([payload]);
         if (error) alert(error.message);
         else fetchEmpSalaryComponents();
     };
 
     const handleRemoveComponent = async (id: string) => {
-        const { error } = await supabase.from('employee_salary_components').delete().eq('id', id);
+        const { error } = await (supabase as any).from('employee_salary_components').delete().eq('id', id);
         if (error) alert(error.message);
         else fetchEmpSalaryComponents();
     };
 
     const handleUpdateComponentAmount = async (id: string, amount: number) => {
-        const { error } = await supabase.from('employee_salary_components').update({ amount }).eq('id', id);
+        const { error } = await (supabase as any).from('employee_salary_components').update({ amount }).eq('id', id);
         if (error) alert(error.message);
         else {
             // update local state optimistically or refetch
@@ -271,25 +271,25 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                 // ... map all other fields - UUID fields use string directly ...
                 date_of_birth: formData.date_of_birth || null,
                 gender: formData.gender || null,
-                faith_id: formData.faith_id || null,
-                blood_group_id: formData.blood_group_id || null,
-                marital_status_id: formData.marital_status_id || null,
+                faith_id: formData.faith_id ? parseInt(formData.faith_id) : null,
+                blood_group_id: formData.blood_group_id ? parseInt(formData.blood_group_id) : null,
+                marital_status_id: formData.marital_status_id ? parseInt(formData.marital_status_id) : null,
                 personal_mobile: formData.personal_mobile || null,
                 office_mobile: formData.office_mobile || null,
                 personal_email: formData.personal_email || null,
                 office_email: formData.office_email || null,
                 current_address: formData.current_address || null,
                 permanent_address: formData.permanent_address || null,
-                department_id: formData.department_id || null,
-                designation_id: formData.designation_id || null,
-                grade_id: formData.grade_id || null,
-                location_id: formData.location_id || null,
-                employment_type_id: formData.employment_type_id || null,
+                department_id: formData.department_id ? parseInt(formData.department_id) : null,
+                designation_id: formData.designation_id ? parseInt(formData.designation_id) : null,
+                grade_id: formData.grade_id ? parseInt(formData.grade_id) : null,
+                location_id: formData.location_id ? parseInt(formData.location_id) : null,
+                employment_type_id: formData.employment_type_id ? parseInt(formData.employment_type_id) : null,
                 join_date: formData.join_date || null,
-                manager_id: formData.reporting_manager_id || null,
-                shift_timing_id: formData.shift_timing_id || null,
-                weekoff_rule_id: formData.weekoff_rule_id || null,
-                pay_group_id: formData.pay_group_id || null,
+                manager_id: formData.reporting_manager_id || null, // Keeping as string if UUID, but check if manager_id is also numeric
+                shift_timing_id: formData.shift_timing_id ? parseInt(formData.shift_timing_id) : null,
+                weekoff_rule_id: formData.weekoff_rule_id ? parseInt(formData.weekoff_rule_id) : null,
+                pay_group_id: formData.pay_group_id ? parseInt(formData.pay_group_id) : null,
                 salary_amount: formData.salary_amount ? parseFloat(formData.salary_amount) : null,
                 bank_name: formData.bank_name || null,
                 account_number: formData.account_number || null,
@@ -300,7 +300,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                 email: formData.office_email || formData.personal_email || null,
                 phone: formData.office_mobile || formData.personal_mobile || null,
                 role: roles.find(r => r.id === formData.role_id)?.name || null,
-                department: departments.find(d => d.id === formData.department_id)?.name || null,
+                department: departments.find(d => d.id === (formData.department_id ? parseInt(formData.department_id) : null))?.name || null,
                 // Immigration fields
                 passport_number: formData.passport_number || null,
                 passport_expiry: formData.passport_expiry || null,
@@ -713,7 +713,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                                                     <button
                                                         key={sc.id}
                                                         type="button"
-                                                        onClick={() => handleAddComponent(sc.id)}
+                                                        onClick={() => handleAddComponent(sc.id.toString())}
                                                         className="px-3 py-1 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-full text-xs font-bold text-slate-600 dark:text-slate-300 hover:border-blue-500 hover:text-blue-500 whitespace-nowrap transition-colors"
                                                     >
                                                         + {sc.name}

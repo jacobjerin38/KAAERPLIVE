@@ -104,10 +104,10 @@ export const CRM: React.FC = () => {
                 { data: tasksData },
                 { data: documentsData }
             ] = await Promise.all([
-                supabase.from('crm_deals').select('*').eq('company_id', companyId),
-                supabase.from('crm_contacts').select('*').eq('company_id', companyId),
-                supabase.from('crm_tasks').select('*').eq('company_id', companyId),
-                supabase.from('crm_documents').select('*').eq('company_id', companyId)
+                (supabase as any).from('crm_deals').select('*').eq('company_id', companyId),
+                (supabase as any).from('crm_contacts').select('*').eq('company_id', companyId),
+                (supabase as any).from('crm_tasks').select('*').eq('company_id', companyId),
+                (supabase as any).from('crm_documents').select('*').eq('company_id', companyId)
             ]);
 
             setDeals((dealsData as any) || []);
@@ -136,7 +136,7 @@ export const CRM: React.FC = () => {
 
     const handleCreateContact = async () => {
         if (!companyId || !newContact.name) return;
-        const { error } = await supabase.from('crm_contacts').insert([{
+        const { error } = await (supabase as any).from('crm_contacts').insert([{
             ...newContact,
             company_id: companyId,
             status: 'Active',
@@ -151,7 +151,7 @@ export const CRM: React.FC = () => {
 
     const handleUploadDocument = async () => {
         if (!companyId || !newDoc.name) return;
-        const { error } = await supabase.from('crm_documents').insert([{
+        const { error } = await (supabase as any).from('crm_documents').insert([{
             ...newDoc,
             company_id: companyId,
             uploaded_by: currentEmployee?.id
@@ -379,7 +379,7 @@ export const CRM: React.FC = () => {
 
         const fetchAutomations = async () => {
             if (!companyId) return; // Use robust ID
-            const { data } = await supabase.from('crm_automations').select('*').eq('company_id', companyId);
+            const { data } = await (supabase as any).from('crm_automations').select('*').eq('company_id', companyId);
             if (data) setAutomations(data);
         };
 
@@ -387,8 +387,10 @@ export const CRM: React.FC = () => {
             if (!newAuto.name) return;
             if (!companyId) return; // Guard
 
-            await supabase.from('crm_automations').insert([{
-                ...newAuto,
+            await (supabase as any).from('crm_automations').insert([{
+                name: newAuto.name,
+                trigger_event: newAuto.trigger,
+                action_type: newAuto.action,
                 company_id: companyId,
                 created_by: currentEmployee?.id // or null if fallback
             }]);

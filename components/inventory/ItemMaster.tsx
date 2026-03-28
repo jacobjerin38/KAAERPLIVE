@@ -53,7 +53,7 @@ export const ItemMaster: React.FC = () => {
                 .order('name');
 
             if (error) throw error;
-            setItems(data || []);
+            setItems((data || []) as any);
         } catch (error) {
             console.error('Error fetching items:', error);
         } finally {
@@ -80,7 +80,7 @@ export const ItemMaster: React.FC = () => {
                 const { id, ...insertData } = currentItem;
                 const { error } = await supabase
                     .from('item_master')
-                    .insert([{ ...insertData, company_id: currentCompanyId }]);
+                    .insert([{ ...insertData, company_id: currentCompanyId } as any]);
                 if (error) throw error;
             }
 

@@ -2,18 +2,19 @@ import React from 'react';
 import {
     Search, Plus, MoreHorizontal
 } from 'lucide-react';
-import { Employee, Department, Role } from '../../hrms/types';
+import { Employee, Department, Role, Designation } from '../../hrms/types';
 
 interface EmployeeDirectoryProps {
     employees: Employee[];
     roles: Role[];
     departments: Department[];
+    designations: Designation[];
     onSelectEmployee: (emp: Employee) => void;
     onAddEmployee: () => void;
 }
 
 export const EmployeeDirectory: React.FC<EmployeeDirectoryProps> = ({
-    employees, roles, departments, onSelectEmployee, onAddEmployee
+    employees, roles, departments, designations, onSelectEmployee, onAddEmployee
 }) => {
     return (
         <div className="p-8 h-full flex flex-col animate-page-enter">
@@ -37,6 +38,7 @@ export const EmployeeDirectory: React.FC<EmployeeDirectoryProps> = ({
                             <tr>
                                 <th className="px-8 py-5 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Employee</th>
                                 <th className="px-8 py-5 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Department</th>
+                                <th className="px-8 py-5 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Position</th>
                                 <th className="px-8 py-5 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Contact</th>
                                 <th className="px-8 py-5 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Status</th>
                                 <th className="px-8 py-5 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-right">Action</th>
@@ -59,6 +61,11 @@ export const EmployeeDirectory: React.FC<EmployeeDirectoryProps> = ({
                                     <td className="px-8 py-4">
                                         <span className="text-xs font-bold text-slate-600 dark:text-slate-300 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 px-3 py-1.5 rounded-lg shadow-sm">
                                             {departments.find(d => Number(d.id) === emp.department_id)?.name || emp.department || '-'}
+                                        </span>
+                                    </td>
+                                    <td className="px-8 py-4">
+                                        <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800/40 px-3 py-1.5 rounded-lg">
+                                            {designations.find(d => Number(d.id) === emp.designation_id)?.name || emp.designation || '-'}
                                         </span>
                                     </td>
                                     <td className="px-8 py-4">

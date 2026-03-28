@@ -78,11 +78,11 @@ export const ReportBuilder: React.FC<ReportBuilderProps> = ({ onBack, companyId,
 
     useEffect(() => {
         const loadModules = async () => {
-            const { data } = await supabase.from('report_schema_registry').select('module').order('module');
+            const { data } = await (supabase as any).from('report_schema_registry').select('module').order('module');
             if (data) {
-                const unique = [...new Set(data.map(d => d.module))];
-                setModules(unique);
-                if (!selectedModule && unique.length > 0) setSelectedModule(unique[0]);
+                const unique = [...new Set((data as any[]).map(d => d.module))];
+                setModules(unique as string[]);
+                if (!selectedModule && unique.length > 0) setSelectedModule(unique[0] as string);
             }
         };
         loadModules();
@@ -91,9 +91,11 @@ export const ReportBuilder: React.FC<ReportBuilderProps> = ({ onBack, companyId,
     useEffect(() => {
         if (!selectedModule) return;
         const loadFields = async () => {
-            const { data } = await supabase.from('report_schema_registry').select('*').eq('module', selectedModule).order('field_label');
+            const { data } = await (supabase as any).from('report_schema_registry').select('*').eq('module', selectedModule).order('field_label');
             if (data && data.length > 0) {
+                // @ts-ignore
                 setAvailableFields(data);
+                // @ts-ignore
                 setSourceTable(data[0].source_table);
                 setSelectedColumns([]);
                 setFilters([]);
@@ -163,7 +165,8 @@ export const ReportBuilder: React.FC<ReportBuilderProps> = ({ onBack, companyId,
         setLoading(true);
         try {
             const selectStr = selectedColumns.map(c => c.field.field_key).join(',');
-            let query = supabase.from(sourceTable).select(selectStr, { count: 'exact' });
+            // @ts-ignore
+            let query: any = (supabase as any).from(sourceTable).select(selectStr, { count: 'exact' });
             if (companyId) query = query.eq('company_id', companyId);
 
             for (const f of filters) {
@@ -291,11 +294,13 @@ export const ReportBuilder: React.FC<ReportBuilderProps> = ({ onBack, companyId,
             filters, sort: sortConfig, groupBy: groupByField, sourceTable,
         };
         if (editReport?.id) {
-            await supabase.from('report_definitions').update({ name: reportName, module: selectedModule, config }).eq('id', editReport.id);
+            // @ts-ignore
+            await (supabase as any).from('report_definitions').update({ name: reportName, module: selectedModule, config }).eq('id', editReport.id);
         } else {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) return;
-            await supabase.from('report_definitions').insert([{
+            // @ts-ignore
+            await (supabase as any).from('report_definitions').insert([{
                 company_id: companyId, name: reportName, module: selectedModule, config, created_by: user.id
             }]);
         }

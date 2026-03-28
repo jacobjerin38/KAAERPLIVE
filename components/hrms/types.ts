@@ -168,11 +168,30 @@ export interface Employee {
   account_number?: string;
   ifsc_code?: string;
 
+  // Display name fields
+  designation?: string;
+
   // Personal
   personal_email?: string;
   personal_mobile?: string;
   current_address?: string;
   permanent_address?: string;
+
+  // Extended HR Fields
+  nationality?: string;
+  hamad_card_expiry?: string;
+  air_ticket?: string;
+  annual_leave_duration_policy?: string;
+  memo?: string;
+  remarks?: string;
+  client_name?: string;
+  passport_number?: string;
+  passport_expiry?: string;
+  visa_number?: string;
+  visa_expiry?: string;
+  visa_sponsor?: string;
+  visa_type?: string;
+  age?: number;
 
   // Extended Profile
   skills?: string[];

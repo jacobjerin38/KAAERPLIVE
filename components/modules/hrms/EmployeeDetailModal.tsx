@@ -57,13 +57,16 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
     // Fetch Salary Mapping
     const fetchSalaryMapping = async () => {
         setLoadingComponents(true);
-        const { data, error } = await supabase
+        const { data } = await (supabase as any)
             .from('employee_salary_components')
-            .select('*, org_salary_components(name, code, component_type)')
+            .select(`
+                *,
+                org_salary_components(name, component_type)
+            `)
             .eq('employee_id', emp.id)
-            .order('effective_from', { ascending: false });
+            .eq('is_active', true);
 
-        if (data) setEmpSalaryComponents(data);
+        if (data) setEmpSalaryComponents(data as any[]);
         setLoadingComponents(false);
     };
 
@@ -76,7 +79,7 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
     const handleAddComponent = async () => {
         if (!newComponentId || !newAmount) return;
 
-        const { error } = await supabase.from('employee_salary_components').insert([{
+        const { error } = await (supabase as any).from('employee_salary_components').insert([{
             employee_id: emp.id,
             salary_component_id: parseInt(newComponentId),
             amount: parseFloat(newAmount),
@@ -96,7 +99,7 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
 
     const handleDeleteComponent = async (id: string) => {
         if (!confirm('Are you sure you want to remove this salary component?')) return;
-        const { error } = await supabase.from('employee_salary_components').delete().eq('id', id);
+        const { error } = await (supabase as any).from('employee_salary_components').update({ is_active: false }).eq('id', id);
         if (error) alert('Error deleting: ' + error.message);
         else fetchSalaryMapping();
     };

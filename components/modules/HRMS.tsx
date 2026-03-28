@@ -288,7 +288,7 @@ export const HRMS: React.FC = () => {
                 e.preventDefault();
                 const formData = new FormData(e.target as HTMLFormElement);
                 const leaveTypeId = formData.get('leave_type_id') as string;
-                const typeName = leaveTypes.find(lt => lt.id === leaveTypeId)?.code || 'OTHER';
+                const typeName = leaveTypes.find(lt => lt.id.toString() === leaveTypeId.toString())?.code || 'OTHER';
                 const { error } = await supabase.from('leaves').insert([{
                     employee_id: currentEmployee?.id,
                     company_id: currentEmployee?.company_id,
@@ -387,6 +387,7 @@ export const HRMS: React.FC = () => {
                     employees={employees}
                     roles={roles}
                     departments={departments}
+                    designations={designations}
                     onSelectEmployee={setSelectedEmployee}
                     onAddEmployee={hasPermission('hrms.employees.manage') ? () => { setShowEmployeeForm(true); setEditingEmployee(null); } : undefined}
                 />}
@@ -403,7 +404,7 @@ export const HRMS: React.FC = () => {
                     onExportCSV={() => {
                         const headers = ['Employee', 'Date', 'Check In', 'Check Out', 'Status', 'Duration'];
                         const rows = attendance.map(r => {
-                            const emp = employees.find(e => e.id === r.employeeId);
+                            const emp = employees.find(e => e.id.toString() === r.employeeId.toString());
                             return [`"${emp?.name || ''}"`, r.date, formatTime(r.checkIn), formatTime(r.checkOut), r.status, r.duration].join(',');
                         });
                         const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...rows].join('\n');

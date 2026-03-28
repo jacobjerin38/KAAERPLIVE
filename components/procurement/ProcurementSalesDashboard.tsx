@@ -69,28 +69,36 @@ export const ProcurementSalesDashboard: React.FC = () => {
     };
 
     const handleConfirmPO = async (orderId: string) => {
+        // @ts-ignore
         const { data, error } = await supabase.rpc('rpc_confirm_purchase_order', { p_order_id: orderId });
-        if (error || (data && !data.success)) alert((error?.message) || data?.message);
+        const res = data as any;
+        if (error || (res && res.success === false)) alert(error?.message || res?.message || 'Failed to confirm');
         else fetchData();
     };
 
     const handleReceivePO = async (orderId: string) => {
         if (!session?.user?.id) return;
+        // @ts-ignore
         const { data, error } = await supabase.rpc('rpc_receive_purchase_order', { p_order_id: orderId, p_user_id: session.user.id });
-        if (error || (data && !data.success)) alert((error?.message) || data?.message);
+        const res = data as any;
+        if (error || (res && res.success === false)) alert(error?.message || res?.message || 'Failed to receive');
         else fetchData();
     };
 
     const handleConfirmSO = async (orderId: string) => {
+        // @ts-ignore
         const { data, error } = await supabase.rpc('rpc_confirm_sales_order', { p_order_id: orderId });
-        if (error || (data && !data.success)) alert((error?.message) || data?.message);
+        const res = data as any;
+        if (error || (res && res.success === false)) alert(error?.message || res?.message || 'Failed to confirm');
         else fetchData();
     };
 
     const handleShipSO = async (orderId: string) => {
         if (!session?.user?.id) return;
+        // @ts-ignore
         const { data, error } = await supabase.rpc('rpc_ship_sales_order', { p_order_id: orderId, p_user_id: session.user.id });
-        if (error || (data && !data.success)) alert((error?.message) || data?.message);
+        const res = data as any;
+        if (error || (res && res.success === false)) alert(error?.message || res?.message || 'Failed to ship');
         else fetchData();
     };
 

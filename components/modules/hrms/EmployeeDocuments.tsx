@@ -23,12 +23,26 @@ interface EmployeeDocumentsProps {
 }
 
 const DOCUMENT_TYPES = [
-    { value: 'ID_PROOF', label: 'ID Proof (Aadhaar, PAN, Passport)' },
+    { value: 'PASSPORT', label: 'Passport' },
+    { value: 'QID', label: 'QID (Qatar ID)' },
+    { value: 'VISA', label: 'Visa' },
+    { value: 'HAMAD_CARD', label: 'Hamad Health Card' },
+    { value: 'DRIVING_LICENSE', label: 'Driving License' },
+    { value: 'ID_PROOF', label: 'ID Proof (Aadhaar, PAN, etc.)' },
     { value: 'ADDRESS_PROOF', label: 'Address Proof' },
     { value: 'EDUCATION', label: 'Education Certificate' },
     { value: 'EXPERIENCE', label: 'Experience Letter' },
     { value: 'OFFER_LETTER', label: 'Offer Letter' },
     { value: 'CONTRACT', label: 'Employment Contract' },
+    { value: 'MEDICAL', label: 'Medical Report / Fitness' },
+    { value: 'INSURANCE', label: 'Insurance Document' },
+    { value: 'AIR_TICKET', label: 'Air Ticket' },
+    { value: 'SALARY_CERT', label: 'Salary Certificate' },
+    { value: 'NOC', label: 'No Objection Certificate (NOC)' },
+    { value: 'PHOTO', label: 'Photo / Image' },
+    { value: 'PDF', label: 'PDF Document' },
+    { value: 'WORD', label: 'Word Document' },
+    { value: 'EXCEL', label: 'Excel / Spreadsheet' },
     { value: 'OTHER', label: 'Other' }
 ];
 
@@ -55,7 +69,7 @@ export const EmployeeDocuments: React.FC<EmployeeDocumentsProps> = ({ employeeId
 
     // Upload form state
     const [uploadForm, setUploadForm] = useState({
-        document_type: 'ID_PROOF',
+        document_type: 'PASSPORT',
         document_name: '',
         issue_date: '',
         expiry_date: '',
@@ -72,7 +86,8 @@ export const EmployeeDocuments: React.FC<EmployeeDocumentsProps> = ({ employeeId
     const fetchDocuments = async () => {
         setLoading(true);
         try {
-            const { data, error } = await supabase
+            // @ts-ignore
+            const { data, error } = await (supabase as any)
                 .from('employee_documents')
                 .select('*')
                 .eq('employee_id', employeeId)
@@ -80,7 +95,7 @@ export const EmployeeDocuments: React.FC<EmployeeDocumentsProps> = ({ employeeId
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
-            setDocuments(data || []);
+            setDocuments((data as any[]) || []);
         } catch (err: any) {
             console.error('Error fetching documents:', err);
             setError(err.message);
@@ -126,7 +141,7 @@ export const EmployeeDocuments: React.FC<EmployeeDocumentsProps> = ({ employeeId
             if (uploadError) throw uploadError;
 
             // Create document record
-            const { error: insertError } = await supabase
+            const { error: insertError } = await (supabase as any)
                 .from('employee_documents')
                 .insert([{
                     company_id: companyId,
@@ -149,7 +164,7 @@ export const EmployeeDocuments: React.FC<EmployeeDocumentsProps> = ({ employeeId
             setShowUploadModal(false);
             setSelectedFile(null);
             setUploadForm({
-                document_type: 'ID_PROOF',
+                document_type: 'PASSPORT',
                 document_name: '',
                 issue_date: '',
                 expiry_date: '',
@@ -169,7 +184,7 @@ export const EmployeeDocuments: React.FC<EmployeeDocumentsProps> = ({ employeeId
 
         try {
             // Soft delete the record
-            const { error } = await supabase
+            const { error } = await (supabase as any)
                 .from('employee_documents')
                 .update({ is_active: false })
                 .eq('id', doc.id);
@@ -337,12 +352,12 @@ export const EmployeeDocuments: React.FC<EmployeeDocumentsProps> = ({ employeeId
             {/* Upload Modal */}
             {showUploadModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 m-4">
+                    <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-xl w-full max-w-md p-6 m-4">
                         <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-lg font-semibold">Upload Document</h3>
+                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Upload Document</h3>
                             <button
                                 onClick={() => setShowUploadModal(false)}
-                                className="p-1 hover:bg-gray-100 rounded"
+                                className="p-1 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded text-gray-500 dark:text-gray-400"
                             >
                                 <X className="w-5 h-5" />
                             </button>
@@ -352,7 +367,7 @@ export const EmployeeDocuments: React.FC<EmployeeDocumentsProps> = ({ employeeId
                             {/* File Drop Zone */}
                             <div
                                 onClick={() => fileInputRef.current?.click()}
-                                className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors"
+                                className="border-2 border-dashed border-gray-300 dark:border-zinc-600 rounded-lg p-6 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
                             >
                                 <input
                                     ref={fileInputRef}
@@ -378,11 +393,11 @@ export const EmployeeDocuments: React.FC<EmployeeDocumentsProps> = ({ employeeId
 
                             {/* Document Type */}
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Document Type</label>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Document Type</label>
                                 <select
                                     value={uploadForm.document_type}
                                     onChange={e => setUploadForm(prev => ({ ...prev, document_type: e.target.value }))}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    className="w-full px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                 >
                                     {DOCUMENT_TYPES.map(type => (
                                         <option key={type.value} value={type.value}>{type.label}</option>
@@ -392,34 +407,34 @@ export const EmployeeDocuments: React.FC<EmployeeDocumentsProps> = ({ employeeId
 
                             {/* Document Name */}
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Document Name *</label>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Document Name *</label>
                                 <input
                                     type="text"
                                     value={uploadForm.document_name}
                                     onChange={e => setUploadForm(prev => ({ ...prev, document_name: e.target.value }))}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                    placeholder="e.g., Aadhaar Card"
+                                    className="w-full px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    placeholder="e.g., Passport, QID"
                                 />
                             </div>
 
                             {/* Dates */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Issue Date</label>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Issue Date</label>
                                     <input
                                         type="date"
                                         value={uploadForm.issue_date}
                                         onChange={e => setUploadForm(prev => ({ ...prev, issue_date: e.target.value }))}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        className="w-full px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Expiry Date</label>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Expiry Date</label>
                                     <input
                                         type="date"
                                         value={uploadForm.expiry_date}
                                         onChange={e => setUploadForm(prev => ({ ...prev, expiry_date: e.target.value }))}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        className="w-full px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                     />
                                 </div>
                             </div>

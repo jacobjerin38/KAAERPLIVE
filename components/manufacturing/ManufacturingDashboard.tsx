@@ -68,13 +68,13 @@ export const ManufacturingDashboard: React.FC = () => {
     const fetchData = async () => {
         setLoading(true);
         if (activeTab === 'orders') {
-            const { data } = await supabase.from('mrp_production_orders').select('*, item_master!product_id(name), mrp_bom!bom_id(name)').order('created_at', { ascending: false });
+            const { data } = await (supabase as any).from('mrp_production_orders').select('*, item_master!product_id(name), mrp_bom!bom_id(name)').order('created_at', { ascending: false });
             setOrders((data || []).map((d: any) => ({ ...d, product_name: d.item_master?.name, bom_name: d.mrp_bom?.name })));
         } else if (activeTab === 'bom') {
-            const { data } = await supabase.from('mrp_bom').select('*, item_master!product_id(name)').order('created_at', { ascending: false });
+            const { data } = await (supabase as any).from('mrp_bom').select('*, item_master!product_id(name)').order('created_at', { ascending: false });
             setBoms((data || []).map((d: any) => ({ ...d, product_name: d.item_master?.name })));
         } else if (activeTab === 'workcenters') {
-            const { data } = await supabase.from('mrp_work_centers').select('*').order('name');
+            const { data } = await (supabase as any).from('mrp_work_centers').select('*').order('name');
             setWorkcenters(data || []);
         }
         setLoading(false);
@@ -82,14 +82,14 @@ export const ManufacturingDashboard: React.FC = () => {
 
     const handleProduce = async (orderId: string) => {
         if (!session?.user?.id) return;
-        const { data, error } = await supabase.rpc('rpc_produce_items', {
+        const { data, error } = await (supabase as any).rpc('rpc_produce_items', {
             p_order_id: orderId,
             p_user_id: session.user.id
         });
         if (error) {
             alert(`Error: ${error.message}`);
-        } else if (data && !data.success) {
-            alert(`Failed: ${data.message}`);
+        } else if (data && !(data as any).success) {
+            alert(`Failed: ${(data as any).message}`);
         } else {
             fetchData();
         }

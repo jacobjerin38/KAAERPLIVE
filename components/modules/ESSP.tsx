@@ -141,14 +141,14 @@ export const ESSP: React.FC = () => {
 
         if (punchStatus === 'Out') {
             // PUNCH IN
-            const { data, error } = await supabase.from('attendance').insert({
+            const { data, error } = await (supabase as any).from('attendance').insert([{
                 employee_id: currentEmployee.id,
                 company_id: currentEmployee.company_id,
                 date: today,
                 check_in: timeString,
                 status: 'Present',
                 duration: 0
-            }).select().single();
+            }]).select().single();
 
             if (error) {
                 console.error("Punch In Error:", error);
@@ -1115,18 +1115,14 @@ export const ESSP: React.FC = () => {
             if (submitting) return;
             setSubmitting(true);
 
-            const selectedType = leaveTypes.find((lt: any) => lt.id === formData.leave_type_id);
-
-            const { data, error } = await supabase.from('leaves').insert([{
-                company_id: currentEmployee.company_id,
+            const { data, error } = await (supabase as any).from('leaves').insert([{
                 employee_id: currentEmployee.id,
-                leave_type_id: formData.leave_type_id || null,
-                type: selectedType?.name || formData.type,
-                leave_type: selectedType?.name || formData.type,
+                leave_type_id: parseInt(formData.leave_type_id),
                 start_date: formData.from,
                 end_date: formData.to,
                 reason: formData.reason,
-                status: 'Pending'
+                status: 'Pending',
+                company_id: currentEmployee.company_id
             }]).select();
 
             if (error) {
@@ -1459,11 +1455,11 @@ export const ESSP: React.FC = () => {
 
         const handleGiveKudos = async (e: React.FormEvent) => {
             e.preventDefault();
-            const { error } = await supabase.from('kudos_rewards').insert([{
+            const { error } = await (supabase as any).from('kudos_rewards').insert([{
                 company_id: currentEmployee.company_id,
                 sender_id: currentEmployee.id,
                 receiver_id: giveForm.receiverId,
-                category_id: giveForm.categoryId,
+                category_id: parseInt(giveForm.categoryId),
                 message: giveForm.message
             }]);
 
@@ -1485,7 +1481,7 @@ export const ESSP: React.FC = () => {
                     </div>
                     <button
                         onClick={() => setShowGiveModal(true)}
-                        className="px-6 py-3 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white font-bold rounded-2xl shadow-lg shadow-rose-500/30 transition-all active:scale-95 flex items-center gap-2"
+                        className="px-6 py-3 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-500 text-white font-bold rounded-2xl shadow-lg shadow-rose-500/30 transition-all active:scale-95 flex items-center gap-2"
                     >
                         <Star className="w-5 h-5 fill-current" /> Give Kudos
                     </button>
@@ -1611,7 +1607,7 @@ export const ESSP: React.FC = () => {
     const Support = () => {
         const [tickets, setTickets] = useState<any[]>([]);
         const [showForm, setShowForm] = useState(false);
-        const [formData, setFormData] = useState({ category: 'IT Support', priority: 'Medium', subject: '', description: '' });
+        const [formData, setFormData] = useState({ subject: '', category: 'IT Support', priority: 'Medium', description: '' });
 
         useEffect(() => {
             if (currentEmployee) refreshTickets();
@@ -1624,14 +1620,23 @@ export const ESSP: React.FC = () => {
 
         const handleSubmit = async (e: React.FormEvent) => {
             e.preventDefault();
-            await supabase.from('tickets').insert([{
+            const { error } = await ((supabase as any).from('tickets').insert as any)([{
                 company_id: currentEmployee.company_id,
                 employee_id: currentEmployee.id,
-                ...formData
+                subject: formData.subject,
+                category: formData.category,
+                priority: formData.priority,
+                description: formData.description,
+                status: 'Open',
+                created_at: new Date().toISOString()
             }]);
-            setShowForm(false);
-            refreshTickets();
-            setFormData({ category: 'IT Support', priority: 'Medium', subject: '', description: '' });
+            if (!error) {
+                setShowForm(false);
+                setFormData({ subject: '', category: 'IT Support', priority: 'Medium', description: '' });
+                refreshTickets();
+            } else {
+                alert("Failed to submit ticket: " + error.message);
+            }
         };
 
         return (
@@ -1801,19 +1806,19 @@ export const ESSP: React.FC = () => {
 
         const fetchPolls = async () => {
             if (!currentEmployee) return;
-            const { data: pl } = await supabase.from('polls')
+            const { data: pl } = await (supabase as any).from('polls')
                 .select('*, poll_options(*)')
                 .eq('company_id', currentEmployee.company_id)
                 .eq('is_active', true)
                 .order('created_at', { ascending: false });
 
             if (pl) {
-                const { data: votes } = await supabase.from('poll_votes').select('poll_id, option_id').eq('employee_id', currentEmployee.id);
+                const { data: votes } = await (supabase as any).from('poll_votes').select('poll_id, option_id').eq('employee_id', currentEmployee.id);
 
-                const merged = pl.map(p => ({
+                const merged = (pl as any[]).map(p => ({
                     ...p,
                     poll_options: p.poll_options.sort((a: any, b: any) => b.vote_count - a.vote_count), // Show popular first
-                    my_vote: votes?.find(v => v.poll_id === p.id)?.option_id,
+                    my_vote: (votes as any[])?.find(v => v.poll_id === p.id)?.option_id,
                     total_votes: p.poll_options.reduce((sum: number, o: any) => sum + o.vote_count, 0)
                 }));
                 setPolls(merged);
@@ -1821,10 +1826,10 @@ export const ESSP: React.FC = () => {
         };
 
         const handleVote = async (pollId: string, optionId: string) => {
-            const { error } = await supabase.rpc('rpc_vote_poll', {
+            const { error } = await (supabase as any).rpc('rpc_vote_poll', {
                 p_poll_id: pollId,
                 p_option_id: optionId,
-                p_employee_id: currentEmployee.id
+                p_employee_id: (currentEmployee as any).id
             });
 
             if (error) alert(error.message);

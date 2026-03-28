@@ -102,7 +102,7 @@ const CompanyProfileView = () => {
         setSaving(true);
         if (company.id) {
             // Upsert based on ID
-            const { error } = await supabase.from('companies').upsert(company);
+            const { error } = await (supabase as any).from('companies').upsert([company], { onConflict: 'id' });
             if (!error) {
                 // Success notification could go here
             }
@@ -292,7 +292,7 @@ const PayrollSettingsView = () => {
     const fetchSettings = async () => {
         setLoading(true);
         if (currentCompanyId) {
-            const { data } = await supabase.from('org_payroll_settings').select('*').eq('company_id', currentCompanyId).maybeSingle();
+            const { data } = await (supabase as any).from('org_payroll_settings').select('*').eq('company_id', currentCompanyId).maybeSingle();
             if (data) setSettings(data);
             else setSettings((prev: any) => ({ ...prev, company_id: currentCompanyId }));
         }
@@ -301,7 +301,8 @@ const PayrollSettingsView = () => {
 
     const handleSave = async () => {
         setSaving(true);
-        const { error } = await supabase.from('org_payroll_settings').upsert(settings);
+        const payload = { ...settings, company_id: currentCompanyId };
+        const { error } = await (supabase as any).from('org_payroll_settings').upsert([payload], { onConflict: 'company_id' });
         if (error) alert('Error saving settings: ' + error.message);
         else alert('Settings saved successfully!');
         setSaving(false);
@@ -405,7 +406,7 @@ const AISettingsView = () => {
         if (currentCompanyId) {
             const { data } = await supabase.from('org_ai_settings').select('*').eq('company_id', currentCompanyId).maybeSingle();
             if (data) {
-                setSettings(data);
+                setSettings(data as any);
                 // Don't set API key input for security, just show placeholder if exists
             } else {
                 setSettings(prev => ({ ...prev, company_id: currentCompanyId }));
@@ -421,7 +422,7 @@ const AISettingsView = () => {
             payload.api_key_encrypted = apiKeyInput; // In real production, encrypt this before sending or rely on secure backend connection
         }
 
-        const { error } = await supabase.from('org_ai_settings').upsert(payload, { onConflict: 'company_id,provider' });
+        const { error } = await (supabase as any).from('org_ai_settings').upsert([payload], { onConflict: 'company_id,provider' });
 
         if (error) alert('Error saving AI settings: ' + error.message);
         else {
@@ -926,14 +927,14 @@ const GenericMasterModal = ({ config, item, onClose, onRefresh }: { config: Mast
             setSaving(true);
 
             if (item) {
-                const { error } = await supabase.from(config.tableName).update(payload).eq('id', item.id);
+                const { error } = await (supabase as any).from(config.tableName).update(payload).eq('id', item.id);
                 if (error) {
                     setError(error.message);
                     setSaving(false);
                     return;
                 }
             } else {
-                const { error } = await supabase.from(config.tableName).insert([payload]);
+                const { error } = await (supabase as any).from(config.tableName).insert([payload]);
                 if (error) {
                     setError(error.message);
                     setSaving(false);
@@ -2034,11 +2035,11 @@ export const Organisation: React.FC = () => {
     // State for data
     const [departments, setDepartments] = useState<Department[]>([]);
     const [locations, setLocations] = useState<Location[]>([]);
-    const [roles, setRoles] = useState<Role[]>([]);
+    const [roles, setRoles] = useState<any[]>([]);
     const [users, setUsers] = useState<AppUser[]>([]);
     const [workflows, setWorkflows] = useState<any[]>([]);
     const [notificationSettings, setNotificationSettings] = useState<any[]>([]);
-    const [reminders, setReminders] = useState<ReminderConfig[]>([]);
+    const [reminders, setReminders] = useState<any[]>([]);
 
     // State for master data
     const [designations, setDesignations] = useState<any[]>([]);
@@ -2090,7 +2091,7 @@ export const Organisation: React.FC = () => {
     const [addCompanyMsg, setAddCompanyMsg] = useState<string | null>(null);
 
     const [editingWorkflow, setEditingWorkflow] = useState<WorkflowConfig | null>(null);
-    const [workflowLevels, setWorkflowLevels] = useState<WorkflowLevel[]>([]);
+    const [workflowLevels, setWorkflowLevels] = useState<any[]>([]);
     const [showWorkflowList, setShowWorkflowList] = useState(true);
 
     const [selectedNotificationRoles, setSelectedNotificationRoles] = useState<string[]>([]);
@@ -2112,23 +2113,23 @@ export const Organisation: React.FC = () => {
             // Core Organization Masters
             if (activeMasterTab === 'DEPARTMENTS') {
                 const { data } = await supabase.from('departments').select('*');
-                if (data) setDepartments(data);
+                if (data) setDepartments(data as any[]);
             }
             if (activeMasterTab === 'LOCATIONS') {
                 const { data } = await supabase.from('locations').select('*');
-                if (data) setLocations(data);
+                if (data) setLocations(data as any[]);
             }
             if (activeMasterTab === 'DESIGNATIONS') {
                 const { data } = await supabase.from('org_designations').select('*');
-                if (data) setDesignations(data);
+                if (data) setDesignations(data as any[]);
             }
             if (activeMasterTab === 'GRADES') {
                 const { data } = await supabase.from('org_grades').select('*');
-                if (data) setGrades(data);
+                if (data) setGrades(data as any[]);
             }
             if (activeMasterTab === 'EMPLOYMENT_TYPES') {
                 const { data } = await supabase.from('org_employment_types').select('*');
-                if (data) setEmploymentTypes(data);
+                if (data) setEmploymentTypes(data as any[]);
             }
             // Leave Masters
             if (activeMasterTab === 'LEAVE_TYPES') {
@@ -2200,7 +2201,7 @@ export const Organisation: React.FC = () => {
             }
             if (activeMasterTab === 'POLLS') {
                 const { data } = await supabase.from('polls').select('*').order('created_at', { ascending: false });
-                if (data) setPolls(data);
+                if (data) setPolls(data as any[]);
             }
             if (activeMasterTab === 'SURVEYS') {
                 const { data } = await supabase.from('surveys').select('*').order('created_at', { ascending: false });
@@ -2208,17 +2209,17 @@ export const Organisation: React.FC = () => {
             }
             if (activeMasterTab === 'KUDOS_CATEGORIES') {
                 const { data } = await supabase.from('master_kudos_categories').select('*');
-                if (data) setKudosCategories(data);
+                if (data) setKudosCategories(data as any[]);
             }
             if (activeMasterTab === 'CRM_STAGES') {
                 const { data } = await supabase.from('org_crm_stages').select('*').order('position', { ascending: true });
-                if (data) setCrmStages(data);
+                if (data) setCrmStages(data as any[]);
             }
         }
         if (activeTab === 'ROLES') {
             if (currentCompanyId) {
                 const { data } = await supabase.from('roles').select('*').eq('company_id', currentCompanyId);
-                if (data) setRoles(data);
+                if (data) setRoles(data as any[]);
 
                 // Also fetch users to show counts
                 const { data: userData } = await supabase.from('profiles')
@@ -2262,7 +2263,7 @@ export const Organisation: React.FC = () => {
                 if (empList) setAllEmployees(empList);
             }
 
-            const { data } = await supabase.from('profiles')
+            const { data } = await (supabase as any).from('profiles')
                 .select('*, employees:employee_id(id, name, employee_code, email)')
                 .eq('company_id', currentCompanyId);
 
@@ -2302,7 +2303,7 @@ export const Organisation: React.FC = () => {
         }
         if (activeTab === 'REMINDERS') {
             const { data } = await supabase.from('reminders').select('*');
-            if (data) setReminders(data);
+            if (data) setReminders(data as any[]);
         }
         if (activeTab === 'BUZZ') {
             const { data: ann } = await supabase.from('announcements').select('*').order('created_at', { ascending: false });
@@ -2933,7 +2934,7 @@ export const Organisation: React.FC = () => {
                         />
                     )}
                     {subTab === 'POLLS' && (
-                        <OrganisationPollsView polls={polls} onAdd={() => setShowAddPoll(true)} onDelete={async (id: string) => {
+                        <InternalPollsView polls={polls} onAdd={() => setShowAddPoll(true)} onDelete={async (id: string) => {
                             if (confirm('Delete Poll?')) {
                                 await supabase.from('polls').delete().eq('id', id);
                                 refreshData();
@@ -2945,7 +2946,7 @@ export const Organisation: React.FC = () => {
         );
     };
 
-    const OrganisationPollsView = ({ polls, onAdd, onDelete }: any) => (
+    const InternalPollsView = ({ polls, onAdd, onDelete }: any) => (
         <div className="h-full flex flex-col">
             <div className="flex justify-end mb-6">
                 <button
@@ -3052,9 +3053,17 @@ export const Organisation: React.FC = () => {
     }
 
     // --- Handlers for Master Data Action ---
+    const handleDelete = async (id: string | number) => {
+        if (confirm('Are you sure you want to delete this item?')) {
+            const { error } = await (supabase as any).from(currentMasterConfig!.tableName).delete().eq('id', id);
+            if (error) alert(error.message);
+            else refreshData();
+        }
+    };
+
     const handleDeleteMasterItem = async (config: MasterTableConfig, item: any) => {
         if (confirm('Delete this item?')) {
-            const { error } = await supabase.from(config.tableName).delete().eq('id', item.id);
+            const { error } = await (supabase as any).from(config.tableName).delete().eq('id', item.id);
             if (error) {
                 alert('Error deleting: ' + error.message);
             } else {

@@ -13,7 +13,7 @@ interface Item {
 interface WarehouseBin {
     id: string;
     name: string;
-    zone?: { name: string; warehouse?: { name: string }[] } | { name: string; warehouse?: { name: string }[] }[];
+    zone?: any;
 }
 
 export const OutboundProcess: React.FC = () => {

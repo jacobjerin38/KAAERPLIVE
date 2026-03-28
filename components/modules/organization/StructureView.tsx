@@ -31,8 +31,19 @@ export const StructureView: React.FC<StructureViewProps> = ({ className }) => {
                 supabase.from('employees').select('*, role:roles(name)').eq('company_id', profile.company_id).eq('status', 'Active')
             ]);
 
-            if (deptRes.data) setDepartments(deptRes.data);
-            if (empRes.data) setEmployees(empRes.data);
+            if (deptRes.data) setDepartments(deptRes.data.map((d: any) => ({
+                ...d,
+                status: (d.status === 'Active' || d.status === 'Inactive') ? d.status : 'Active'
+            })) as Department[]);
+
+            if (empRes.data) setEmployees(empRes.data.map((e: any) => ({
+                ...e,
+                joinDate: e.join_date || '',
+                salary: e.salary_amount || 0,
+                avatar: e.profile_photo_url || '',
+                location: e.location || 'Unknown',
+                role: e.role?.name || e.role // Assuming e.role is the joined object
+            })) as Employee[]);
         } catch (error) {
             console.error("Error fetching org structure", error);
         }

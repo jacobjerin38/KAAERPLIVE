@@ -95,7 +95,7 @@ export const GlobalSearchModal: React.FC = () => {
 
                 // Search CRM Leads
                 if (q.length > 1) {
-                    const { data: leads } = await supabase
+                    const { data: leads } = await (supabase as any)
                         .from('crm_leads')
                         .select('id, first_name, last_name, email, company, source')
                         .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%,email.ilike.%${query}%,company.ilike.%${query}%`)
@@ -118,7 +118,7 @@ export const GlobalSearchModal: React.FC = () => {
 
                 // Search CRM Customers
                 if (q.length > 1) {
-                    const { data: customers } = await supabase
+                    const { data: customers } = await (supabase as any)
                         .from('crm_customers')
                         .select('id, name, email, company, industry')
                         .or(`name.ilike.%${query}%,email.ilike.%${query}%,company.ilike.%${query}%`)
@@ -140,7 +140,7 @@ export const GlobalSearchModal: React.FC = () => {
 
                 // Search CRM Opportunities
                 if (q.length > 1) {
-                    const { data: opps } = await supabase
+                    const { data: opps } = await (supabase as any)
                         .from('crm_opportunities')
                         .select('id, title, stage, value')
                         .ilike('title', `%${query}%`)

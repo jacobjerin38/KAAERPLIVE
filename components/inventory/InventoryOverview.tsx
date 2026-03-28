@@ -145,10 +145,10 @@ export const InventoryOverview: React.FC = () => {
             ]);
 
             if (summaryRes.status === 'fulfilled' && summaryRes.value.data) {
-                setSummary(summaryRes.value.data);
+                setSummary(summaryRes.value.data as any);
             }
             if (movementRes.status === 'fulfilled' && movementRes.value.data) {
-                setMovement(movementRes.value.data as MovementPoint[]);
+                setMovement(movementRes.value.data as any);
             }
 
             // Process low stock
