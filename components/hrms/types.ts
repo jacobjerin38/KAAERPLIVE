@@ -179,8 +179,7 @@ export interface Employee {
 
   // Extended HR Fields
   nationality?: string;
-  hamad_card_expiry?: string;
-  air_ticket?: string;
+  nationality_id?: number | null;
   annual_leave_duration_policy?: string;
   memo?: string;
   remarks?: string;

@@ -7,7 +7,7 @@ import { supabase } from '../../../lib/supabase';
 import { EmployeeDocuments } from './EmployeeDocuments';
 import {
     Employee, Department, Location, Designation, Grade, EmploymentType,
-    PayGroup, Faith, MaritalStatus, BloodGroup, Role, LeaveType,
+    PayGroup, Faith, MaritalStatus, BloodGroup, Nationality, Role, LeaveType,
     ShiftTiming, WeekoffRule, SalaryComponent
 } from '../../hrms/types';
 import { Modal } from '../../ui/Modal';
@@ -25,6 +25,7 @@ interface EmployeeFormModalProps {
     faiths: Faith[];
     maritalStatuses: MaritalStatus[];
     bloodGroups: BloodGroup[];
+    nationalities: Nationality[];
     roles: Role[];
     leaveTypes: LeaveType[];
     shiftTimings: ShiftTiming[];
@@ -36,7 +37,7 @@ interface EmployeeFormModalProps {
 export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
     initialData, onClose, refreshData,
     departments, locations, designations, grades, employmentTypes,
-    payGroups, faiths, maritalStatuses, bloodGroups, roles,
+    payGroups, faiths, maritalStatuses, bloodGroups, nationalities, roles,
     shiftTimings, weekoffRules, salaryComponents, employees
 }) => {
     // Split name for UI if needed, but keeping single name field in DB for simplicity unless requested split
@@ -82,7 +83,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
         visa_type: (initialData as any)?.visa_type || '',
         client_name: (initialData as any)?.client_name || '',
         // Additional fields
-        nationality: (initialData as any)?.nationality || '',
+        nationality_id: (initialData as any)?.nationality_id?.toString() || '',
         annual_leave_duration_policy: (initialData as any)?.annual_leave_duration_policy || '',
         memo: (initialData as any)?.memo || '',
         remarks: (initialData as any)?.remarks || '',
@@ -314,7 +315,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                 visa_sponsor: formData.visa_sponsor || null,
                 visa_type: formData.visa_type || null,
                 client_name: formData.client_name || null,
-                nationality: formData.nationality || null,
+                nationality_id: formData.nationality_id ? parseInt(formData.nationality_id) : null,
                 annual_leave_duration_policy: formData.annual_leave_duration_policy || null,
                 memo: formData.memo || null,
                 remarks: formData.remarks || null,
@@ -627,7 +628,10 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         <div className="space-y-2">
                                             <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Nationality</label>
-                                            <input name="nationality" value={formData.nationality} onChange={handleChange} placeholder="e.g. Indian, Filipino, Nepali..." className="w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm outline-none text-slate-900 dark:text-white" />
+                                            <select name="nationality_id" value={formData.nationality_id} onChange={handleChange} className="w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm outline-none text-slate-900 dark:text-white">
+                                                <option value="">Select Nationality</option>
+                                                {nationalities.map(n => <option key={n.id} value={n.id}>{n.name}</option>)}
+                                            </select>
                                         </div>
                                     </div>
 

@@ -27,11 +27,12 @@ interface EmployeeDetailModalProps {
     employees: Employee[]; // For manager lookup
     salaryComponents: any[]; // New prop for mapping
     maritalStatuses?: any[];
+    nationalities?: any[];
 }
 
 export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
     emp, onClose, onEdit, refreshData,
-    departments, locations, designations, grades, employmentTypes, payGroups, roles, employees, salaryComponents, maritalStatuses
+    departments, locations, designations, grades, employmentTypes, payGroups, roles, employees, salaryComponents, maritalStatuses, nationalities
 }) => {
     const [tab, setTab] = useState<'PROFILE' | 'JOB' | 'CONTACT' | 'FINANCIAL' | 'DOCUMENTS' | 'TIMELINE'>('PROFILE');
 
@@ -210,7 +211,7 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
                                     <ViewField label="Date of Birth" value={formatDate(emp.date_of_birth)} />
                                     <ViewField label="Age" value={emp.age || (emp.date_of_birth ? Math.floor((Date.now() - new Date(emp.date_of_birth).getTime()) / (365.25 * 24 * 60 * 60 * 1000)) : '-')} />
                                     <ViewField label="Gender" value={emp.gender || '-'} />
-                                    <ViewField label="Nationality" value={emp.nationality || '-'} />
+                                    <ViewField label="Nationality" value={nationalities?.find(n => n.id === emp.nationality_id)?.name || emp.nationality || '-'} />
                                     <ViewField label="Civil Status" value={maritalStatuses?.find(m => m.id === emp.marital_status_id)?.name || '-'} />
                                 </div>
                             </div>
