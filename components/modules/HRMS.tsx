@@ -451,6 +451,7 @@ export const HRMS: React.FC = () => {
                     roles={roles}
                     employees={employees}
                     salaryComponents={salaryComponents}
+                    maritalStatuses={maritalStatuses}
                 />
             )}
             {showAttendanceEditModal && selectedAttendanceId && (

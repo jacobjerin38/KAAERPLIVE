@@ -25,11 +25,12 @@ interface EmployeeDetailModalProps {
     roles: any[];
     employees: Employee[]; // For manager lookup
     salaryComponents: any[]; // New prop for mapping
+    maritalStatuses?: any[];
 }
 
 export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
     emp, onClose, onEdit, refreshData,
-    departments, locations, designations, grades, employmentTypes, payGroups, roles, employees, salaryComponents
+    departments, locations, designations, grades, employmentTypes, payGroups, roles, employees, salaryComponents, maritalStatuses
 }) => {
     const [tab, setTab] = useState<'PROFILE' | 'JOB' | 'CONTACT' | 'FINANCIAL' | 'DOCUMENTS' | 'TIMELINE'>('PROFILE');
 
@@ -183,23 +184,69 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
 
                     {/* TABS */}
                     {tab === 'PROFILE' && (
-                        <div className="space-y-10">
+                        <div className="space-y-8">
+                            {/* Professional Details */}
                             <div>
                                 <h3 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">Professional Details</h3>
-                                <div className="grid grid-cols-2 gap-6">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <ViewField label="Staff No." value={emp.employee_code || '-'} />
                                     <ViewField label="Department" value={departments.find(d => d.id === emp.department_id)?.name || emp.department || '-'} />
-                                    <ViewField label="Join Date" value={formatDate(emp.joinDate)} />
-                                    <ViewField label="Email" value={emp.email} />
+                                    <ViewField label="Designation / Position" value={designations.find(d => d.id === emp.designation_id)?.name || emp.designation || '-'} />
+                                    <ViewField label="Grade" value={grades.find(g => g.id === emp.grade_id)?.name || '-'} />
+                                    <ViewField label="Employment Type" value={employmentTypes.find(e => e.id === emp.employment_type_id)?.name || '-'} />
+                                    <ViewField label="Join Date" value={formatDate(emp.joinDate || emp.join_date)} />
                                     <ViewField label="Location" value={locations.find(l => l.id === emp.location_id)?.name || emp.location || '-'} />
+                                    <ViewField label="Reporting Manager" value={employees.find(e => e.id === (emp as any).manager_id || e.id === emp.reporting_manager_id)?.name || '-'} />
+                                    <ViewField label="Client" value={emp.client_name || '-'} />
+                                    <ViewField label="Status" value={emp.status || '-'} />
                                 </div>
                             </div>
+
+                            {/* Personal Details */}
                             <div>
-                                <h3 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">Skills</h3>
-                                <div className="flex flex-wrap gap-2">
-                                    {emp.skills?.map(skill => (
-                                        <span key={skill} className="px-4 py-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-xl text-sm font-bold border border-indigo-100 dark:border-indigo-800">{skill}</span>
-                                    ))}
-                                    {(!emp.skills || emp.skills.length === 0) && <span className="text-slate-400 text-sm italic">No skills listed</span>}
+                                <h3 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">Personal Details</h3>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <ViewField label="Date of Birth" value={formatDate(emp.date_of_birth)} />
+                                    <ViewField label="Age" value={emp.age || (emp.date_of_birth ? Math.floor((Date.now() - new Date(emp.date_of_birth).getTime()) / (365.25 * 24 * 60 * 60 * 1000)) : '-')} />
+                                    <ViewField label="Gender" value={emp.gender || '-'} />
+                                    <ViewField label="Nationality" value={emp.nationality || '-'} />
+                                    <ViewField label="Civil Status" value={maritalStatuses?.find(m => m.id === emp.marital_status_id)?.name || '-'} />
+                                </div>
+                            </div>
+
+                            {/* Immigration & Travel */}
+                            <div>
+                                <h3 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">Immigration & Travel</h3>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <ViewField label="Passport No." value={emp.passport_number || '-'} />
+                                    <ViewField label="Passport Expiry" value={formatDate(emp.passport_expiry)} />
+                                    <ViewField label="QID / Visa Number" value={emp.visa_number || '-'} />
+                                    <ViewField label="Visa / QID Validity" value={formatDate(emp.visa_expiry)} />
+                                    <ViewField label="Visa Sponsor" value={emp.visa_sponsor || '-'} />
+                                    <ViewField label="Visa Type" value={emp.visa_type || '-'} />
+                                    <ViewField label="Hamad Card Expiry" value={formatDate(emp.hamad_card_expiry)} />
+                                    <ViewField label="Air Ticket" value={emp.air_ticket || '-'} />
+                                </div>
+                            </div>
+
+                            {/* Contact */}
+                            <div>
+                                <h3 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">Contact Information</h3>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <ViewField label="Personal Mobile" value={emp.personal_mobile || emp.phone || '-'} />
+                                    <ViewField label="Office Mobile" value={emp.office_mobile || '-'} />
+                                    <ViewField label="Personal Email" value={emp.personal_email || '-'} />
+                                    <ViewField label="Office Email" value={emp.office_email || emp.email || '-'} />
+                                </div>
+                            </div>
+
+                            {/* Additional Info */}
+                            <div>
+                                <h3 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">Additional Information</h3>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <ViewField label="Annual Leave Policy" value={emp.annual_leave_duration_policy || '-'} />
+                                    <ViewField label="Memo" value={emp.memo || '-'} />
+                                    <ViewField label="Remarks" value={emp.remarks || '-'} FullWidth />
                                 </div>
                             </div>
                         </div>
