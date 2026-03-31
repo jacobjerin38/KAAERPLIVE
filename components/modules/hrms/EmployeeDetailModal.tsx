@@ -249,8 +249,9 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
                                 <h3 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">Additional Information</h3>
                                 <div className="grid grid-cols-2 gap-4">
                                     <ViewField label="Annual Leave Duration Policy" value={leavePlans?.find(p => p.id === (emp as any).leave_plan_id)?.name || emp.annual_leave_duration_policy || '-'} />
+                                    <ViewField label="Air Ticket" value={emp.air_ticket || '-'} />
                                     <ViewField label="Memo" value={emp.memo || '-'} />
-                                    <ViewField label="Remarks" value={emp.remarks || '-'} FullWidth />
+                                    <ViewField label="Remarks" value={emp.remarks || '-'} />
                                 </div>
                             </div>
                         </div>

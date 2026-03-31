@@ -91,6 +91,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
         nationality_id: (initialData as any)?.nationality_id?.toString() || '',
         annual_leave_duration_policy: (initialData as any)?.annual_leave_duration_policy || '',
         leave_plan_id: (initialData as any)?.leave_plan_id?.toString() || '',
+        air_ticket: (initialData as any)?.air_ticket || '',
         memo: (initialData as any)?.memo || '',
         remarks: (initialData as any)?.remarks || '',
     });
@@ -325,6 +326,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                 nationality_id: formData.nationality_id ? parseInt(formData.nationality_id) : null,
                 leave_plan_id: formData.leave_plan_id ? parseInt(formData.leave_plan_id) : null,
                 annual_leave_duration_policy: formData.annual_leave_duration_policy || null,
+                air_ticket: formData.air_ticket || null,
                 memo: formData.memo || null,
                 remarks: formData.remarks || null,
             };
@@ -707,6 +709,14 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                                                 </select>
                                             </div>
                                             <div className="space-y-2">
+                                                <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Air Ticket</label>
+                                                <select name="air_ticket" value={formData.air_ticket} onChange={handleChange} className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm outline-none text-slate-900 dark:text-white">
+                                                    <option value="">Select Option</option>
+                                                    <option value="Yearly">Yearly</option>
+                                                    <option value="Every Two Years">Every Two Years</option>
+                                                </select>
+                                            </div>
+                                            <div className="space-y-2 md:col-span-2">
                                                 <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Memo</label>
                                                 <input name="memo" value={formData.memo} onChange={handleChange} placeholder="Internal memo..." className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm outline-none text-slate-900 dark:text-white" />
                                             </div>

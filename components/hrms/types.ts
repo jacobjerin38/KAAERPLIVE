@@ -187,6 +187,7 @@ export interface Employee {
   employee_status_id?: number | null;
   leave_plan_id?: number | null;
   annual_leave_duration_policy?: string;
+  air_ticket?: string;
   memo?: string;
   remarks?: string;
   client_name?: string;
