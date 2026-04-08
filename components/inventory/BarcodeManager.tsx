@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import {
     BarChart3, Search, Printer, QrCode, Package,
-    Scan, CheckCircle, Tag, ChevronDown, X
+    Scan, CheckCircle, Tag, ChevronDown, X, Camera, CameraOff, Video
 } from 'lucide-react';
 
 interface ItemBarcode {
@@ -71,6 +71,11 @@ export const BarcodeManager: React.FC = () => {
     const [scanResult, setScanResult] = useState<ItemBarcode | null>(null);
     const [scanNotFound, setScanNotFound] = useState(false);
     const scanInputRef = useRef<HTMLInputElement>(null);
+    const [cameraActive, setCameraActive] = useState(false);
+    const [cameraError, setCameraError] = useState<string | null>(null);
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const streamRef = useRef<MediaStream | null>(null);
+    const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     const fetchItems = useCallback(async () => {
         if (!currentCompanyId) return;
@@ -134,6 +139,78 @@ export const BarcodeManager: React.FC = () => {
             handleScan();
         }
     };
+
+    // Camera scanning functions
+    const startCamera = async () => {
+        setCameraError(null);
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+            });
+            streamRef.current = stream;
+            if (videoRef.current) {
+                videoRef.current.srcObject = stream;
+                await videoRef.current.play();
+            }
+            setCameraActive(true);
+
+            // Start scanning interval using BarcodeDetector or canvas analysis
+            if ('BarcodeDetector' in window) {
+                const detector = new (window as any).BarcodeDetector({ formats: ['ean_13', 'ean_8', 'code_128', 'code_39', 'qr_code', 'upc_a', 'upc_e'] });
+                scanIntervalRef.current = setInterval(async () => {
+                    if (videoRef.current && videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
+                        try {
+                            const barcodes = await detector.detect(videoRef.current);
+                            if (barcodes.length > 0) {
+                                const code = barcodes[0].rawValue;
+                                if (code) {
+                                    setScannerInput(code);
+                                    // Auto-lookup
+                                    const found = items.find(i =>
+                                        i.barcode?.toLowerCase() === code.toLowerCase() ||
+                                        i.code.toLowerCase() === code.toLowerCase()
+                                    );
+                                    if (found) {
+                                        setScanResult(found);
+                                        setScanNotFound(false);
+                                    } else {
+                                        setScanNotFound(true);
+                                        setScanResult(null);
+                                    }
+                                    stopCamera();
+                                }
+                            }
+                        } catch { /* scanning frame failed, continue */ }
+                    }
+                }, 500);
+            } else {
+                setCameraError('BarcodeDetector API not supported. Use Chrome or Edge for camera scanning.');
+            }
+        } catch (err: any) {
+            setCameraError(err.message || 'Could not access camera');
+            setCameraActive(false);
+        }
+    };
+
+    const stopCamera = () => {
+        if (scanIntervalRef.current) {
+            clearInterval(scanIntervalRef.current);
+            scanIntervalRef.current = null;
+        }
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(t => t.stop());
+            streamRef.current = null;
+        }
+        if (videoRef.current) {
+            videoRef.current.srcObject = null;
+        }
+        setCameraActive(false);
+    };
+
+    // Cleanup camera on unmount
+    useEffect(() => {
+        return () => { stopCamera(); };
+    }, []);
 
     const toggleSelect = (id: string) => {
         setSelectedItems(prev => {
@@ -266,7 +343,47 @@ export const BarcodeManager: React.FC = () => {
                     >
                         Look Up
                     </button>
+                    <button
+                        onClick={cameraActive ? stopCamera : startCamera}
+                        className={`px-4 py-2.5 rounded-lg transition-colors flex items-center gap-2 ${cameraActive
+                            ? 'bg-rose-600 text-white hover:bg-rose-700'
+                            : 'bg-violet-600 text-white hover:bg-violet-700'}`}
+                        title={cameraActive ? 'Stop Camera' : 'Use Camera'}
+                    >
+                        {cameraActive ? <CameraOff className="w-4 h-4" /> : <Camera className="w-4 h-4" />}
+                        {cameraActive ? 'Stop' : 'Camera'}
+                    </button>
                 </div>
+
+                {/* Camera Viewfinder */}
+                {cameraActive && (
+                    <div className="mt-3 relative rounded-lg overflow-hidden border-2 border-indigo-300 dark:border-indigo-700 bg-black max-w-lg">
+                        <video
+                            ref={videoRef}
+                            className="w-full h-48 object-cover"
+                            muted
+                            playsInline
+                        />
+                        {/* Scan target overlay */}
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <div className="w-48 h-16 border-2 border-emerald-400 rounded-lg opacity-70">
+                                <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-emerald-400 rounded-tl-lg"></div>
+                                <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-emerald-400 rounded-tr-lg"></div>
+                                <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-emerald-400 rounded-bl-lg"></div>
+                                <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-emerald-400 rounded-br-lg"></div>
+                            </div>
+                            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded">
+                                Point camera at barcode
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {cameraError && (
+                    <div className="mt-2 text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                        <Video className="w-3 h-3" /> {cameraError}
+                    </div>
+                )}
 
                 {scanResult && (
                     <div className="mt-3 p-3 bg-white dark:bg-zinc-800 rounded-lg border border-emerald-200 dark:border-emerald-800 flex items-center gap-4">

@@ -1280,6 +1280,139 @@ export type Database = {
           },
         ]
       }
+      device_attendance_logs: {
+        Row: {
+          attendance_record_id: string | null
+          company_id: string
+          created_at: string | null
+          device_id: string | null
+          employee_id: string | null
+          employee_identifier: string
+          id: string
+          punch_time: string
+          punch_type: string | null
+          raw_data: Json | null
+          sync_error: string | null
+          sync_status: string | null
+          synced_at: string | null
+        }
+        Insert: {
+          attendance_record_id?: string | null
+          company_id: string
+          created_at?: string | null
+          device_id?: string | null
+          employee_id?: string | null
+          employee_identifier: string
+          id?: string
+          punch_time: string
+          punch_type?: string | null
+          raw_data?: Json | null
+          sync_error?: string | null
+          sync_status?: string | null
+          synced_at?: string | null
+        }
+        Update: {
+          attendance_record_id?: string | null
+          company_id?: string
+          created_at?: string | null
+          device_id?: string | null
+          employee_id?: string | null
+          employee_identifier?: string
+          id?: string
+          punch_time?: string
+          punch_type?: string | null
+          raw_data?: Json | null
+          sync_error?: string | null
+          sync_status?: string | null
+          synced_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "device_attendance_logs_attendance_record_id_fkey"
+            columns: ["attendance_record_id"]
+            isOneToOne: false
+            referencedRelation: "attendance_records"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "device_attendance_logs_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "device_attendance_logs_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "device_integrations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "device_attendance_logs_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      device_integrations: {
+        Row: {
+          api_key: string | null
+          company_id: string
+          connection_type: string
+          created_at: string | null
+          device_name: string
+          device_type: string
+          id: string
+          ip_address: string | null
+          last_sync_at: string | null
+          metadata: Json | null
+          port: number | null
+          status: string | null
+          sync_count: number | null
+        }
+        Insert: {
+          api_key?: string | null
+          company_id: string
+          connection_type: string
+          created_at?: string | null
+          device_name: string
+          device_type: string
+          id?: string
+          ip_address?: string | null
+          last_sync_at?: string | null
+          metadata?: Json | null
+          port?: number | null
+          status?: string | null
+          sync_count?: number | null
+        }
+        Update: {
+          api_key?: string | null
+          company_id?: string
+          connection_type?: string
+          created_at?: string | null
+          device_name?: string
+          device_type?: string
+          id?: string
+          ip_address?: string | null
+          last_sync_at?: string | null
+          metadata?: Json | null
+          port?: number | null
+          status?: string | null
+          sync_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "device_integrations_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       departments: {
         Row: {
           code: string
@@ -5854,6 +5987,14 @@ export type Database = {
         Returns: Json
       }
       rpc_get_stock_level: {
+        Args: { p_company_id: string }
+        Returns: Json
+      }
+      rpc_get_device_sync_status: {
+        Args: { p_company_id: string }
+        Returns: Json
+      }
+      rpc_sync_device_attendance: {
         Args: { p_company_id: string }
         Returns: Json
       }

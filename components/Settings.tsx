@@ -1,6 +1,7 @@
-import React, { useRef } from 'react';
-import { Moon, Sun, Download, Upload, LogOut, Database, Shield, Monitor } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { Moon, Sun, Download, Upload, LogOut, Database, Shield, Monitor, Server } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { DeviceIntegrationHub } from './settings/DeviceIntegrationHub';
 
 interface SettingsProps {
   isDarkMode: boolean;
@@ -11,6 +12,7 @@ interface SettingsProps {
 export const Settings: React.FC<SettingsProps> = ({ isDarkMode, toggleTheme, onLogout }) => {
   const { hasPermission } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showDeviceHub, setShowDeviceHub] = useState(false);
 
   const handleBackup = () => {
     try {
@@ -89,6 +91,41 @@ export const Settings: React.FC<SettingsProps> = ({ isDarkMode, toggleTheme, onL
               </button>
             </div>
           </section>
+
+          {/* Device Integration Section */}
+          {hasPermission('org.settings.manage') && (
+            <section className="bg-white dark:bg-zinc-900/50 backdrop-blur-xl rounded-[2rem] p-8 border border-zinc-200 dark:border-zinc-800 shadow-sm">
+              <div className="flex items-center gap-4 mb-6">
+                <div className="p-3 bg-violet-50 dark:bg-violet-900/30 rounded-2xl text-violet-600 dark:text-violet-400">
+                  <Server className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white">Device Integration</h2>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">Connect barcode scanners, cameras, and attendance machines.</p>
+                </div>
+              </div>
+
+              {showDeviceHub ? (
+                <div>
+                  <button
+                    onClick={() => setShowDeviceHub(false)}
+                    className="mb-4 text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+                  >
+                    ← Back to Settings
+                  </button>
+                  <DeviceIntegrationHub />
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowDeviceHub(true)}
+                  className="w-full flex items-center justify-center gap-3 p-6 rounded-2xl border-2 border-dashed border-zinc-200 dark:border-zinc-700 hover:border-violet-500 dark:hover:border-violet-500 hover:bg-violet-50 dark:hover:bg-violet-900/20 transition-all group"
+                >
+                  <Server className="w-6 h-6 text-zinc-400 group-hover:text-violet-600 dark:group-hover:text-violet-400" />
+                  <span className="font-bold text-zinc-600 dark:text-zinc-300 group-hover:text-violet-700 dark:group-hover:text-violet-400">Open Device Hub</span>
+                </button>
+              )}
+            </section>
+          )}
 
           {/* Data Management Section */}
           {hasPermission('org.settings.manage') && (
