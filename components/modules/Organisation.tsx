@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
     Building2, MapPin, LayoutGrid, Users, Settings, Plus, Check, Edit3, X, Shield, User, Database, GitMerge, PlayCircle, StopCircle, ArrowRight, Bell, Clock, Save, Search, Trash2, Sparkles, Radio, BarChart2, Loader2, KeyRound,
-    Banknote, Package, Factory, ShoppingCart
+    Banknote, Package, Factory, ShoppingCart, Calendar
 }
     from 'lucide-react';
 import { PollsView } from './organization/PollsView';
@@ -263,6 +263,119 @@ const CompanyProfileView = () => {
                             <span className="text-sm">No documents uploaded</span>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// --- Attendance Settings View (Company-level default off days) ---
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+const AttendanceSettingsView = () => {
+    const [offDays, setOffDays] = useState<number[]>([5, 6]); // Default Fri+Sat
+    const [loading, setLoading] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [hasRecord, setHasRecord] = useState(false);
+    const { currentCompanyId } = useAuth();
+
+    useEffect(() => {
+        if (currentCompanyId) fetchSettings();
+    }, [currentCompanyId]);
+
+    const fetchSettings = async () => {
+        setLoading(true);
+        if (currentCompanyId) {
+            const { data } = await (supabase as any).from('org_attendance_settings').select('*').eq('company_id', currentCompanyId).maybeSingle();
+            if (data) {
+                setHasRecord(true);
+                const parsed = (data.default_weekly_off_days || '5,6').split(',').map(Number).filter((n: number) => !isNaN(n));
+                setOffDays(parsed);
+            } else {
+                setHasRecord(false);
+                setOffDays([5, 6]);
+            }
+        }
+        setLoading(false);
+    };
+
+    const toggleDay = (day: number) => {
+        setOffDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day].sort());
+    };
+
+    const handleSave = async () => {
+        setSaving(true);
+        const payload = {
+            company_id: currentCompanyId,
+            default_weekly_off_days: offDays.join(',')
+        };
+        const { error } = await (supabase as any).from('org_attendance_settings').upsert([payload], { onConflict: 'company_id' });
+        if (error) alert('Error saving: ' + error.message);
+        else alert('Attendance settings saved!');
+        setSaving(false);
+    };
+
+    if (loading) return <div className="p-8">Loading settings...</div>;
+
+    return (
+        <div className="p-8 h-full flex flex-col animate-page-enter overflow-y-auto">
+            <div className="flex justify-between items-center mb-8">
+                <div>
+                    <h2 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+                        <Calendar className="w-8 h-8 text-indigo-500" /> Attendance Settings
+                    </h2>
+                    <p className="text-slate-500 dark:text-slate-400 mt-1">Company-wide attendance configuration.</p>
+                </div>
+            </div>
+
+            <div className="bg-white/70 dark:bg-zinc-900/70 backdrop-blur-xl p-8 rounded-[2rem] border border-white/60 dark:border-zinc-800 shadow-xl shadow-slate-200/50 dark:shadow-black/30 max-w-3xl space-y-8">
+                {/* Default Weekly Off Days */}
+                <div>
+                    <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-2">Default Weekly Off Days</h3>
+                    <p className="text-sm text-slate-500 mb-5">
+                        These apply to all employees who are <strong>not assigned a shift</strong> or <strong>not on the duty roster</strong>.
+                        Employees on the duty roster or with a specific shift will use that shift's off-day configuration instead.
+                    </p>
+                    <div className="grid grid-cols-7 gap-3">
+                        {DAY_NAMES.map((name, idx) => (
+                            <button
+                                key={idx}
+                                type="button"
+                                onClick={() => toggleDay(idx)}
+                                className={`flex flex-col items-center gap-1 py-4 rounded-2xl border-2 transition-all active:scale-95 ${
+                                    offDays.includes(idx)
+                                        ? 'bg-rose-50 dark:bg-rose-900/20 border-rose-300 dark:border-rose-700 text-rose-700 dark:text-rose-400 shadow-md shadow-rose-200/50 dark:shadow-rose-900/30'
+                                        : 'bg-white dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-500 dark:text-slate-400 hover:border-slate-300'
+                                }`}
+                            >
+                                <span className="text-lg font-black">{DAY_SHORT[idx]}</span>
+                                <span className="text-[9px] font-bold uppercase tracking-wider">
+                                    {offDays.includes(idx) ? 'OFF' : 'Working'}
+                                </span>
+                            </button>
+                        ))}
+                    </div>
+                    <p className="text-xs text-slate-400 mt-3">
+                        Currently: {offDays.length === 0 ? 'No off days' : offDays.map(d => DAY_NAMES[d]).join(', ')}
+                    </p>
+                </div>
+
+                {/* Info Box */}
+                <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl border border-indigo-100 dark:border-indigo-800">
+                    <h4 className="font-bold text-slate-800 dark:text-white text-sm mb-2">Off-Day Priority</h4>
+                    <ol className="text-xs text-slate-600 dark:text-slate-300 space-y-1 list-decimal list-inside">
+                        <li><strong>Duty Roster</strong> — Employee has a shift on that date → Working day (overrides everything)</li>
+                        <li><strong>Shift Off Days</strong> — Employee's assigned shift defines off days (configured in Organisation → Masters → Shift Timings)</li>
+                        <li><strong>Company Default</strong> — Uses the setting above for employees without a shift assignment</li>
+                    </ol>
+                </div>
+
+                <div className="pt-4 border-t border-slate-100 dark:border-zinc-800 flex justify-end">
+                    <button onClick={handleSave} disabled={saving} className="px-8 py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-indigo-500/20">
+                        {saving ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <Save className="w-5 h-5" />}
+                        Save Settings
+                    </button>
                 </div>
             </div>
         </div>
@@ -702,9 +815,10 @@ export const MASTER_CONFIG: Record<string, MasterTableConfig> = {
             { key: 'code', label: 'Code', type: 'text', required: true },
             { key: 'start_time', label: 'Start Time', type: 'time', required: true },
             { key: 'end_time', label: 'End Time', type: 'time', required: true },
-            { key: 'grace_period_minutes', label: 'Grace Period (mins)', type: 'number' }
+            { key: 'grace_period_minutes', label: 'Grace Period (mins)', type: 'number' },
+            { key: 'weekly_off_days', label: 'Weekly Off Days (0=Sun,1=Mon,...6=Sat)', type: 'text', placeholder: 'e.g. 5,6 for Fri+Sat' }
         ],
-        columns: [{ key: 'name', label: 'Name' }, { key: 'start_time', label: 'Start' }, { key: 'end_time', label: 'End' }]
+        columns: [{ key: 'name', label: 'Name' }, { key: 'start_time', label: 'Start' }, { key: 'end_time', label: 'End' }, { key: 'weekly_off_days', label: 'Off Days' }]
     },
     'LEAVE_TYPES': {
         tableName: 'org_leave_types',
@@ -899,6 +1013,29 @@ export const MASTER_CONFIG: Record<string, MasterTableConfig> = {
             { key: 'is_stockable', label: 'Is Stockable?', type: 'boolean' }
         ],
         columns: [{ key: 'name', label: 'Name' }, { key: 'code', label: 'Code' }, { key: 'uom', label: 'UOM' }, { key: 'category', label: 'Category' }]
+    },
+    'ATTENDANCE_PERIODS': {
+        tableName: 'attendance_periods',
+        displayName: 'Attendance Period',
+        description: 'Monthly attendance processing cycles',
+        fields: [
+            { key: 'name', label: 'Period Name', type: 'text', required: true, placeholder: 'e.g. April 2026' },
+            { key: 'code', label: 'Code', type: 'text', required: true, placeholder: 'e.g. ATT-2026-04' },
+            { key: 'start_date', label: 'Start Date', type: 'date', required: true },
+            { key: 'end_date', label: 'End Date', type: 'date', required: true },
+            { key: 'status', label: 'Status', type: 'select', required: true, options: [
+                { label: 'Open', value: 'OPEN' },
+                { label: 'Processed', value: 'PROCESSED' },
+                { label: 'Locked', value: 'LOCKED' }
+            ]}
+        ],
+        columns: [
+            { key: 'name', label: 'Period' },
+            { key: 'code', label: 'Code' },
+            { key: 'start_date', label: 'Start' },
+            { key: 'end_date', label: 'End' },
+            { key: 'status', label: 'Status' }
+        ]
     }
 };
 
@@ -1100,6 +1237,7 @@ const GenericMastersView = ({
                         { id: 'FINANCIAL_YEARS', label: 'Financial Years' },
                         { id: 'PAYROLL_MONTHS', label: 'Payroll Months' },
                         { id: 'LEAVE_CALENDAR', label: 'Leave Calendar' },
+                        { id: 'ATTENDANCE_PERIODS', label: 'Attendance Periods' },
                         { id: 'BANK_CONFIGS', label: 'Bank Configs' },
                     ].map(tab => (
                         <button
@@ -2055,6 +2193,7 @@ export const Organisation: React.FC = () => {
         { id: 'NOTIFICATIONS', icon: Bell, label: 'Notifications', permission: 'org.settings.manage' },
         { id: 'REMINDERS', icon: Clock, label: 'Reminders', permission: 'org.settings.manage' },
         { id: 'AI_SETTINGS', icon: Sparkles, label: 'AI Settings', permission: 'org.settings.manage' },
+        { id: 'ATT_SETTINGS', icon: Calendar, label: 'Attendance Settings', permission: 'org.settings.manage' },
         { id: 'SETTINGS', icon: Settings, label: 'Payroll Settings', permission: 'finance.payroll.manage' },
         { id: 'ACCOUNTING', icon: BarChart2, label: 'Accounting Setup', permission: 'finance.setup.manage' },
         { id: 'ADD_COMPANY', icon: Plus, label: 'Add Company', permission: '*' }, // Restricted to Admin/Owner effectively via *
@@ -2085,6 +2224,7 @@ export const Organisation: React.FC = () => {
     const [leaveCalendarYears, setLeaveCalendarYears] = useState<any[]>([]);
     const [salaryComponents, setSalaryComponents] = useState<any[]>([]);
     const [shiftTimings, setShiftTimings] = useState<any[]>([]);
+    const [attendancePeriods, setAttendancePeriods] = useState<any[]>([]);
     const [faiths, setFaiths] = useState<any[]>([]);
     const [maritalStatus, setMaritalStatus] = useState<any[]>([]);
     const [bloodGroups, setBloodGroups] = useState<any[]>([]);
@@ -2217,6 +2357,11 @@ export const Organisation: React.FC = () => {
             if (activeMasterTab === 'LEAVE_CALENDAR') {
                 const { data } = await supabase.from('org_leave_calendar_years').select('*').order('year', { ascending: false });
                 if (data) setLeaveCalendarYears(data);
+            }
+            // Attendance Periods
+            if (activeMasterTab === 'ATTENDANCE_PERIODS') {
+                const { data } = await supabase.from('attendance_periods').select('*').order('start_date', { ascending: false });
+                if (data) setAttendancePeriods(data);
             }
             // Bank Configs
             if (activeMasterTab === 'BANK_CONFIGS') {
@@ -3176,6 +3321,7 @@ export const Organisation: React.FC = () => {
                                 case 'SURVEYS': return surveys;
                                 case 'KUDOS_CATEGORIES': return kudosCategories;
                                 case 'CRM_STAGES': return crmStages;
+                                case 'ATTENDANCE_PERIODS': return attendancePeriods;
                                 default: return [];
                             }
                         })()}
@@ -3305,6 +3451,9 @@ export const Organisation: React.FC = () => {
                         reminders={reminders}
                         handleSaveReminder={handleSaveReminder}
                     />
+                )}
+                {activeTab === 'ATT_SETTINGS' && (
+                    <AttendanceSettingsView />
                 )}
                 {activeTab === 'SETTINGS' && (
                     <PayrollSettingsView />
