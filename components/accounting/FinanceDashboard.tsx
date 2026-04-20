@@ -47,13 +47,12 @@ interface OverdueInvoice {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const fmt = (n: number) =>
-    new Intl.NumberFormat('en-IN', {
-        style: 'currency', currency: 'INR',
+    'QAR ' + new Intl.NumberFormat('en-US', {
         maximumFractionDigits: 0, notation: 'compact'
     }).format(n);
 
 const fmtFull = (n: number) =>
-    new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
+    'QAR ' + new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(n);
 
 const daysDiff = (dateStr: string) => {
     const diff = new Date().getTime() - new Date(dateStr).getTime();
@@ -340,7 +339,7 @@ export const FinanceDashboard: React.FC = () => {
                                         <td className="px-5 py-3 text-slate-700 dark:text-slate-200">{inv.partner_name || '—'}</td>
                                         <td className="px-5 py-3 text-slate-500 dark:text-slate-400 flex items-center gap-1">
                                             <Clock className="w-3 h-3" />
-                                            {new Date(inv.invoice_date_due).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })}
+                                            {new Date(inv.invoice_date_due).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: '2-digit' })}
                                         </td>
                                         <td className={`px-5 py-3 font-bold ${severity}`}>{days}d</td>
                                         <td className="px-5 py-3 text-right font-semibold text-slate-800 dark:text-white">{fmtFull(inv.amount_residual)}</td>

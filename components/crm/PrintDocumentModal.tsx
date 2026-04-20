@@ -186,7 +186,7 @@ const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
                                     <div className="flex justify-between text-xs">
                                         <span className="text-slate-500">Total</span>
                                         <span className="text-slate-900 dark:text-white font-bold">
-                                            ₹{((doc as any).grand_total || 0).toLocaleString()}
+                                            QAR {((doc as any).grand_total || 0).toLocaleString()}
                                         </span>
                                     </div>
                                 )}

@@ -76,16 +76,16 @@ export async function fetchCustomTemplates(companyId: string): Promise<PrintTemp
 
 // ─── Currency helpers ───
 const CURRENCY_SYMBOLS: Record<string, string> = {
-    INR: '₹', USD: '$', EUR: '€', GBP: '£', AED: 'د.إ', SAR: '﷼', JPY: '¥',
+    QAR: 'QAR', INR: '₹', USD: '$', EUR: '€', GBP: '£', AED: 'د.إ', SAR: '﷼', JPY: '¥',
 };
 
 function getCurrencySymbol(currency?: string): string {
-    return CURRENCY_SYMBOLS[currency || 'INR'] || (currency || '₹');
+    return CURRENCY_SYMBOLS[currency || 'QAR'] || (currency || 'QAR');
 }
 
 function formatMoney(amount: number, currency?: string): string {
     const sym = getCurrencySymbol(currency);
-    return `${sym}${amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `${sym} ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 // ─── Number to words (Indian) ───
@@ -104,11 +104,11 @@ function numberToWordsHelper(n: number): string {
 }
 
 function amountInWords(amount: number, currency?: string): string {
-    const cur = currency || 'INR';
+    const cur = currency || 'QAR';
     const wholePart = Math.floor(Math.abs(amount));
     const fractionPart = Math.round((Math.abs(amount) - wholePart) * 100);
-    const currencyWord = cur === 'INR' ? 'Rupees' : cur === 'USD' ? 'Dollars' : cur === 'EUR' ? 'Euros' : cur === 'GBP' ? 'Pounds' : cur;
-    const subUnit = cur === 'INR' ? 'Paise' : 'Cents';
+    const currencyWord = cur === 'QAR' ? 'Qatari Riyals' : cur === 'INR' ? 'Rupees' : cur === 'USD' ? 'Dollars' : cur === 'EUR' ? 'Euros' : cur === 'GBP' ? 'Pounds' : cur;
+    const subUnit = cur === 'QAR' ? 'Dirhams' : cur === 'INR' ? 'Paise' : 'Cents';
     let result = `${currencyWord} ${numberToWordsHelper(wholePart)}`;
     if (fractionPart > 0) result += ` and ${numberToWordsHelper(fractionPart)} ${subUnit}`;
     return result + ' Only';
@@ -151,7 +151,7 @@ function calcLineAmount(l: any): number {
 
 export function generateDocumentHTML(opts: GenerateHTMLOptions): string {
     const { documentType, document: doc, lines, customer, company, template } = opts;
-    const currency = (doc as any).currency || company.currency || 'INR';
+    const currency = (doc as any).currency || company.currency || 'QAR';
     const docTitle = getDocTitle(documentType);
     const docDate = getDocDate(documentType, doc);
     const isDeliveryNote = documentType === 'delivery_note';

@@ -61,8 +61,8 @@ export const DocumentGenerator: React.FC = () => {
         reference: '',
         notes: '',
         lineItems: [{ id: '1', description: '', qty: 1, unit: 'PCS', unitPrice: 0, total: 0 }],
-        taxRate: 16,
-        currency: 'KES',
+        taxRate: 5,
+        currency: 'QAR',
     });
 
     const updateDocType = (type: DocType) => {

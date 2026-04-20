@@ -309,7 +309,7 @@ export const ReportBuilder: React.FC<ReportBuilderProps> = ({ onBack, companyId,
 
     const formatValue = (val: any, dataType: string) => {
         if (val === null || val === undefined) return '\u2014';
-        if (dataType === 'currency') return '\u20B9' + Number(val).toLocaleString('en-IN');
+        if (dataType === 'currency') return 'QAR ' + Number(val).toLocaleString('en-US');
         if (dataType === 'date' && val) return new Date(val).toLocaleDateString();
         if (dataType === 'number') return Number(val).toLocaleString();
         return String(val);

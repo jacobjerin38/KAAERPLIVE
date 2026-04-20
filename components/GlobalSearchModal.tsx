@@ -152,7 +152,7 @@ export const GlobalSearchModal: React.FC = () => {
                                 id: `opp-${opp.id}`,
                                 type: 'DATA',
                                 title: opp.title || 'Untitled Opportunity',
-                                subtitle: `Opportunity • ${opp.stage || ''} • ${opp.value ? '₹' + Number(opp.value).toLocaleString('en-IN') : ''}`.trim(),
+                                subtitle: `Opportunity • ${opp.stage || ''} • ${opp.value ? 'QAR ' + Number(opp.value).toLocaleString() : ''}`.trim(),
                                 icon: <FileText className="w-4 h-4" />,
                                 action: () => { navigate('/crm'); }
                             });

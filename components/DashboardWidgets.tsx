@@ -41,8 +41,7 @@ const WidgetCard: React.FC<{
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const fmt = (n: number) =>
-    new Intl.NumberFormat('en-IN', {
-        style: 'currency', currency: 'INR',
+    'QAR ' + new Intl.NumberFormat('en-US', {
         maximumFractionDigits: 0, notation: 'compact'
     }).format(n);
 
@@ -80,7 +79,7 @@ export const HRMSWidget: React.FC<WidgetProps & {
 
 // ─── CRM Widget ───────────────────────────────────────────────────────────────
 
-export const CRMWidget: React.FC<WidgetProps & { pipelineValue?: string; dealCount?: number }> = ({ onClick, className, pipelineValue = '₹0', dealCount = 0 }) => (
+export const CRMWidget: React.FC<WidgetProps & { pipelineValue?: string; dealCount?: number }> = ({ onClick, className, pipelineValue = 'QAR 0', dealCount = 0 }) => (
     <WidgetCard onClick={onClick} className={className} gradient="bg-gradient-to-br from-orange-400 to-amber-600">
         <div className="flex justify-between items-start mb-auto">
             <div className="p-3 rounded-2xl bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400">

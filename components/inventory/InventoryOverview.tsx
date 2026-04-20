@@ -56,13 +56,12 @@ interface BinStockRow {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const fmt = (n: number) =>
-    new Intl.NumberFormat('en-IN', {
-        style: 'currency', currency: 'INR',
+    'QAR ' + new Intl.NumberFormat('en-US', {
         maximumFractionDigits: 0, notation: 'compact'
     }).format(n);
 
 const fmtQty = (n: number, uom = '') =>
-    `${new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(n)}${uom ? ' ' + uom : ''}`;
+    `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(n)}${uom ? ' ' + uom : ''}`;
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 

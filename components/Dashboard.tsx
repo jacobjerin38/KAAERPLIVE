@@ -43,7 +43,7 @@ const INITIAL_STATS: GlobalStats = {
   stockValue: 0,
   lowStockItems: 0,
   pendingTransitions: 0,
-  pipelineValue: '₹0',
+  pipelineValue: 'QAR 0',
   dealCount: 0,
 };
 
@@ -112,8 +112,7 @@ export const Dashboard: React.FC = () => {
           const allDeals = await getDeals();
           const dealCount = allDeals.length;
           const totalValue = allDeals.reduce((sum, deal) => sum + (deal.value || 0), 0);
-          const pipelineValue = new Intl.NumberFormat('en-IN', {
-            style: 'currency', currency: 'INR',
+          const pipelineValue = 'QAR ' + new Intl.NumberFormat('en-US', {
             maximumFractionDigits: 0, notation: 'compact'
           }).format(totalValue);
           setStats(prev => ({ ...prev, pipelineValue, dealCount }));
