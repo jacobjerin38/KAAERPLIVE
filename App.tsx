@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Analytics } from '@vercel/analytics/react';
 import { GlobalHeader } from './components/GlobalHeader';
 import { Dashboard } from './components/Dashboard';
 import { Login } from './components/Login';
@@ -152,6 +153,7 @@ const App: React.FC = () => {
           <Router>
             <GlobalSearchModal />
             <AppContent />
+            <Analytics />
           </Router>
         </ESSPProvider>
       </UIProvider>
