@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
     Edit3, Clock, Users, TrendingUp, AlertTriangle, Check, X, Plus, Download,
     ChevronLeft, ChevronRight, Calendar, Save, Loader2, Eye, Search, BarChart3,
-    Lock, Unlock, ShieldCheck, RefreshCcw, AlertCircle, Layers, ClipboardList
+    Lock, Unlock, ShieldCheck, RefreshCcw, AlertCircle, Layers, ClipboardList, MapPin
 } from 'lucide-react';
 import { Employee } from '../../hrms/types';
 import { supabase } from '../../../lib/supabase';
@@ -587,8 +587,22 @@ const DailyTab: React.FC<{ employees: Employee[]; companyId: string }> = ({ empl
                                             </span>
                                         ) : <span className="text-xs text-slate-400">—</span>}
                                     </td>
-                                    <td className="px-4 py-3 text-sm font-mono text-slate-600 dark:text-slate-400">{formatTime(emp.attendance?.check_in)}</td>
-                                    <td className="px-4 py-3 text-sm font-mono text-slate-600 dark:text-slate-400">{formatTime(emp.attendance?.check_out)}</td>
+                                    <td className="px-4 py-3 text-sm font-mono text-slate-600 dark:text-slate-400">
+                                        <div className="flex items-center gap-1 group relative">
+                                            {formatTime(emp.attendance?.check_in)}
+                                            {emp.attendance?.check_in_location && 
+                                                <MapPin className="w-3 h-3 text-indigo-500 cursor-pointer" title={`Location: ${emp.attendance.check_in_location}`} />
+                                            }
+                                        </div>
+                                    </td>
+                                    <td className="px-4 py-3 text-sm font-mono text-slate-600 dark:text-slate-400">
+                                        <div className="flex items-center gap-1 group relative">
+                                            {formatTime(emp.attendance?.check_out)}
+                                            {emp.attendance?.check_out_location && 
+                                                <MapPin className="w-3 h-3 text-indigo-500 cursor-pointer" title={`Location: ${emp.attendance.check_out_location}`} />
+                                            }
+                                        </div>
+                                    </td>
                                     <td className="px-4 py-3 text-sm font-bold text-slate-800 dark:text-white">{emp.attendance?.total_hours ? `${emp.attendance.total_hours}h` : '-'}</td>
                                     <td className="px-4 py-3">
                                         <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border ${statusColor(emp.currentStatus)}`}>

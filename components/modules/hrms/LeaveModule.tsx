@@ -10,7 +10,7 @@ interface LeaveModuleProps {
     leaves: LeaveRequest[];
     leaveTypes: any[];
     setShowLeaveModal: (show: boolean) => void;
-    onUpdateStatus: (id: string, status: 'Approved' | 'Rejected') => void;
+    onUpdateStatus: (id: string, status: 'Approved' | 'Rejected', level?: 1 | 2) => void;
     formatDate: (date: string) => string;
 }
 
@@ -300,17 +300,36 @@ export const LeaveModule: React.FC<LeaveModuleProps> = ({
                                     <td className="px-6 py-4 text-sm font-mono text-slate-500 dark:text-slate-400">{formatDate(req.appliedOn)}</td>
                                     <td className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400 max-w-xs truncate">{req.reason || 'Personal'}</td>
                                     <td className="px-6 py-4">
-                                        <span className={`px-2 py-1 rounded-lg text-xs font-bold ${req.status === 'Approved' ? 'bg-emerald-100 text-emerald-700' :
-                                            req.status === 'Rejected' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'
-                                            }`}>{req.status}</span>
+                                        <div className="flex flex-col gap-1">
+                                            <span className={`px-2 py-1 rounded-lg text-xs font-bold w-fit ${req.status === 'Approved' ? 'bg-emerald-100 text-emerald-700' :
+                                                req.status === 'Rejected' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'
+                                                }`}>Final: {req.status}</span>
+                                            {req.status === 'Pending' && (
+                                                <div className="flex flex-col gap-0.5 mt-1">
+                                                    <span className={`text-[10px] font-medium ${req.level1_status === 'Approved' ? 'text-emerald-500 font-bold' : req.level1_status === 'Rejected' ? 'text-rose-500 font-bold' : 'text-amber-500'}`}>L1 (Dept): {req.level1_status || 'Pending'}</span>
+                                                    <span className={`text-[10px] font-medium ${req.level2_status === 'Approved' ? 'text-emerald-500 font-bold' : req.level2_status === 'Rejected' ? 'text-rose-500 font-bold' : 'text-amber-500'}`}>L2 (HR): {req.level2_status || 'Pending'}</span>
+                                                </div>
+                                            )}
+                                        </div>
                                     </td>
                                     <td className="px-6 py-4 text-right flex justify-end gap-2">
                                         {req.status === 'Pending' && (
-                                            <>
-                                                <button title="Approve" onClick={() => onUpdateStatus(req.id, 'Approved')} className="p-2 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-100 transition-colors"><Check className="w-4 h-4" /></button>
-
-                                                <button title="Reject" onClick={() => onUpdateStatus(req.id, 'Rejected')} className="p-2 bg-rose-50 text-rose-600 rounded-xl hover:bg-rose-100 transition-colors"><X className="w-4 h-4" /></button>
-                                            </>
+                                            <div className="flex flex-col gap-2 scale-90 origin-right">
+                                                {(!req.level1_status || req.level1_status === 'Pending') && (
+                                                    <div className="flex items-center justify-end gap-1">
+                                                        <span className="text-[10px] font-bold text-slate-400 mr-1">L1:</span>
+                                                        <button title="Approve L1" onClick={() => onUpdateStatus(req.id, 'Approved', 1)} className="p-1 px-2 border border-emerald-200 bg-emerald-50 text-emerald-600 rounded flex gap-1 items-center hover:bg-emerald-100 transition-colors text-xs font-bold"><Check className="w-3 h-3" /> Approve</button>
+                                                        <button title="Reject L1" onClick={() => onUpdateStatus(req.id, 'Rejected', 1)} className="p-1 px-2 border border-rose-200 bg-rose-50 text-rose-600 rounded flex gap-1 items-center hover:bg-rose-100 transition-colors text-xs font-bold"><X className="w-3 h-3" /> Reject</button>
+                                                    </div>
+                                                )}
+                                                {req.level1_status === 'Approved' && (!req.level2_status || req.level2_status === 'Pending') && (
+                                                    <div className="flex items-center justify-end gap-1">
+                                                        <span className="text-[10px] font-bold text-slate-400 mr-1">L2:</span>
+                                                        <button title="Approve L2" onClick={() => onUpdateStatus(req.id, 'Approved', 2)} className="p-1 px-2 border border-emerald-200 bg-emerald-50 text-emerald-600 rounded flex gap-1 items-center hover:bg-emerald-100 transition-colors text-xs font-bold"><Check className="w-3 h-3" /> Approve</button>
+                                                        <button title="Reject L2" onClick={() => onUpdateStatus(req.id, 'Rejected', 2)} className="p-1 px-2 border border-rose-200 bg-rose-50 text-rose-600 rounded flex gap-1 items-center hover:bg-rose-100 transition-colors text-xs font-bold"><X className="w-3 h-3" /> Reject</button>
+                                                    </div>
+                                                )}
+                                            </div>
                                         )}
                                     </td>
                                 </tr>

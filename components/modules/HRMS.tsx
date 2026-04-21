@@ -282,8 +282,21 @@ export const HRMS: React.FC = () => {
         return new Date(isoStr).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
     };
 
-    const handleUpdateLeaveStatus = async (id: string, status: 'Approved' | 'Rejected') => {
-        const { error } = await supabase.from('leaves').update({ status }).eq('id', id);
+    const handleUpdateLeaveStatus = async (id: string, status: 'Approved' | 'Rejected', level?: 1 | 2) => {
+        let updateData: any = {};
+        if (level === 1) {
+            updateData.level1_status = status;
+            if (status === 'Rejected') updateData.status = 'Rejected';
+        } else if (level === 2) {
+            updateData.level2_status = status;
+            if (status === 'Approved') updateData.status = 'Approved';
+            else updateData.status = 'Rejected';
+        } else {
+            updateData.status = status;
+            updateData.level1_status = status;
+            updateData.level2_status = status;
+        }
+        const { error } = await supabase.from('leaves').update(updateData).eq('id', id);
         if (error) alert(error.message);
         else refreshData();
     };

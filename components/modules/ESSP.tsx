@@ -132,6 +132,22 @@ export const ESSP: React.FC = () => {
         // Reverting to 'announcements' for safety unless I know otherwise.
     };
 
+    const getCurrentLocation = (): Promise<string | null> => {
+        return new Promise((resolve) => {
+            if (!navigator.geolocation) {
+                resolve(null);
+                return;
+            }
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    resolve(`${position.coords.latitude},${position.coords.longitude}`);
+                },
+                () => resolve(null),
+                { timeout: 5000 }
+            );
+        });
+    };
+
     const handlePunch = async () => {
         if (!currentEmployee) return;
         setPunchLoading(true);
@@ -139,6 +155,7 @@ export const ESSP: React.FC = () => {
         const now = new Date();
         const today = now.toISOString().split('T')[0];
         const isoNow = now.toISOString(); // Full ISO timestamp for DB
+        const locStr = await getCurrentLocation();
 
         if (punchStatus === 'Out') {
             // PUNCH IN
@@ -147,6 +164,7 @@ export const ESSP: React.FC = () => {
                 company_id: currentEmployee.company_id,
                 date: today,
                 check_in: isoNow,
+                check_in_location: locStr,
                 status: 'Present',
                 total_hours: 0,
                 source: 'punch'
@@ -179,12 +197,12 @@ export const ESSP: React.FC = () => {
                 }
 
                 // Use found ID
-                await performPunchOut(activePunch.id, activePunch.check_in, isoNow);
+                await performPunchOut(activePunch.id, activePunch.check_in, isoNow, locStr);
             } else {
                 // Fetch check_in time to calculate duration
                 const { data: currentRecord } = await supabase.from('attendance').select('check_in').eq('id', lastAttendanceId).single();
                 if (currentRecord) {
-                    await performPunchOut(lastAttendanceId, currentRecord.check_in, isoNow);
+                    await performPunchOut(lastAttendanceId, currentRecord.check_in, isoNow, locStr);
                 }
             }
         }
@@ -194,17 +212,22 @@ export const ESSP: React.FC = () => {
         setPunchLoading(false);
     };
 
-    const performPunchOut = async (recordId: string, checkInTime: string, checkOutTime: string) => {
+    const performPunchOut = async (recordId: string, checkInTime: string, checkOutTime: string, locationStr: string | null = null) => {
         // Calculate Duration from full ISO timestamps
         const d1 = new Date(checkInTime);
         const d2 = new Date(checkOutTime);
         const diffMs = d2.getTime() - d1.getTime();
         const durationHours = Math.max(0, parseFloat((diffMs / (1000 * 60 * 60)).toFixed(2)));
 
-        const { error } = await supabase.from('attendance').update({
+        const updateData: any = {
             check_out: checkOutTime,
             total_hours: durationHours
-        }).eq('id', recordId);
+        };
+        if (locationStr) {
+            updateData.check_out_location = locationStr;
+        }
+
+        const { error } = await supabase.from('attendance').update(updateData).eq('id', recordId);
 
         if (error) {
             console.error("Punch Out Error:", error);

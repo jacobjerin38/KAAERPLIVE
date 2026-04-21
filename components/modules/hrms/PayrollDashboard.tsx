@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { DollarSign, Play, Calendar, FileText, ChevronRight, Eye, CheckCircle, Lock, AlertCircle } from 'lucide-react';
+import { DollarSign, Play, Calendar, FileText, ChevronRight, Eye, CheckCircle, Lock, AlertCircle, Edit3, X } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 
 import { PayrollRun, PayrollRecord } from '../../hrms/types';
@@ -19,6 +19,11 @@ export const PayrollDashboard: React.FC = () => {
     const [selectedPayslip, setSelectedPayslip] = useState<PayrollRecord | null>(null);
     const [companyLogo, setCompanyLogo] = useState(KAA_LOGO_URL);
     const [companyCurrency, setCompanyCurrency] = useState('USD');
+
+    // Edit Pay Modal State
+    const [showEditModal, setShowEditModal] = useState(false);
+    const [editRecord, setEditRecord] = useState<PayrollRecord | null>(null);
+    const [editForm, setEditForm] = useState({ gross_earning: 0, total_deduction: 0 });
 
     useEffect(() => {
         fetchCompanyLogo();
@@ -90,15 +95,11 @@ export const PayrollDashboard: React.FC = () => {
             .from('payroll_records')
             .select(`
                 *,
-                employee:employees(name)
+                employee:employees(name, department_id, passport_number, visa_number, account_number, bank_name)
             `)
             .eq('payroll_run_id', run.id);
 
         if (data) {
-            // Enrich with department if needed, but basic join gives name. 
-            // Note: Deep joins might need correct FK setup in DB. 
-            // Employees table doesn't have department name directly (it has dept_id).
-            // For now let's just show Employee Name.
             setRunDetails(data as any);
         }
         setLoadingDetails(false);
@@ -122,12 +123,72 @@ export const PayrollDashboard: React.FC = () => {
         }
     };
 
+    const handleSaveEdit = async () => {
+        if (!editRecord) return;
+        const net_pay = Number(editForm.gross_earning) - Number(editForm.total_deduction);
+        
+        const { error } = await supabase
+            .from('payroll_records')
+            .update({
+                gross_earning: Number(editForm.gross_earning),
+                total_deduction: Number(editForm.total_deduction),
+                net_pay: net_pay
+            })
+            .eq('id', editRecord.id);
+
+        if (error) {
+            alert('Error updating record: ' + error.message);
+        } else {
+            setShowEditModal(false);
+            handleViewDetails(selectedRun);
+        }
+    };
+
     const formatCurrency = (amount: number) => {
         try {
             return new Intl.NumberFormat('en-US', { style: 'currency', currency: companyCurrency }).format(amount);
         } catch {
             return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
         }
+    };
+
+    const handleExportWPS = () => {
+        if (!selectedRun || !runDetails || runDetails.length === 0) return;
+        
+        // Mock Qatar WPS CSV Format
+        let csvContent = "data:text/csv;charset=utf-8,";
+        csvContent += "EmployerEID,RecordType,EmployeeQID,VisaID,EmployeeName,BankName,BankAccount,SalaryFrequency,NoOfWorkingDays,NetSalary,BasicSalary,ExtraHours,ExtraIncome,Deductions,PaymentType,Comments\r\n";
+        
+        runDetails.forEach(rec => {
+            const emp = rec.employee || {};
+            const qid = (emp as any).passport_number || 'N/A';
+            const visa = (emp as any).visa_number || 'N/A';
+            const name = emp.name || 'Unknown';
+            const bankName = (emp as any).bank_name || '';
+            const account = (emp as any).account_number || '';
+            
+            const days = rec.payable_days || 30;
+            const net = rec.net_pay || 0;
+            const basic = rec.base_salary || 0;
+            const extra = Math.max(0, rec.gross_earning - rec.base_salary);
+            const ded = rec.total_deduction || 0;
+            
+            const row = `1234567890,SAL,${qid},${visa},${name},${bankName},${account},M,${days},${net},${basic},0,${extra},${ded},Transfer,Monthly Salary`;
+            csvContent += row + "\r\n";
+        });
+        
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `WPS_Qatar_${selectedRun.month_year.replace('-', '')}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    const handleExportReport = (type: string) => {
+        if (type === 'WPS') handleExportWPS();
+        else alert(`Generating ${type} report... (Feature in development)`);
     };
 
     return (
@@ -209,7 +270,17 @@ export const PayrollDashboard: React.FC = () => {
                                     <p className="text-xs text-slate-500 mt-1">Generated on {new Date(selectedRun.created_at).toLocaleDateString()}</p>
                                 </div>
                                 <div className="flex gap-2">
-                                    <button className="px-4 py-2 bg-white dark:bg-zinc-700 border border-slate-200 dark:border-zinc-600 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 shadow-sm hover:border-indigo-300 transition-colors">Export Report</button>
+                                    <select 
+                                        onChange={(e) => { if(e.target.value) handleExportReport(e.target.value); e.target.value='' }}
+                                        className="px-4 py-2 bg-white dark:bg-zinc-700 border border-slate-200 dark:border-zinc-600 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 shadow-sm hover:border-indigo-300 transition-colors outline-none cursor-pointer"
+                                    >
+                                        <option value="">Export Report...</option>
+                                        <option value="WPS">WPS Export (Qatar)</option>
+                                        <option value="Bank Statement">Bank Statement</option>
+                                        <option value="Cash Statement">Cash Statement</option>
+                                        <option value="Salary Slip">Monthly Salary Report</option>
+                                        <option value="Gratuity">Bonus & Gratuity Report</option>
+                                    </select>
                                     {selectedRun.status === 'DRAFT' && (
                                         <button onClick={handleFinalizeBatch} className="px-4 py-2 bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-500/20 hover:bg-emerald-600 transition-colors flex items-center gap-2">
                                             <Lock className="w-3 h-3" /> Finalize Batch
@@ -252,7 +323,20 @@ export const PayrollDashboard: React.FC = () => {
                                                 <td className="px-6 py-4 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400 text-base">
                                                     {formatCurrency(rec.net_pay)}
                                                 </td>
-                                                <td className="px-6 py-4 text-right">
+                                                <td className="px-6 py-4 text-right flex justify-end gap-2">
+                                                    {selectedRun.status === 'DRAFT' && (
+                                                        <button
+                                                            title="Adjust Pay"
+                                                            onClick={() => {
+                                                                setEditRecord(rec);
+                                                                setEditForm({ gross_earning: rec.gross_earning || 0, total_deduction: rec.total_deduction || 0 });
+                                                                setShowEditModal(true);
+                                                            }}
+                                                            className="p-2 text-slate-300 hover:text-blue-500 transition-colors"
+                                                        >
+                                                            <Edit3 className="w-4 h-4" />
+                                                        </button>
+                                                    )}
                                                     <button
                                                         title="View Payslip Breakdown"
                                                         onClick={() => {
@@ -358,6 +442,65 @@ export const PayrollDashboard: React.FC = () => {
                         <div className="p-6 bg-slate-50 dark:bg-zinc-800/50 border-t border-slate-100 dark:border-zinc-800 flex justify-end gap-3">
                             <button className="px-6 py-3 bg-white dark:bg-zinc-700 border border-slate-200 dark:border-zinc-600 rounded-xl font-bold text-sm text-slate-600 dark:text-slate-200 hover:border-indigo-400 transition-colors">Download PDF</button>
                             <button onClick={() => setShowPayslip(false)} className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-500/20">Close</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit Pay Modal */}
+            {showEditModal && editRecord && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
+                        <div className="p-6 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center bg-slate-50/50 dark:bg-zinc-800/50">
+                            <h3 className="text-xl font-bold text-slate-900 dark:text-white">Adjust Payroll Record</h3>
+                            <button onClick={() => setShowEditModal(false)} className="p-2 bg-white dark:bg-zinc-800 rounded-full hover:bg-slate-100 dark:hover:bg-zinc-700 transition-colors">
+                                <X className="h-5 w-5 text-slate-500" />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Employee</p>
+                                <p className="font-bold text-slate-800 dark:text-white">{editRecord.employee?.name}</p>
+                            </div>
+                            <div className="space-y-4 pt-4 border-t border-slate-100 dark:border-zinc-800">
+                                <div>
+                                    <label className="text-sm font-bold text-slate-700 dark:text-slate-300 block mb-2">Total Earnings / Gross</label>
+                                    <div className="relative">
+                                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                            <span className="text-slate-400 sm:text-sm">{companyCurrency}</span>
+                                        </div>
+                                        <input
+                                            type="number"
+                                            value={editForm.gross_earning}
+                                            onChange={(e) => setEditForm(prev => ({ ...prev, gross_earning: Number(e.target.value) }))}
+                                            className="pl-12 w-full bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl p-3 text-sm font-bold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-emerald-600 dark:text-emerald-400"
+                                        />
+                                    </div>
+                                    <p className="text-xs text-slate-400 mt-1">Includes variable allowances like overtime or bonus</p>
+                                </div>
+                                <div>
+                                    <label className="text-sm font-bold text-slate-700 dark:text-slate-300 block mb-2">Total Deductions</label>
+                                    <div className="relative">
+                                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                            <span className="text-slate-400 sm:text-sm">{companyCurrency}</span>
+                                        </div>
+                                        <input
+                                            type="number"
+                                            value={editForm.total_deduction}
+                                            onChange={(e) => setEditForm(prev => ({ ...prev, total_deduction: Number(e.target.value) }))}
+                                            className="pl-12 w-full bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl p-3 text-sm font-bold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-rose-500"
+                                        />
+                                    </div>
+                                    <p className="text-xs text-slate-400 mt-1">Includes loan recoveries and other variable deductions</p>
+                                </div>
+                            </div>
+                            <div className="pt-4 flex justify-between items-center text-lg">
+                                <span className="font-bold text-slate-700 dark:text-slate-300">Net Pay</span>
+                                <span className="font-black text-emerald-600 dark:text-emerald-400">{formatCurrency(editForm.gross_earning - editForm.total_deduction)}</span>
+                            </div>
+                        </div>
+                        <div className="p-6 bg-slate-50 dark:bg-zinc-800/50 border-t border-slate-100 dark:border-zinc-800 flex justify-end gap-3">
+                            <button onClick={handleSaveEdit} className="px-6 py-3 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/20 w-full text-center">Save Adjustments</button>
                         </div>
                     </div>
                 </div>
