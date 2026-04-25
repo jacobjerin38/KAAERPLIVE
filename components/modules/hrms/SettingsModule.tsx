@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Clock, Calendar, Fingerprint, Plus, SwitchCamera, Save, Trash2, Key } from 'lucide-react';
+import { Settings, Clock, Calendar, Fingerprint, Plus, SwitchCamera, Save, Trash2, Key, Wallet } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
+import { HolidayCalendar } from './HolidayCalendar';
+import { AttendanceSettings as AttendanceSettingsPanel } from './AttendanceSettings';
+import { LeaveAccrualManager } from './LeaveAccrualManager';
 
 export const SettingsModule: React.FC = () => {
     const { currentCompanyId } = useAuth();
-    const [activeTab, setActiveTab] = useState<'ATTENDANCE' | 'HOLIDAYS' | 'BIOMETRIC'>('ATTENDANCE');
+    const [activeTab, setActiveTab] = useState<'ATTENDANCE' | 'HOLIDAYS' | 'LEAVE_ACCRUAL' | 'BIOMETRIC'>('ATTENDANCE');
     
     // State logic for settings forms
     const [graceMinutes, setGraceMinutes] = useState(15);
@@ -118,6 +121,7 @@ export const SettingsModule: React.FC = () => {
                 {[
                     { id: 'ATTENDANCE', label: 'Attendance & Overtime', icon: Clock },
                     { id: 'HOLIDAYS', label: 'Holiday Calendar', icon: Calendar },
+                    { id: 'LEAVE_ACCRUAL', label: 'Leave Accrual', icon: Wallet },
                     { id: 'BIOMETRIC', label: 'Biometric Devices', icon: Fingerprint },
                 ].map(tab => (
                     <button
@@ -136,91 +140,9 @@ export const SettingsModule: React.FC = () => {
             </div>
 
             <div className="flex-1">
-                {activeTab === 'ATTENDANCE' && (
-                    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl p-8 max-w-3xl shadow-sm">
-                        <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-6">Attendance & Overtime Rules</h3>
-                        
-                        <div className="space-y-6">
-                            <div>
-                                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Grace Timing (Minutes)</label>
-                                <input 
-                                    type="number" 
-                                    value={graceMinutes}
-                                    onChange={(e) => setGraceMinutes(parseInt(e.target.value))}
-                                    className="w-full max-w-xs p-4 bg-slate-50 dark:bg-zinc-800 rounded-2xl border border-slate-200 dark:border-zinc-700 font-medium"
-                                />
-                                <p className="text-xs text-slate-400 mt-2">Time allowed after start of shift before marking as late.</p>
-                            </div>
-                            
-                            <div>
-                                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Minimum Overtime Rules (Minutes)</label>
-                                <input 
-                                    type="number" 
-                                    value={overtimeMin}
-                                    onChange={(e) => setOvertimeMin(parseInt(e.target.value))}
-                                    className="w-full max-w-xs p-4 bg-slate-50 dark:bg-zinc-800 rounded-2xl border border-slate-200 dark:border-zinc-700 font-medium"
-                                />
-                                <p className="text-xs text-slate-400 mt-2">Minimum duration an employee must stay past shift end to trigger OT.</p>
-                            </div>
-
-                            <div className="flex items-center gap-4 py-4 border-t border-slate-100 dark:border-zinc-800 mt-4">
-                                <input 
-                                    type="checkbox" 
-                                    checked={mobileCheckin}
-                                    onChange={(e) => setMobileCheckin(e.target.checked)}
-                                    className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" 
-                                />
-                                <div>
-                                    <h4 className="font-bold text-slate-800 dark:text-slate-200">Enable Mobile Attendance</h4>
-                                    <p className="text-xs text-slate-500">Allow employees to check in and out through the ESSP mobile-friendly portal with location tracking.</p>
-                                </div>
-                            </div>
-                            
-                            <button 
-                                onClick={handleSaveSettings}
-                                disabled={loading}
-                                className="mt-4 px-8 py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-2xl flex items-center gap-2 active:scale-95 transition-all w-fit shadow-md shadow-indigo-600/20"
-                            >
-                                <Save className="w-5 h-5" />
-                                {loading ? 'Saving...' : 'Save Rule Settings'}
-                            </button>
-                        </div>
-                    </div>
-                )}
-
-                {activeTab === 'HOLIDAYS' && (
-                    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl p-8 max-w-4xl shadow-sm">
-                        <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-xl font-bold text-slate-800 dark:text-white">Organization Holidays</h3>
-                            <button onClick={() => setShowHolidayModal(true)} className="flex items-center gap-2 px-4 py-2 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 font-bold rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-all">
-                                <Plus className="w-4 h-4" />
-                                Add Holiday
-                            </button>
-                        </div>
-                        {holidays.length === 0 ? (
-                            <div className="p-12 text-center border-2 border-dashed border-slate-200 dark:border-zinc-800 rounded-2xl">
-                                <Calendar className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                                <h4 className="font-bold text-slate-600 dark:text-slate-400">No Holidays Configured</h4>
-                                <p className="text-sm text-slate-400 mt-2">Add fixed and recurring holidays for automatic leave omission.</p>
-                            </div>
-                        ) : (
-                            <div className="grid gap-4 sm:grid-cols-2">
-                                {holidays.map(h => (
-                                    <div key={h.id} className="p-5 bg-slate-50 dark:bg-zinc-800/50 rounded-2xl flex justify-between items-center border border-slate-100 dark:border-zinc-800">
-                                        <div>
-                                            <h4 className="font-bold text-slate-800 dark:text-slate-200">{h.name}</h4>
-                                            <p className="text-sm font-medium text-indigo-600 dark:text-indigo-400">{new Date(h.date).toDateString()}</p>
-                                            {h.description && <p className="text-xs text-slate-500 mt-1">{h.description}</p>}
-                                        </div>
-                                        <button onClick={() => handleDeleteHoliday(h.id)} className="p-2 text-slate-400 hover:text-rose-500 transition-colors">
-                                            <Trash2 className="w-5 h-5" />
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                )}
+                {activeTab === 'ATTENDANCE' && <AttendanceSettingsPanel />}
+                {activeTab === 'HOLIDAYS' && <HolidayCalendar />}
+                {activeTab === 'LEAVE_ACCRUAL' && <LeaveAccrualManager />}
                 
                 {activeTab === 'BIOMETRIC' && (
                     <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl p-8 max-w-4xl shadow-sm">
@@ -279,51 +201,6 @@ export const SettingsModule: React.FC = () => {
                     </div>
                 )}
             </div>
-
-            {/* Holiday Modal */}
-            {showHolidayModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-                    <div className="bg-white dark:bg-zinc-900 rounded-3xl p-6 w-full max-w-md shadow-2xl">
-                        <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-4">Add Holiday</h3>
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Holiday Name</label>
-                                <input 
-                                    type="text" 
-                                    value={newHoliday.name}
-                                    onChange={e => setNewHoliday({...newHoliday, name: e.target.value})}
-                                    className="w-full p-3 bg-slate-50 dark:bg-zinc-800 rounded-xl border border-slate-200 dark:border-zinc-700"
-                                    placeholder="e.g., Christmas"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Date</label>
-                                <input 
-                                    type="date" 
-                                    value={newHoliday.date}
-                                    onChange={e => setNewHoliday({...newHoliday, date: e.target.value})}
-                                    className="w-full p-3 bg-slate-50 dark:bg-zinc-800 rounded-xl border border-slate-200 dark:border-zinc-700"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Description (Optional)</label>
-                                <input 
-                                    type="text" 
-                                    value={newHoliday.description}
-                                    onChange={e => setNewHoliday({...newHoliday, description: e.target.value})}
-                                    className="w-full p-3 bg-slate-50 dark:bg-zinc-800 rounded-xl border border-slate-200 dark:border-zinc-700"
-                                />
-                            </div>
-                            <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-zinc-800">
-                                <button onClick={() => setShowHolidayModal(false)} className="px-4 py-2 font-bold text-slate-500 hover:text-slate-800 dark:hover:text-white transition-colors">Cancel</button>
-                                <button onClick={handleAddHoliday} disabled={loading} className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-600/20">
-                                    {loading ? 'Saving...' : 'Add Holiday'}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 };

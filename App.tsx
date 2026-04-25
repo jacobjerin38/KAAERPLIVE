@@ -21,6 +21,8 @@ import { AccountingDashboard } from './components/accounting/AccountingDashboard
 import { ManufacturingDashboard } from './components/manufacturing/ManufacturingDashboard';
 import { ProcurementSalesDashboard } from './components/procurement/ProcurementSalesDashboard';
 import { CompanySelector } from './components/auth/CompanySelector';
+import { ProjectManagement } from './components/modules/ProjectManagement';
+import { DocumentManagement } from './components/modules/DocumentManagement';
 
 const AppContent: React.FC = () => {
   const { session, loading, currentCompanyId, selectCompany, userRole } = useAuth();
@@ -82,6 +84,8 @@ const AppContent: React.FC = () => {
     { path: '/manufacturing', element: <ManufacturingDashboard />, id: 'manufacturing' },
     { path: '/procurement', element: <ProcurementSalesDashboard />, id: 'procurement' },
     { path: '/essp', element: <ESSP />, id: 'essp' },
+    { path: '/projects', element: <ProjectManagement />, id: 'projects' },
+    { path: '/documents', element: <DocumentManagement />, id: 'documents' },
   ];
 
   return (

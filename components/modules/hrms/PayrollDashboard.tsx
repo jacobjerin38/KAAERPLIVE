@@ -226,9 +226,60 @@ export const PayrollDashboard: React.FC = () => {
         document.body.removeChild(link);
     };
 
+    const handleExportBankStatement = () => {
+        if (!selectedRun || !runDetails || runDetails.length === 0) return;
+        let csvContent = "data:text/csv;charset=utf-8,";
+        csvContent += "Employee Name,Employee Code,Bank Name,Account Number,Net Salary,Month\r\n";
+        runDetails.forEach(rec => {
+            const emp = rec.employee || {};
+            csvContent += `${emp.name || 'Unknown'},${(emp as any).employee_code || ''},${(emp as any).bank_name || ''},${(emp as any).account_number || ''},${rec.net_pay || 0},${selectedRun.month_year}\r\n`;
+        });
+        const link = document.createElement("a");
+        link.setAttribute("href", encodeURI(csvContent));
+        link.setAttribute("download", `Bank_Statement_${selectedRun.month_year.replace('-', '')}.csv`);
+        document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    };
+
+    const handleExportCashStatement = () => {
+        if (!selectedRun || !runDetails || runDetails.length === 0) return;
+        let csvContent = "data:text/csv;charset=utf-8,";
+        csvContent += "Employee Name,Basic Salary,Gross Earning,OT Amount,Deductions,Loan Recovery,Net Pay,Payment Mode\r\n";
+        runDetails.forEach(rec => {
+            const emp = rec.employee || {};
+            const mode = (emp as any).account_number ? 'Bank Transfer' : 'Cash';
+            csvContent += `${emp.name || 'Unknown'},${rec.base_salary || 0},${rec.gross_earning || 0},${rec.ot_amount || 0},${rec.total_deduction || 0},${rec.loan_deduction || 0},${rec.net_pay || 0},${mode}\r\n`;
+        });
+        const link = document.createElement("a");
+        link.setAttribute("href", encodeURI(csvContent));
+        link.setAttribute("download", `Cash_Statement_${selectedRun.month_year.replace('-', '')}.csv`);
+        document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    };
+
+    const handleExportMonthlySalary = () => {
+        if (!selectedRun || !runDetails || runDetails.length === 0) return;
+        let csvContent = "data:text/csv;charset=utf-8,";
+        csvContent += "Employee Name,Employee Code,Department,Payable Days,LOP Days,Basic Salary,Overtime,Gross Earning,Deductions,Loan Recovery,Net Pay\r\n";
+        runDetails.forEach(rec => {
+            const emp = rec.employee || {};
+            csvContent += `${emp.name || 'Unknown'},${(emp as any).employee_code || ''},${(emp as any).department || ''},${rec.payable_days || 0},${rec.lop_days || 0},${rec.base_salary || 0},${rec.ot_amount || 0},${rec.gross_earning || 0},${rec.total_deduction || 0},${rec.loan_deduction || 0},${rec.net_pay || 0}\r\n`;
+        });
+        const link = document.createElement("a");
+        link.setAttribute("href", encodeURI(csvContent));
+        link.setAttribute("download", `Monthly_Salary_Report_${selectedRun.month_year.replace('-', '')}.csv`);
+        document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    };
+
+    const handleExportGratuity = () => {
+        if (!selectedRun || !runDetails || runDetails.length === 0) return;
+        alert('Gratuity & Bonus report is available in HRMS > Reports > Standard Reports > Bonus & Gratuity Valuation.');
+    };
+
     const handleExportReport = (type: string) => {
         if (type === 'WPS') handleExportWPS();
-        else alert(`Generating ${type} report... (Feature in development)`);
+        else if (type === 'Bank Statement') handleExportBankStatement();
+        else if (type === 'Cash Statement') handleExportCashStatement();
+        else if (type === 'Salary Slip') handleExportMonthlySalary();
+        else if (type === 'Gratuity') handleExportGratuity();
     };
 
     return (
@@ -249,6 +300,13 @@ export const PayrollDashboard: React.FC = () => {
                         />
                         <Calendar className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
                     </div>
+
+                    <button
+                        onClick={() => alert("Loan Management UI coming soon. Backend EMI deduction is fully automated and live!")}
+                        className="px-6 py-2.5 bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400 border border-blue-200 dark:border-blue-900/50 rounded-2xl text-sm font-bold hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-all shadow-sm"
+                    >
+                        Manage Loans
+                    </button>
 
                     <button
                         onClick={() => setShowSettlementModal(true)}

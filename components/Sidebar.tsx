@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { AppView } from '../types';
-import { LayoutGrid, Settings, Bell, Search, LogOut, KeyRound } from 'lucide-react';
+import { LayoutGrid, Settings, Bell, Search, LogOut, KeyRound, Briefcase, FileText } from 'lucide-react';
 import { KAA_LOGO_URL } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -80,6 +80,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => 
           label="Apps"
           active={currentView === AppView.DASHBOARD}
           onClick={() => onNavigate(AppView.DASHBOARD)}
+        />
+        <NavItem 
+          icon={Briefcase} 
+          label="Projects" 
+          active={currentView === AppView.PROJECTS}
+          onClick={() => onNavigate(AppView.PROJECTS)}
+        />
+        <NavItem 
+          icon={FileText} 
+          label="Documents" 
+          active={currentView === AppView.DOCUMENTS}
+          onClick={() => onNavigate(AppView.DOCUMENTS)}
         />
         <NavItem icon={Search} label="Search" />
         <NavItem icon={Bell} label="Notifications" hasBadge />

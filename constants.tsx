@@ -10,7 +10,8 @@ import {
   Megaphone,
   LayoutGrid,
   Building2,
-  UserCircle
+  UserCircle,
+  FileText
 } from 'lucide-react';
 import { AppView, ModuleConfig } from './types';
 
@@ -108,5 +109,13 @@ export const MODULES: ModuleConfig[] = [
     icon: Megaphone,
     color: "text-orange-600",
     bgColor: "bg-orange-100",
+  },
+  {
+    id: AppView.DOCUMENTS,
+    name: "Documents",
+    description: "Policies, Contracts & Records",
+    icon: FileText,
+    color: "text-blue-600",
+    bgColor: "bg-blue-100",
   },
 ];

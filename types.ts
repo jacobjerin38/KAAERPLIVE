@@ -15,6 +15,7 @@ export enum AppView {
   PROCUREMENT = 'PROCUREMENT',
   MARKETING = 'MARKETING',
   SETTINGS = 'SETTINGS',
+  DOCUMENTS = 'DOCUMENTS',
 }
 
 export interface ModuleConfig {

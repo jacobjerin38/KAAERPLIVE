@@ -6,6 +6,9 @@ import {
     BarChart3, Loader2, ChevronRight, Columns
 } from 'lucide-react';
 import { ReportBuilder } from './ReportBuilder';
+import { LeaveAnalyticsReport } from '../hrms/reports/LeaveAnalyticsReport';
+import { SalaryStatementReport } from '../hrms/reports/SalaryStatementReport';
+import { BonusGratuityReport } from '../hrms/reports/BonusGratuityReport';
 
 interface ReportsListViewProps {
     moduleFilter?: string;   // e.g. "CRM" — show only CRM modules
@@ -16,11 +19,13 @@ export const ReportsListView: React.FC<ReportsListViewProps> = ({ moduleFilter, 
     const { user, currentCompanyId } = useAuth();
     const companyId = propCompanyId || currentCompanyId;
 
-    const [view, setView] = useState<'LIST' | 'BUILDER' | 'RUN'>('LIST');
+    const [view, setView] = useState<'LIST' | 'BUILDER' | 'RUN' | 'STANDARD_RUN'>('LIST');
     const [reports, setReports] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [editReport, setEditReport] = useState<any>(null);
+    const [selectedStandardReport, setSelectedStandardReport] = useState<string | null>(null);
+    const [reportCategory, setReportCategory] = useState<'CUSTOM' | 'STANDARD'>('CUSTOM');
 
     useEffect(() => {
         if (view === 'LIST') fetchReports();
@@ -71,7 +76,21 @@ export const ReportsListView: React.FC<ReportsListViewProps> = ({ moduleFilter, 
     const moduleLabel = (m: string) => m?.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) || '';
 
     // ── Builder / Run view ──
-    if (view === 'BUILDER' || view === 'RUN') {
+    if (view === 'BUILDER' || view === 'RUN' || view === 'STANDARD_RUN') {
+        if (view === 'STANDARD_RUN') {
+            return (
+                <div className="h-full flex flex-col p-8 overflow-y-auto">
+                    <button onClick={() => { setView('LIST'); setSelectedStandardReport(null); }}
+                        className="mb-6 flex items-center gap-2 text-slate-500 hover:text-indigo-600 font-bold text-sm transition-colors w-fit">
+                        <Plus className="w-4 h-4 rotate-45" /> Back to Reports
+                    </button>
+                    {selectedStandardReport === 'LEAVE_ANALYTICS' && <LeaveAnalyticsReport />}
+                    {selectedStandardReport === 'SALARY_STATEMENT' && <SalaryStatementReport />}
+                    {selectedStandardReport === 'BONUS_GRATUITY' && <BonusGratuityReport />}
+                </div>
+            );
+        }
+
         return (
             <ReportBuilder
                 onBack={() => { setView('LIST'); setEditReport(null); }}
@@ -81,6 +100,12 @@ export const ReportsListView: React.FC<ReportsListViewProps> = ({ moduleFilter, 
             />
         );
     }
+
+    const standardReports = [
+        { id: 'LEAVE_ANALYTICS', name: 'Leave Analytics', desc: 'Visual trends and departmental distribution', icon: BarChart3, color: 'emerald' },
+        { id: 'SALARY_STATEMENT', name: 'Monthly Salary Statement', desc: 'Detailed earnings and deductions breakdown', icon: DollarSign, color: 'indigo' },
+        { id: 'BONUS_GRATUITY', name: 'Bonus & Gratuity Valuation', desc: 'Tenure-based liability and accruals', icon: FileText, color: 'amber' },
+    ];
 
     // ── List view ──
     return (
@@ -99,20 +124,58 @@ export const ReportsListView: React.FC<ReportsListViewProps> = ({ moduleFilter, 
                 </button>
             </header>
 
-            {/* Search */}
-            <div className="relative mb-6 shrink-0">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input
-                    value={searchQuery}
-                    onChange={e => setSearchQuery(e.target.value)}
-                    placeholder="Search reports by name or module…"
-                    className="w-full pl-11 pr-4 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl text-sm font-medium text-slate-700 dark:text-slate-300 outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
-                />
+            {/* Tabs */}
+            <div className="flex gap-4 mb-6 border-b border-slate-100 dark:border-zinc-800 shrink-0">
+                <button 
+                    onClick={() => setReportCategory('CUSTOM')}
+                    className={`pb-4 text-sm font-bold tracking-tight transition-all relative ${reportCategory === 'CUSTOM' ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+                >
+                    Custom Reports
+                    {reportCategory === 'CUSTOM' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full" />}
+                </button>
+                <button 
+                    onClick={() => setReportCategory('STANDARD')}
+                    className={`pb-4 text-sm font-bold tracking-tight transition-all relative ${reportCategory === 'STANDARD' ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+                >
+                    Standard HRMS Reports
+                    {reportCategory === 'STANDARD' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full" />}
+                </button>
             </div>
 
-            {/* Grid */}
+            {/* Search */}
+            {reportCategory === 'CUSTOM' && (
+                <div className="relative mb-6 shrink-0">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                        value={searchQuery}
+                        onChange={e => setSearchQuery(e.target.value)}
+                        placeholder="Search reports by name or module…"
+                        className="w-full pl-11 pr-4 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl text-sm font-medium text-slate-700 dark:text-slate-300 outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
+                    />
+                </div>
+            )}
+
             <div className="flex-1 overflow-y-auto">
-                {loading ? (
+                {reportCategory === 'STANDARD' ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {standardReports.map(report => (
+                            <div key={report.id}
+                                onClick={() => { setSelectedStandardReport(report.id); setView('STANDARD_RUN'); }}
+                                className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-[2.5rem] p-8 hover:shadow-2xl hover:shadow-indigo-500/10 dark:hover:shadow-black/30 transition-all group flex flex-col cursor-pointer hover:-translate-y-1 active:scale-95">
+                                <div className={`w-14 h-14 bg-${report.color}-50 dark:bg-${report.color}-900/20 rounded-2xl flex items-center justify-center text-${report.color}-600 dark:text-${report.color}-400 mb-6 group-hover:scale-110 transition-transform`}>
+                                    <report.icon className="w-7 h-7" />
+                                </div>
+                                <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2 group-hover:text-indigo-600 transition-colors">
+                                    {report.name}
+                                </h3>
+                                <p className="text-sm text-slate-500 dark:text-slate-400 font-medium mb-6">{report.desc}</p>
+                                <div className="mt-auto flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold text-sm">
+                                    View Report <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                ) : loading ? (
                     <div className="flex items-center justify-center py-20">
                         <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
                     </div>
