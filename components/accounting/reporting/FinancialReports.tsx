@@ -212,6 +212,14 @@ export const FinancialReports: React.FC = () => {
 
                         {activeReport === 'pl' && (
                             <div className="space-y-8">
+                                <ReportSection title="Revenue" items={reportData.income || []} color="text-emerald-600" />
+                                <ReportSection title="Expenses" items={reportData.expenses || []} color="text-rose-600" />
+                                <div className="mt-4 pt-4 border-t-2 border-slate-800 dark:border-white flex justify-between font-bold text-lg">
+                                    <span>Net Profit / (Loss)</span>
+                                    <span>{formatCurrency(
+                                        (reportData.income?.reduce((s: number, a: any) => s + a.balance, 0) || 0) -
+                                        (reportData.expenses?.reduce((s: number, a: any) => s + Math.abs(a.balance), 0) || 0)
+                                    )}</span>
                                 </div>
                             </div>
                         )}
