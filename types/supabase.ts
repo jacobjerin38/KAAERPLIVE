@@ -209,7 +209,9 @@ export type Database = {
       }
       accounting_moves: {
         Row: {
+          amount_residual: number | null
           amount_total: number | null
+          approval_status: string | null
           auto_generated: boolean | null
           company_id: string
           created_at: string
@@ -229,7 +231,9 @@ export type Database = {
           state: string | null
         }
         Insert: {
+          amount_residual?: number | null
           amount_total?: number | null
+          approval_status?: string | null
           auto_generated?: boolean | null
           company_id?: string
           created_at?: string
@@ -249,7 +253,9 @@ export type Database = {
           state?: string | null
         }
         Update: {
+          amount_residual?: number | null
           amount_total?: number | null
+          approval_status?: string | null
           auto_generated?: boolean | null
           company_id?: string
           created_at?: string
@@ -573,42 +579,76 @@ export type Database = {
       }
       attendance: {
         Row: {
+          attendance_period_id: string | null
           check_in: string | null
+          check_in_location: string | null
           check_out: string | null
+          check_out_location: string | null
           company_id: string
           created_at: string
           date: string
+          edit_reason: string | null
+          edited_at: string | null
+          edited_by: string | null
           employee_id: string | null
           id: string
+          is_processed: boolean | null
           notes: string | null
+          shift_id: number | null
+          source: string | null
           status: string | null
           total_hours: number | null
         }
         Insert: {
+          attendance_period_id?: string | null
           check_in?: string | null
+          check_in_location?: string | null
           check_out?: string | null
+          check_out_location?: string | null
           company_id?: string
           created_at?: string
           date: string
+          edit_reason?: string | null
+          edited_at?: string | null
+          edited_by?: string | null
           employee_id?: string | null
           id?: string
+          is_processed?: boolean | null
           notes?: string | null
+          shift_id?: number | null
+          source?: string | null
           status?: string | null
           total_hours?: number | null
         }
         Update: {
+          attendance_period_id?: string | null
           check_in?: string | null
+          check_in_location?: string | null
           check_out?: string | null
+          check_out_location?: string | null
           company_id?: string
           created_at?: string
           date?: string
+          edit_reason?: string | null
+          edited_at?: string | null
+          edited_by?: string | null
           employee_id?: string | null
           id?: string
+          is_processed?: boolean | null
           notes?: string | null
+          shift_id?: number | null
+          source?: string | null
           status?: string | null
           total_hours?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "attendance_attendance_period_id_fkey"
+            columns: ["attendance_period_id"]
+            isOneToOne: false
+            referencedRelation: "attendance_periods"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "attendance_employee_id_fkey"
             columns: ["employee_id"]
@@ -616,7 +656,53 @@ export type Database = {
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "attendance_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "org_shift_timings"
+            referencedColumns: ["id"]
+          },
         ]
+      }
+      attendance_periods: {
+        Row: {
+          code: string | null
+          company_id: string
+          created_at: string
+          end_date: string
+          id: string
+          name: string
+          processed_at: string | null
+          processed_by: string | null
+          start_date: string
+          status: string
+        }
+        Insert: {
+          code?: string | null
+          company_id?: string
+          created_at?: string
+          end_date: string
+          id?: string
+          name: string
+          processed_at?: string | null
+          processed_by?: string | null
+          start_date: string
+          status?: string
+        }
+        Update: {
+          code?: string | null
+          company_id?: string
+          created_at?: string
+          end_date?: string
+          id?: string
+          name?: string
+          processed_at?: string | null
+          processed_by?: string | null
+          start_date?: string
+          status?: string
+        }
+        Relationships: []
       }
       attendance_records: {
         Row: {
@@ -658,6 +744,56 @@ export type Database = {
             columns: ["employee_id"]
             isOneToOne: false
             referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      attendance_settings: {
+        Row: {
+          auto_absent_if_no_punch: boolean | null
+          company_id: string
+          created_at: string | null
+          grace_minutes_early: number | null
+          grace_minutes_late: number | null
+          half_day_hours: number | null
+          id: string
+          ot_multiplier: number | null
+          ot_threshold_hours: number | null
+          standard_hours: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          auto_absent_if_no_punch?: boolean | null
+          company_id: string
+          created_at?: string | null
+          grace_minutes_early?: number | null
+          grace_minutes_late?: number | null
+          half_day_hours?: number | null
+          id?: string
+          ot_multiplier?: number | null
+          ot_threshold_hours?: number | null
+          standard_hours?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          auto_absent_if_no_punch?: boolean | null
+          company_id?: string
+          created_at?: string | null
+          grace_minutes_early?: number | null
+          grace_minutes_late?: number | null
+          half_day_hours?: number | null
+          id?: string
+          ot_multiplier?: number | null
+          ot_threshold_hours?: number | null
+          standard_hours?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_settings_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: true
+            referencedRelation: "companies"
             referencedColumns: ["id"]
           },
         ]
@@ -1149,6 +1285,57 @@ export type Database = {
           },
         ]
       }
+      crm_documents: {
+        Row: {
+          company_id: string | null
+          created_at: string | null
+          document_type_id: number | null
+          file_url: string
+          id: string
+          name: string
+          related_id: string | null
+          related_type: string | null
+          uploaded_by: string | null
+        }
+        Insert: {
+          company_id?: string | null
+          created_at?: string | null
+          document_type_id?: number | null
+          file_url: string
+          id?: string
+          name: string
+          related_id?: string | null
+          related_type?: string | null
+          uploaded_by?: string | null
+        }
+        Update: {
+          company_id?: string | null
+          created_at?: string | null
+          document_type_id?: number | null
+          file_url?: string
+          id?: string
+          name?: string
+          related_id?: string | null
+          related_type?: string | null
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_documents_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_documents_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       crm_tasks: {
         Row: {
           assignee: string | null
@@ -1279,6 +1466,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      departments: {
+        Row: {
+          code: string
+          company_id: string
+          created_at: string
+          description: string | null
+          head_of_department_id: string | null
+          id: number
+          name: string
+          status: string | null
+        }
+        Insert: {
+          code: string
+          company_id?: string
+          created_at?: string
+          description?: string | null
+          head_of_department_id?: string | null
+          id?: number
+          name: string
+          status?: string | null
+        }
+        Update: {
+          code?: string
+          company_id?: string
+          created_at?: string
+          description?: string | null
+          head_of_department_id?: string | null
+          id?: number
+          name?: string
+          status?: string | null
+        }
+        Relationships: []
       }
       device_attendance_logs: {
         Row: {
@@ -1413,38 +1633,104 @@ export type Database = {
           },
         ]
       }
-      departments: {
+      doc_documents: {
         Row: {
-          code: string
+          access_level: string | null
+          category: string
           company_id: string
-          created_at: string
-          description: string | null
-          head_of_department_id: string | null
-          id: number
-          name: string
-          status: string | null
+          created_at: string | null
+          expiry_date: string | null
+          file_url: string
+          id: string
+          last_updated_by: string | null
+          title: string
+          updated_at: string | null
         }
         Insert: {
-          code: string
-          company_id?: string
-          created_at?: string
-          description?: string | null
-          head_of_department_id?: string | null
-          id?: number
-          name: string
-          status?: string | null
+          access_level?: string | null
+          category: string
+          company_id: string
+          created_at?: string | null
+          expiry_date?: string | null
+          file_url: string
+          id?: string
+          last_updated_by?: string | null
+          title: string
+          updated_at?: string | null
         }
         Update: {
-          code?: string
+          access_level?: string | null
+          category?: string
+          company_id?: string
+          created_at?: string | null
+          expiry_date?: string | null
+          file_url?: string
+          id?: string
+          last_updated_by?: string | null
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "doc_documents_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "doc_documents_last_updated_by_fkey"
+            columns: ["last_updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      duty_roster: {
+        Row: {
+          company_id: string
+          created_at: string
+          date: string
+          employee_id: string
+          id: string
+          notes: string | null
+          shift_id: number
+        }
+        Insert: {
           company_id?: string
           created_at?: string
-          description?: string | null
-          head_of_department_id?: string | null
-          id?: number
-          name?: string
-          status?: string | null
+          date: string
+          employee_id: string
+          id?: string
+          notes?: string | null
+          shift_id: number
         }
-        Relationships: []
+        Update: {
+          company_id?: string
+          created_at?: string
+          date?: string
+          employee_id?: string
+          id?: string
+          notes?: string | null
+          shift_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "duty_roster_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "duty_roster_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "org_shift_timings"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       employee_career_timeline: {
         Row: {
@@ -1546,6 +1832,78 @@ export type Database = {
             columns: ["transition_id"]
             isOneToOne: false
             referencedRelation: "employee_job_transitions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      employee_documents: {
+        Row: {
+          company_id: string
+          created_at: string | null
+          document_name: string
+          document_type: string
+          employee_id: string
+          expiry_date: string | null
+          file_name: string
+          file_path: string
+          file_size: number | null
+          id: string
+          is_active: boolean | null
+          issue_date: string | null
+          mime_type: string | null
+          notes: string | null
+          updated_at: string | null
+          uploaded_by: string | null
+        }
+        Insert: {
+          company_id: string
+          created_at?: string | null
+          document_name: string
+          document_type?: string
+          employee_id: string
+          expiry_date?: string | null
+          file_name: string
+          file_path: string
+          file_size?: number | null
+          id?: string
+          is_active?: boolean | null
+          issue_date?: string | null
+          mime_type?: string | null
+          notes?: string | null
+          updated_at?: string | null
+          uploaded_by?: string | null
+        }
+        Update: {
+          company_id?: string
+          created_at?: string | null
+          document_name?: string
+          document_type?: string
+          employee_id?: string
+          expiry_date?: string | null
+          file_name?: string
+          file_path?: string
+          file_size?: number | null
+          id?: string
+          is_active?: boolean | null
+          issue_date?: string | null
+          mime_type?: string | null
+          notes?: string | null
+          updated_at?: string | null
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_documents_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_documents_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
             referencedColumns: ["id"]
           },
         ]
@@ -1767,6 +2125,8 @@ export type Database = {
         Row: {
           account_number: string | null
           age: number | null
+          air_ticket: string | null
+          annual_leave_duration_policy: string | null
           bank_name: string | null
           blood_group_id: number | null
           client_name: string | null
@@ -1781,18 +2141,24 @@ export type Database = {
           documents: Json | null
           email: string | null
           employee_code: string | null
+          employee_status_id: number | null
           employment_type_id: number | null
           faith_id: number | null
           gender: string | null
           grade_id: number | null
+          hamad_card_expiry: string | null
           id: string
           ifsc_code: string | null
           join_date: string | null
           leave_balance: Json | null
+          leave_plan_id: number | null
           location_id: number | null
           manager_id: string | null
           marital_status_id: number | null
+          memo: string | null
           name: string
+          nationality: string | null
+          nationality_id: number | null
           office_email: string | null
           office_mobile: string | null
           passport_expiry: string | null
@@ -1804,21 +2170,26 @@ export type Database = {
           phone: string | null
           profile_id: string | null
           profile_photo_url: string | null
+          remarks: string | null
           role: string | null
           role_id: string | null
           salary_amount: number | null
           shift_timing_id: number | null
           status: string | null
+          ticket_frequency: string | null
           user_account_linked: boolean | null
           visa_expiry: string | null
           visa_number: string | null
           visa_sponsor: string | null
           visa_type: string | null
+          visa_type_id: number | null
           weekoff_rule_id: number | null
         }
         Insert: {
           account_number?: string | null
           age?: number | null
+          air_ticket?: string | null
+          annual_leave_duration_policy?: string | null
           bank_name?: string | null
           blood_group_id?: number | null
           client_name?: string | null
@@ -1833,18 +2204,24 @@ export type Database = {
           documents?: Json | null
           email?: string | null
           employee_code?: string | null
+          employee_status_id?: number | null
           employment_type_id?: number | null
           faith_id?: number | null
           gender?: string | null
           grade_id?: number | null
+          hamad_card_expiry?: string | null
           id?: string
           ifsc_code?: string | null
           join_date?: string | null
           leave_balance?: Json | null
+          leave_plan_id?: number | null
           location_id?: number | null
           manager_id?: string | null
           marital_status_id?: number | null
+          memo?: string | null
           name: string
+          nationality?: string | null
+          nationality_id?: number | null
           office_email?: string | null
           office_mobile?: string | null
           passport_expiry?: string | null
@@ -1856,21 +2233,26 @@ export type Database = {
           phone?: string | null
           profile_id?: string | null
           profile_photo_url?: string | null
+          remarks?: string | null
           role?: string | null
           role_id?: string | null
           salary_amount?: number | null
           shift_timing_id?: number | null
           status?: string | null
+          ticket_frequency?: string | null
           user_account_linked?: boolean | null
           visa_expiry?: string | null
           visa_number?: string | null
           visa_sponsor?: string | null
           visa_type?: string | null
+          visa_type_id?: number | null
           weekoff_rule_id?: number | null
         }
         Update: {
           account_number?: string | null
           age?: number | null
+          air_ticket?: string | null
+          annual_leave_duration_policy?: string | null
           bank_name?: string | null
           blood_group_id?: number | null
           client_name?: string | null
@@ -1885,18 +2267,24 @@ export type Database = {
           documents?: Json | null
           email?: string | null
           employee_code?: string | null
+          employee_status_id?: number | null
           employment_type_id?: number | null
           faith_id?: number | null
           gender?: string | null
           grade_id?: number | null
+          hamad_card_expiry?: string | null
           id?: string
           ifsc_code?: string | null
           join_date?: string | null
           leave_balance?: Json | null
+          leave_plan_id?: number | null
           location_id?: number | null
           manager_id?: string | null
           marital_status_id?: number | null
+          memo?: string | null
           name?: string
+          nationality?: string | null
+          nationality_id?: number | null
           office_email?: string | null
           office_mobile?: string | null
           passport_expiry?: string | null
@@ -1908,16 +2296,19 @@ export type Database = {
           phone?: string | null
           profile_id?: string | null
           profile_photo_url?: string | null
+          remarks?: string | null
           role?: string | null
           role_id?: string | null
           salary_amount?: number | null
           shift_timing_id?: number | null
           status?: string | null
+          ticket_frequency?: string | null
           user_account_linked?: boolean | null
           visa_expiry?: string | null
           visa_number?: string | null
           visa_sponsor?: string | null
           visa_type?: string | null
+          visa_type_id?: number | null
           weekoff_rule_id?: number | null
         }
         Relationships: [
@@ -1943,6 +2334,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "employees_employee_status_id_fkey"
+            columns: ["employee_status_id"]
+            isOneToOne: false
+            referencedRelation: "org_employee_statuses"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "employees_employment_type_id_fkey"
             columns: ["employment_type_id"]
             isOneToOne: false
@@ -1961,6 +2359,13 @@ export type Database = {
             columns: ["grade_id"]
             isOneToOne: false
             referencedRelation: "org_grades"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employees_leave_plan_id_fkey"
+            columns: ["leave_plan_id"]
+            isOneToOne: false
+            referencedRelation: "org_leave_plans"
             referencedColumns: ["id"]
           },
           {
@@ -1985,6 +2390,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "employees_nationality_id_fkey"
+            columns: ["nationality_id"]
+            isOneToOne: false
+            referencedRelation: "org_nationalities"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "employees_pay_group_id_fkey"
             columns: ["pay_group_id"]
             isOneToOne: false
@@ -1996,6 +2408,13 @@ export type Database = {
             columns: ["role_id"]
             isOneToOne: false
             referencedRelation: "roles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employees_visa_type_id_fkey"
+            columns: ["visa_type_id"]
+            isOneToOne: false
+            referencedRelation: "org_visa_types"
             referencedColumns: ["id"]
           },
         ]
@@ -2189,6 +2608,47 @@ export type Database = {
           status?: string | null
         }
         Relationships: []
+      }
+      holidays: {
+        Row: {
+          applicable_to: string | null
+          company_id: string
+          created_at: string | null
+          date: string
+          id: string
+          is_recurring: boolean | null
+          name: string
+          type: string
+        }
+        Insert: {
+          applicable_to?: string | null
+          company_id: string
+          created_at?: string | null
+          date: string
+          id?: string
+          is_recurring?: boolean | null
+          name: string
+          type?: string
+        }
+        Update: {
+          applicable_to?: string | null
+          company_id?: string
+          created_at?: string | null
+          date?: string
+          id?: string
+          is_recurring?: boolean | null
+          name?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "holidays_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       inventory_account_config: {
         Row: {
@@ -2822,6 +3282,53 @@ export type Database = {
           },
         ]
       }
+      leave_accrual_rules: {
+        Row: {
+          accrual_amount: number
+          accrual_frequency: string
+          carry_forward: boolean | null
+          carry_forward_max: number | null
+          company_id: string
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          leave_type_id: number
+          max_balance: number | null
+        }
+        Insert: {
+          accrual_amount?: number
+          accrual_frequency?: string
+          carry_forward?: boolean | null
+          carry_forward_max?: number | null
+          company_id: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          leave_type_id: number
+          max_balance?: number | null
+        }
+        Update: {
+          accrual_amount?: number
+          accrual_frequency?: string
+          carry_forward?: boolean | null
+          carry_forward_max?: number | null
+          company_id?: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          leave_type_id?: number
+          max_balance?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leave_accrual_rules_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leave_applications: {
         Row: {
           applied_on: string | null
@@ -2882,6 +3389,66 @@ export type Database = {
           },
         ]
       }
+      leave_balances: {
+        Row: {
+          accrued: number | null
+          adjusted: number | null
+          closing_balance: number | null
+          company_id: string
+          created_at: string | null
+          employee_id: string
+          id: string
+          leave_type_id: number
+          opening_balance: number | null
+          updated_at: string | null
+          used: number | null
+          year: number
+        }
+        Insert: {
+          accrued?: number | null
+          adjusted?: number | null
+          closing_balance?: number | null
+          company_id: string
+          created_at?: string | null
+          employee_id: string
+          id?: string
+          leave_type_id: number
+          opening_balance?: number | null
+          updated_at?: string | null
+          used?: number | null
+          year?: number
+        }
+        Update: {
+          accrued?: number | null
+          adjusted?: number | null
+          closing_balance?: number | null
+          company_id?: string
+          created_at?: string | null
+          employee_id?: string
+          id?: string
+          leave_type_id?: number
+          opening_balance?: number | null
+          updated_at?: string | null
+          used?: number | null
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leave_balances_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leave_balances_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leaves: {
         Row: {
           approved_by: string | null
@@ -2890,6 +3457,8 @@ export type Database = {
           employee_id: string | null
           end_date: string
           id: string
+          level1_status: string | null
+          level2_status: string | null
           manager_comment: string | null
           reason: string | null
           start_date: string
@@ -2903,6 +3472,8 @@ export type Database = {
           employee_id?: string | null
           end_date: string
           id?: string
+          level1_status?: string | null
+          level2_status?: string | null
           manager_comment?: string | null
           reason?: string | null
           start_date: string
@@ -2916,6 +3487,8 @@ export type Database = {
           employee_id?: string | null
           end_date?: string
           id?: string
+          level1_status?: string | null
+          level2_status?: string | null
           manager_comment?: string | null
           reason?: string | null
           start_date?: string
@@ -2994,6 +3567,76 @@ export type Database = {
           status?: string | null
         }
         Relationships: []
+      }
+      missed_punch_requests: {
+        Row: {
+          company_id: string
+          created_at: string
+          employee_id: string
+          id: string
+          is_active: boolean | null
+          punch_type: string
+          reason: string
+          request_date: string
+          requested_time: string
+          review_notes: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string | null
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          employee_id: string
+          id?: string
+          is_active?: boolean | null
+          punch_type: string
+          reason: string
+          request_date: string
+          requested_time: string
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string | null
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          employee_id?: string
+          id?: string
+          is_active?: boolean | null
+          punch_type?: string
+          reason?: string
+          request_date?: string
+          requested_time?: string
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "missed_punch_requests_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "missed_punch_requests_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "missed_punch_requests_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       mrp_bom: {
         Row: {
@@ -3352,6 +3995,30 @@ export type Database = {
           },
         ]
       }
+      org_attendance_settings: {
+        Row: {
+          company_id: string
+          created_at: string
+          default_weekly_off_days: string | null
+          id: string
+          notes: string | null
+        }
+        Insert: {
+          company_id?: string
+          created_at?: string
+          default_weekly_off_days?: string | null
+          id?: string
+          notes?: string | null
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          default_weekly_off_days?: string | null
+          id?: string
+          notes?: string | null
+        }
+        Relationships: []
+      }
       org_attendance_status: {
         Row: {
           affects_salary: boolean | null
@@ -3537,6 +4204,38 @@ export type Database = {
         }
         Relationships: []
       }
+      org_employee_statuses: {
+        Row: {
+          code: string | null
+          company_id: string | null
+          created_at: string | null
+          id: number
+          name: string
+        }
+        Insert: {
+          code?: string | null
+          company_id?: string | null
+          created_at?: string | null
+          id?: number
+          name: string
+        }
+        Update: {
+          code?: string | null
+          company_id?: string | null
+          created_at?: string | null
+          id?: number
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_employee_statuses_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       org_employment_types: {
         Row: {
           code: string
@@ -3719,6 +4418,36 @@ export type Database = {
         }
         Relationships: []
       }
+      org_holidays: {
+        Row: {
+          company_id: string
+          created_at: string
+          date: string
+          description: string | null
+          id: number
+          is_recurring: boolean | null
+          name: string
+        }
+        Insert: {
+          company_id?: string
+          created_at?: string
+          date: string
+          description?: string | null
+          id?: number
+          is_recurring?: boolean | null
+          name: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          date?: string
+          description?: string | null
+          id?: number
+          is_recurring?: boolean | null
+          name?: string
+        }
+        Relationships: []
+      }
       org_leave_calendar_years: {
         Row: {
           company_id: string
@@ -3750,6 +4479,41 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "org_leave_calendar_years_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      org_leave_plans: {
+        Row: {
+          code: string | null
+          company_id: string | null
+          created_at: string | null
+          description: string | null
+          id: number
+          name: string
+        }
+        Insert: {
+          code?: string | null
+          company_id?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: number
+          name: string
+        }
+        Update: {
+          code?: string | null
+          company_id?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: number
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_leave_plans_company_id_fkey"
             columns: ["company_id"]
             isOneToOne: false
             referencedRelation: "companies"
@@ -4091,6 +4855,7 @@ export type Database = {
           name: string
           start_time: string
           status: string | null
+          weekly_off_days: string | null
         }
         Insert: {
           code: string
@@ -4102,6 +4867,7 @@ export type Database = {
           name: string
           start_time: string
           status?: string | null
+          weekly_off_days?: string | null
         }
         Update: {
           code?: string
@@ -4113,6 +4879,7 @@ export type Database = {
           name?: string
           start_time?: string
           status?: string | null
+          weekly_off_days?: string | null
         }
         Relationships: []
       }
@@ -4203,6 +4970,38 @@ export type Database = {
         }
         Relationships: []
       }
+      org_visa_types: {
+        Row: {
+          code: string | null
+          company_id: string | null
+          created_at: string | null
+          id: number
+          name: string
+        }
+        Insert: {
+          code?: string | null
+          company_id?: string | null
+          created_at?: string | null
+          id?: number
+          name: string
+        }
+        Update: {
+          code?: string | null
+          company_id?: string | null
+          created_at?: string | null
+          id?: number
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_visa_types_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       org_weekoff_rules: {
         Row: {
           code: string
@@ -4280,6 +5079,63 @@ export type Database = {
           },
         ]
       }
+      payroll_loans: {
+        Row: {
+          amount: number
+          balance: number
+          company_id: string
+          created_at: string | null
+          emi_amount: number
+          employee_id: string
+          id: string
+          loan_type: string
+          start_date: string
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          amount: number
+          balance: number
+          company_id: string
+          created_at?: string | null
+          emi_amount: number
+          employee_id: string
+          id?: string
+          loan_type: string
+          start_date: string
+          status?: string
+          updated_at?: string | null
+        }
+        Update: {
+          amount?: number
+          balance?: number
+          company_id?: string
+          created_at?: string | null
+          emi_amount?: number
+          employee_id?: string
+          id?: string
+          loan_type?: string
+          start_date?: string
+          status?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_loans_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_loans_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payroll_records: {
         Row: {
           basic_salary: number | null
@@ -4288,8 +5144,10 @@ export type Database = {
           employee_id: string | null
           gross_earning: number | null
           id: string
+          loan_deduction: number | null
           month_year: string
           net_pay: number | null
+          ot_amount: number | null
           payment_date: string | null
           status: string | null
           total_deduction: number | null
@@ -4301,8 +5159,10 @@ export type Database = {
           employee_id?: string | null
           gross_earning?: number | null
           id?: string
+          loan_deduction?: number | null
           month_year: string
           net_pay?: number | null
+          ot_amount?: number | null
           payment_date?: string | null
           status?: string | null
           total_deduction?: number | null
@@ -4314,8 +5174,10 @@ export type Database = {
           employee_id?: string | null
           gross_earning?: number | null
           id?: string
+          loan_deduction?: number | null
           month_year?: string
           net_pay?: number | null
+          ot_amount?: number | null
           payment_date?: string | null
           status?: string | null
           total_deduction?: number | null
@@ -4410,6 +5272,172 @@ export type Database = {
             columns: ["payroll_run_id"]
             isOneToOne: false
             referencedRelation: "payroll_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pm_projects: {
+        Row: {
+          budget: number | null
+          company_id: string
+          created_at: string | null
+          description: string | null
+          end_date: string | null
+          id: string
+          name: string
+          start_date: string | null
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          budget?: number | null
+          company_id: string
+          created_at?: string | null
+          description?: string | null
+          end_date?: string | null
+          id?: string
+          name: string
+          start_date?: string | null
+          status?: string
+          updated_at?: string | null
+        }
+        Update: {
+          budget?: number | null
+          company_id?: string
+          created_at?: string | null
+          description?: string | null
+          end_date?: string | null
+          id?: string
+          name?: string
+          start_date?: string | null
+          status?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pm_projects_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pm_tasks: {
+        Row: {
+          assignee_id: string | null
+          company_id: string
+          created_at: string | null
+          description: string | null
+          due_date: string | null
+          id: string
+          name: string
+          progress_pct: number | null
+          project_id: string
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          assignee_id?: string | null
+          company_id: string
+          created_at?: string | null
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          name: string
+          progress_pct?: number | null
+          project_id: string
+          status?: string
+          updated_at?: string | null
+        }
+        Update: {
+          assignee_id?: string | null
+          company_id?: string
+          created_at?: string | null
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          name?: string
+          progress_pct?: number | null
+          project_id?: string
+          status?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pm_tasks_assignee_id_fkey"
+            columns: ["assignee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pm_tasks_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pm_tasks_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "pm_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pm_timesheets: {
+        Row: {
+          company_id: string
+          created_at: string | null
+          date: string
+          description: string | null
+          employee_id: string
+          hours: number
+          id: string
+          task_id: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string | null
+          date?: string
+          description?: string | null
+          employee_id: string
+          hours: number
+          id?: string
+          task_id: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string | null
+          date?: string
+          description?: string | null
+          employee_id?: string
+          hours?: number
+          id?: string
+          task_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pm_timesheets_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pm_timesheets_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pm_timesheets_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "pm_tasks"
             referencedColumns: ["id"]
           },
         ]
@@ -4786,7 +5814,9 @@ export type Database = {
           field_label: string
           id: string
           is_filterable: boolean | null
+          is_sortable: boolean | null
           module: string
+          source_table: string | null
         }
         Insert: {
           created_at?: string | null
@@ -4795,7 +5825,9 @@ export type Database = {
           field_label: string
           id?: string
           is_filterable?: boolean | null
+          is_sortable?: boolean | null
           module: string
+          source_table?: string | null
         }
         Update: {
           created_at?: string | null
@@ -4804,7 +5836,9 @@ export type Database = {
           field_label?: string
           id?: string
           is_filterable?: boolean | null
+          is_sortable?: boolean | null
           module?: string
+          source_table?: string | null
         }
         Relationships: []
       }
@@ -5882,6 +6916,10 @@ export type Database = {
         Returns: Json
       }
       rpc_ar_aging: { Args: { p_company_id: string }; Returns: Json }
+      rpc_bulk_import_items: {
+        Args: { p_company_id: string; p_items: Json }
+        Returns: Json
+      }
       rpc_create_invoice: {
         Args: {
           p_date: string
@@ -5906,7 +6944,19 @@ export type Database = {
         Args: { p_company_id: string; p_month_year: string }
         Returns: string
       }
+      rpc_generate_stock_alerts: {
+        Args: { p_company_id: string }
+        Returns: Json
+      }
       rpc_get_balance_sheet: { Args: { p_date: string }; Returns: Json }
+      rpc_get_cash_book: {
+        Args: { p_end_date: string; p_start_date: string }
+        Returns: Json
+      }
+      rpc_get_device_sync_status: {
+        Args: { p_company_id: string }
+        Returns: Json
+      }
       rpc_get_my_approvals: {
         Args: { p_user_id: string }
         Returns: {
@@ -5919,10 +6969,33 @@ export type Database = {
           workflow_name: string
         }[]
       }
+      rpc_get_partner_aging: {
+        Args: { p_date: string; p_partner_type: string }
+        Returns: Json
+      }
       rpc_get_profit_loss: {
         Args: { p_end_date: string; p_start_date: string }
         Returns: Json
       }
+      rpc_get_stock_level: {
+        Args: { p_company_id: string }
+        Returns: {
+          available_qty: number
+          barcode: string
+          current_qty: number
+          expiry_date: string
+          item_code: string
+          item_id: string
+          item_name: string
+          reorder_level: number
+          reserved_qty: number
+          uom: string
+          warehouse_id: string
+          warehouse_name: string
+          weight: number
+        }[]
+      }
+      rpc_get_trial_balance: { Args: { p_date: string }; Returns: Json }
       rpc_get_user_companies: {
         Args: never
         Returns: {
@@ -5974,27 +7047,11 @@ export type Database = {
         Args: { p_company_id: string }
         Returns: Json
       }
+      rpc_run_leave_accrual: {
+        Args: { p_company_id: string; p_year?: number }
+        Returns: number
+      }
       rpc_stock_movement_trend: {
-        Args: { p_company_id: string }
-        Returns: Json
-      }
-      rpc_generate_stock_alerts: {
-        Args: { p_company_id: string }
-        Returns: Json
-      }
-      rpc_bulk_import_items: {
-        Args: { p_company_id: string; p_items: Json }
-        Returns: Json
-      }
-      rpc_get_stock_level: {
-        Args: { p_company_id: string }
-        Returns: Json
-      }
-      rpc_get_device_sync_status: {
-        Args: { p_company_id: string }
-        Returns: Json
-      }
-      rpc_sync_device_attendance: {
         Args: { p_company_id: string }
         Returns: Json
       }
@@ -6005,6 +7062,10 @@ export type Database = {
           p_workflow_id: string
         }
         Returns: string
+      }
+      rpc_sync_device_attendance: {
+        Args: { p_company_id: string }
+        Returns: Json
       }
       rpc_workflow_action: {
         Args: { p_action: string; p_comment: string; p_request_id: string }

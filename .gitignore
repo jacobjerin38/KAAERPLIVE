@@ -24,3 +24,16 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Dev/Deploy scripts (may contain credentials)
+deploy_all.mjs
+test_db.mjs
+verify_db.mjs
+run_migration.mjs
+fix_profile_link.mjs
+test_rls.mjs
+test_insert.mjs
+
+# Stale build artifacts
+tsc_output*.txt
+last_tsc_error.txt

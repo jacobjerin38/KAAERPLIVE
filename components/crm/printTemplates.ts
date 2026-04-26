@@ -1,6 +1,17 @@
 import { supabase } from '../../lib/supabase';
 import { CRMQuotation, CRMQuotationLine, CRMSalesInvoice, CRMSalesInvoiceLine, CRMDeliveryNote, CRMDeliveryNoteLine, CRMCustomer } from './types';
 
+// ─── HTML Escape (XSS Prevention) ───
+function escapeHtml(str: string | null | undefined): string {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 // ─── Company Profile ───
 export interface CompanyProfile {
     id: string;
@@ -157,9 +168,9 @@ export function generateDocumentHTML(opts: GenerateHTMLOptions): string {
     const isDeliveryNote = documentType === 'delivery_note';
     const isInvoice = documentType === 'invoice';
 
-    const companyName = company.display_name || company.legal_name || company.name || '';
-    const companyAddr = [company.address_line_1, company.address_line_2, company.city, company.state, company.zip_code, company.country].filter(Boolean).join(', ');
-    const custAddr = customer ? [customer.billing_address_line_1, customer.billing_address_line_2, customer.billing_city, customer.billing_state, customer.billing_zip_code, customer.billing_country].filter(Boolean).join(', ') : '';
+    const companyName = escapeHtml(company.display_name || company.legal_name || company.name || '');
+    const companyAddr = escapeHtml([company.address_line_1, company.address_line_2, company.city, company.state, company.zip_code, company.country].filter(Boolean).join(', '));
+    const custAddr = customer ? escapeHtml([customer.billing_address_line_1, customer.billing_address_line_2, customer.billing_city, customer.billing_state, customer.billing_zip_code, customer.billing_country].filter(Boolean).join(', ')) : '';
 
     // Totals
     let subtotal = 0, taxTotal = 0;
@@ -256,9 +267,9 @@ export function generateDocumentHTML(opts: GenerateHTMLOptions): string {
       <div class="company-info">
         <h1>${companyName}</h1>
         ${companyAddr ? `<p>${companyAddr}</p>` : ''}
-        ${company.phone ? `<p>Phone: ${company.phone}</p>` : ''}
-        ${company.email ? `<p>Email: ${company.email}</p>` : ''}
-        ${company.tax_id ? `<p style="font-weight:600;">GSTIN: ${company.tax_id}</p>` : ''}
+        ${company.phone ? `<p>Phone: ${escapeHtml(company.phone)}</p>` : ''}
+        ${company.email ? `<p>Email: ${escapeHtml(company.email)}</p>` : ''}
+        ${company.tax_id ? `<p style="font-weight:600;">GSTIN: ${escapeHtml(company.tax_id)}</p>` : ''}
       </div>
       <div style="text-align:right;">
         ${logoHTML}
@@ -274,21 +285,21 @@ export function generateDocumentHTML(opts: GenerateHTMLOptions): string {
     <div class="info-grid">
       <div class="info-block">
         <h4>Bill To</h4>
-        <p class="value">${customer?.name || 'N/A'}</p>
+        <p class="value">${escapeHtml(customer?.name) || 'N/A'}</p>
         ${custAddr ? `<p>${custAddr}</p>` : ''}
-        ${customer?.primary_phone ? `<p>Phone: ${customer.primary_phone}</p>` : ''}
-        ${customer?.primary_email ? `<p>Email: ${customer.primary_email}</p>` : ''}
-        ${customer?.tax_id ? `<p>GSTIN: ${customer.tax_id}</p>` : ''}
+        ${customer?.primary_phone ? `<p>Phone: ${escapeHtml(customer.primary_phone)}</p>` : ''}
+        ${customer?.primary_email ? `<p>Email: ${escapeHtml(customer.primary_email)}</p>` : ''}
+        ${customer?.tax_id ? `<p>GSTIN: ${escapeHtml(customer.tax_id)}</p>` : ''}
       </div>
       <div class="info-block" style="text-align:right;">
         <h4>Document Details</h4>
-        ${(doc as any).series ? `<p><span style="color:#64748b;">No:</span> <span class="value">${(doc as any).series}</span></p>` : ''}
-        <p><span style="color:#64748b;">Date:</span> <span class="value">${docDate}</span></p>
-        ${documentType === 'quotation' && (doc as any).valid_until ? `<p><span style="color:#64748b;">Valid Until:</span> <span class="value">${(doc as any).valid_until}</span></p>` : ''}
-        ${isInvoice && (doc as any).due_date ? `<p><span style="color:#64748b;">Due Date:</span> <span class="value">${(doc as any).due_date}</span></p>` : ''}
-        ${isDeliveryNote && (doc as any).transporter ? `<p><span style="color:#64748b;">Transporter:</span> <span class="value">${(doc as any).transporter}</span></p>` : ''}
-        ${isDeliveryNote && (doc as any).tracking_number ? `<p><span style="color:#64748b;">Tracking #:</span> <span class="value">${(doc as any).tracking_number}</span></p>` : ''}
-        <p><span style="color:#64748b;">Status:</span> <span class="value">${(doc as any).status}</span></p>
+        ${(doc as any).series ? `<p><span style="color:#64748b;">No:</span> <span class="value">${escapeHtml((doc as any).series)}</span></p>` : ''}
+        <p><span style="color:#64748b;">Date:</span> <span class="value">${escapeHtml(docDate)}</span></p>
+        ${documentType === 'quotation' && (doc as any).valid_until ? `<p><span style="color:#64748b;">Valid Until:</span> <span class="value">${escapeHtml((doc as any).valid_until)}</span></p>` : ''}
+        ${isInvoice && (doc as any).due_date ? `<p><span style="color:#64748b;">Due Date:</span> <span class="value">${escapeHtml((doc as any).due_date)}</span></p>` : ''}
+        ${isDeliveryNote && (doc as any).transporter ? `<p><span style="color:#64748b;">Transporter:</span> <span class="value">${escapeHtml((doc as any).transporter)}</span></p>` : ''}
+        ${isDeliveryNote && (doc as any).tracking_number ? `<p><span style="color:#64748b;">Tracking #:</span> <span class="value">${escapeHtml((doc as any).tracking_number)}</span></p>` : ''}
+        <p><span style="color:#64748b;">Status:</span> <span class="value">${escapeHtml((doc as any).status)}</span></p>
       </div>
     </div>
 
@@ -317,7 +328,7 @@ export function generateDocumentHTML(opts: GenerateHTMLOptions): string {
             const rem = (line.quantity_ordered || 0) - (line.quantity_delivered || 0);
             return `<tr>
               <td class="num">${idx + 1}</td>
-              <td><strong>${line.item_name || ''}</strong>${line.description ? `<br/><span style="color:#64748b;font-size:10px;">${line.description}</span>` : ''}</td>
+              <td><strong>${escapeHtml(line.item_name)}</strong>${line.description ? `<br/><span style="color:#64748b;font-size:10px;">${escapeHtml(line.description)}</span>` : ''}</td>
               <td class="qty">${line.quantity_ordered || 0}</td>
               <td class="qty">${line.quantity_delivered || 0}</td>
               <td class="qty" style="color:${rem > 0 ? '#d97706' : '#059669'};font-weight:600;">${rem}</td>
@@ -326,7 +337,7 @@ export function generateDocumentHTML(opts: GenerateHTMLOptions): string {
             const amt = calcLineAmount(line);
             return `<tr>
               <td class="num">${idx + 1}</td>
-              <td><strong>${line.item_name || ''}</strong>${line.description ? `<br/><span style="color:#64748b;font-size:10px;">${line.description}</span>` : ''}</td>
+              <td><strong>${escapeHtml(line.item_name)}</strong>${line.description ? `<br/><span style="color:#64748b;font-size:10px;">${escapeHtml(line.description)}</span>` : ''}</td>
               <td class="qty">${line.quantity || 0}</td>
               <td class="money">${formatMoney(line.rate || 0, currency)}</td>
               <td class="qty">${line.discount_percent || 0}%</td>
@@ -361,21 +372,21 @@ export function generateDocumentHTML(opts: GenerateHTMLOptions): string {
 
     ${isDeliveryNote && (doc as any).shipping_address ? `
     <div class="amount-words">
-      <strong>Shipping Address:</strong> ${(doc as any).shipping_address}
+      <strong>Shipping Address:</strong> ${escapeHtml((doc as any).shipping_address)}
     </div>
     ` : ''}
 
     ${template.show_terms && ((doc as any).terms_and_conditions || (doc as any).notes) ? `
     <div class="terms">
-      ${(doc as any).terms_and_conditions ? `<h4>Terms & Conditions</h4><p>${(doc as any).terms_and_conditions}</p>` : ''}
-      ${(doc as any).notes ? `<h4 style="margin-top:8px;">Notes</h4><p>${(doc as any).notes}</p>` : ''}
+      ${(doc as any).terms_and_conditions ? `<h4>Terms & Conditions</h4><p>${escapeHtml((doc as any).terms_and_conditions)}</p>` : ''}
+      ${(doc as any).notes ? `<h4 style="margin-top:8px;">Notes</h4><p>${escapeHtml((doc as any).notes)}</p>` : ''}
     </div>
     ` : ''}
 
     <!-- Footer -->
     <div class="footer" style="margin-top:40px;">
-      <p>${template.footer_text}</p>
-      ${company.website ? `<p>${company.website}</p>` : ''}
+      <p>${escapeHtml(template.footer_text)}</p>
+      ${company.website ? `<p>${escapeHtml(company.website)}</p>` : ''}
     </div>
   </div>
 </body>

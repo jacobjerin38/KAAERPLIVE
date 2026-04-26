@@ -22,10 +22,10 @@ CREATE TABLE IF NOT EXISTS payroll_loans (
 );
 
 ALTER TABLE payroll_loans ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users can view their company loans" ON payroll_loans FOR SELECT USING (company_id = auth.uid());
-CREATE POLICY "Users can insert their company loans" ON payroll_loans FOR INSERT WITH CHECK (company_id = auth.uid());
-CREATE POLICY "Users can update their company loans" ON payroll_loans FOR UPDATE USING (company_id = auth.uid());
-CREATE POLICY "Users can delete their company loans" ON payroll_loans FOR DELETE USING (company_id = auth.uid());
+CREATE POLICY "Users can view their company loans" ON payroll_loans FOR SELECT USING (company_id = get_my_company_id());
+CREATE POLICY "Users can insert their company loans" ON payroll_loans FOR INSERT WITH CHECK (company_id = get_my_company_id());
+CREATE POLICY "Users can update their company loans" ON payroll_loans FOR UPDATE USING (company_id = get_my_company_id());
+CREATE POLICY "Users can delete their company loans" ON payroll_loans FOR DELETE USING (company_id = get_my_company_id());
 
 -- 2. Document Management
 CREATE TABLE IF NOT EXISTS doc_documents (
@@ -42,10 +42,10 @@ CREATE TABLE IF NOT EXISTS doc_documents (
 );
 
 ALTER TABLE doc_documents ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users can view their company documents" ON doc_documents FOR SELECT USING (company_id = auth.uid());
-CREATE POLICY "Users can insert their company documents" ON doc_documents FOR INSERT WITH CHECK (company_id = auth.uid());
-CREATE POLICY "Users can update their company documents" ON doc_documents FOR UPDATE USING (company_id = auth.uid());
-CREATE POLICY "Users can delete their company documents" ON doc_documents FOR DELETE USING (company_id = auth.uid());
+CREATE POLICY "Users can view their company documents" ON doc_documents FOR SELECT USING (company_id = get_my_company_id());
+CREATE POLICY "Users can insert their company documents" ON doc_documents FOR INSERT WITH CHECK (company_id = get_my_company_id());
+CREATE POLICY "Users can update their company documents" ON doc_documents FOR UPDATE USING (company_id = get_my_company_id());
+CREATE POLICY "Users can delete their company documents" ON doc_documents FOR DELETE USING (company_id = get_my_company_id());
 
 -- 3. Project Management Module
 CREATE TABLE IF NOT EXISTS pm_projects (
@@ -62,10 +62,10 @@ CREATE TABLE IF NOT EXISTS pm_projects (
 );
 
 ALTER TABLE pm_projects ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users can view their company projects" ON pm_projects FOR SELECT USING (company_id = auth.uid());
-CREATE POLICY "Users can insert their company projects" ON pm_projects FOR INSERT WITH CHECK (company_id = auth.uid());
-CREATE POLICY "Users can update their company projects" ON pm_projects FOR UPDATE USING (company_id = auth.uid());
-CREATE POLICY "Users can delete their company projects" ON pm_projects FOR DELETE USING (company_id = auth.uid());
+CREATE POLICY "Users can view their company projects" ON pm_projects FOR SELECT USING (company_id = get_my_company_id());
+CREATE POLICY "Users can insert their company projects" ON pm_projects FOR INSERT WITH CHECK (company_id = get_my_company_id());
+CREATE POLICY "Users can update their company projects" ON pm_projects FOR UPDATE USING (company_id = get_my_company_id());
+CREATE POLICY "Users can delete their company projects" ON pm_projects FOR DELETE USING (company_id = get_my_company_id());
 
 CREATE TABLE IF NOT EXISTS pm_tasks (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -82,10 +82,10 @@ CREATE TABLE IF NOT EXISTS pm_tasks (
 );
 
 ALTER TABLE pm_tasks ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users can view their company tasks" ON pm_tasks FOR SELECT USING (company_id = auth.uid());
-CREATE POLICY "Users can insert their company tasks" ON pm_tasks FOR INSERT WITH CHECK (company_id = auth.uid());
-CREATE POLICY "Users can update their company tasks" ON pm_tasks FOR UPDATE USING (company_id = auth.uid());
-CREATE POLICY "Users can delete their company tasks" ON pm_tasks FOR DELETE USING (company_id = auth.uid());
+CREATE POLICY "Users can view their company tasks" ON pm_tasks FOR SELECT USING (company_id = get_my_company_id());
+CREATE POLICY "Users can insert their company tasks" ON pm_tasks FOR INSERT WITH CHECK (company_id = get_my_company_id());
+CREATE POLICY "Users can update their company tasks" ON pm_tasks FOR UPDATE USING (company_id = get_my_company_id());
+CREATE POLICY "Users can delete their company tasks" ON pm_tasks FOR DELETE USING (company_id = get_my_company_id());
 
 CREATE TABLE IF NOT EXISTS pm_timesheets (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -99,7 +99,7 @@ CREATE TABLE IF NOT EXISTS pm_timesheets (
 );
 
 ALTER TABLE pm_timesheets ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users can view their company timesheets" ON pm_timesheets FOR SELECT USING (company_id = auth.uid());
-CREATE POLICY "Users can insert their company timesheets" ON pm_timesheets FOR INSERT WITH CHECK (company_id = auth.uid());
-CREATE POLICY "Users can update their company timesheets" ON pm_timesheets FOR UPDATE USING (company_id = auth.uid());
-CREATE POLICY "Users can delete their company timesheets" ON pm_timesheets FOR DELETE USING (company_id = auth.uid());
+CREATE POLICY "Users can view their company timesheets" ON pm_timesheets FOR SELECT USING (company_id = get_my_company_id());
+CREATE POLICY "Users can insert their company timesheets" ON pm_timesheets FOR INSERT WITH CHECK (company_id = get_my_company_id());
+CREATE POLICY "Users can update their company timesheets" ON pm_timesheets FOR UPDATE USING (company_id = get_my_company_id());
+CREATE POLICY "Users can delete their company timesheets" ON pm_timesheets FOR DELETE USING (company_id = get_my_company_id());
