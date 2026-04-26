@@ -334,10 +334,17 @@ export const Dashboard: React.FC = () => {
           {renderModuleWidget(AppView.ESSP)}
           {renderModuleWidget(AppView.PROJECTS)}
           {renderModuleWidget(AppView.DOCUMENTS)}
+          {renderModuleWidget(AppView.ACCOUNTING)}
+          {renderModuleWidget(AppView.INVENTORY)}
+          {renderModuleWidget(AppView.SALES)}
 
           {/* Render All Other Modules */}
           {MODULES
-            .filter(m => ![AppView.HRMS, AppView.CRM, AppView.SALES, AppView.ESSP, AppView.ORGANISATION, AppView.DASHBOARD, AppView.PROJECTS, AppView.DOCUMENTS].includes(m.id))
+            .filter(m => ![
+              AppView.HRMS, AppView.CRM, AppView.SALES, AppView.ESSP, 
+              AppView.ORGANISATION, AppView.DASHBOARD, AppView.PROJECTS, 
+              AppView.DOCUMENTS, AppView.ACCOUNTING, AppView.INVENTORY
+            ].includes(m.id))
             .map(m => renderModuleWidget(m.id))
           }
 

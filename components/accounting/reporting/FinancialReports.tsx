@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
-import { Calendar, Filter, Download, FileText } from 'lucide-react';
+import { Calendar, Filter, Download, FileText, TrendingUp, TrendingDown } from 'lucide-react';
 
 interface ReportData {
     assets: any[];
@@ -258,7 +258,7 @@ export const FinancialReports: React.FC = () => {
                                             )}
                                         </p>
                                     </div>
-                                    <TrendingUp className="w-12 h-12 opacity-20" />
+                                    {(reportData.income?.reduce((s: number, a: any) => s + (Number(a.balance) || 0), 0) || 0) >= (reportData.expense?.reduce((s: number, a: any) => s + Math.abs(Number(a.balance) || 0), 0) || 0) ? <TrendingUp className="w-12 h-12 opacity-20" /> : <TrendingDown className="w-12 h-12 opacity-20" />}
                                 </div>
                             </div>
                         )}

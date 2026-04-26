@@ -168,23 +168,23 @@ export const FinanceDashboard: React.FC = () => {
                 supabase.rpc('rpc_revenue_expense_trend', { p_company_id: currentCompanyId }),
                 supabase
                     .from('accounting_moves')
-                    .select('id, reference, invoice_date_due, amount_residual, partner:accounting_partners(name)')
+                    .select('id, reference, due_date, amount_residual, partner:accounting_partners(name)')
                     .eq('company_id', currentCompanyId)
                     .eq('move_type', 'out_invoice')
                     .eq('state', 'Posted')
                     .gt('amount_residual', 0)
-                    .lt('invoice_date_due', today)
-                    .order('invoice_date_due', { ascending: true })
+                    .lt('due_date', today)
+                    .order('due_date', { ascending: true })
                     .limit(5),
                 supabase
                     .from('accounting_moves')
-                    .select('id, reference, invoice_date_due, amount_residual, partner:accounting_partners(name)')
+                    .select('id, reference, due_date, amount_residual, partner:accounting_partners(name)')
                     .eq('company_id', currentCompanyId)
                     .eq('move_type', 'in_invoice')
                     .eq('state', 'Posted')
                     .gt('amount_residual', 0)
-                    .lte('invoice_date_due', in30)
-                    .order('invoice_date_due', { ascending: true })
+                    .lte('due_date', in30)
+                    .order('due_date', { ascending: true })
                     .limit(8)
             ]);
 
