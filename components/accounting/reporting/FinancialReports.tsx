@@ -30,9 +30,8 @@ export const FinancialReports: React.FC = () => {
     useEffect(() => {
         if (currentCompanyId) {
             fetchCompanyCurrency();
-            fetchReport();
         }
-    }, [currentCompanyId, activeReport, startDate, endDate, partnerType]);
+    }, [currentCompanyId]);
 
     const fetchCompanyCurrency = async () => {
         if (!currentCompanyId) return;
@@ -44,29 +43,37 @@ export const FinancialReports: React.FC = () => {
         }
     };
 
+    useEffect(() => { 
+        setReportData(null);
+        if (currentCompanyId) fetchReport(); 
+    }, [activeReport, startDate, endDate, partnerType, currentCompanyId]);
+
     const fetchReport = async () => {
         if (!currentCompanyId) return;
         setLoading(true);
         try {
+            let data: any = null;
+            let error: any = null;
+
             if (activeReport === 'bs') {
-                const { data, error } = await supabase.rpc('rpc_get_balance_sheet', { p_date: endDate });
-                if (error) throw error;
-                setReportData(data);
+                const res = await supabase.rpc('rpc_get_balance_sheet', { p_date: endDate });
+                data = res.data; error = res.error;
             } else if (activeReport === 'pl') {
-                const { data, error } = await supabase.rpc('rpc_get_profit_loss', { p_start_date: startDate, p_end_date: endDate });
-                if (error) throw error;
-                setReportData(data);
+                const res = await supabase.rpc('rpc_get_profit_loss', { p_start_date: startDate, p_end_date: endDate });
+                data = res.data; error = res.error;
             } else if (activeReport === 'tb') {
-                const { data, error } = await supabase.rpc('rpc_get_trial_balance', { p_date: endDate });
-                if (error) throw error;
-                setReportData(data);
+                const res = await supabase.rpc('rpc_get_trial_balance', { p_date: endDate });
+                data = res.data; error = res.error;
             } else if (activeReport === 'aging') {
-                const { data, error } = await supabase.rpc('rpc_get_partner_aging', { p_partner_type: partnerType, p_date: endDate });
-                if (error) throw error;
-                setReportData(data);
+                const res = await supabase.rpc('rpc_get_partner_aging', { p_partner_type: partnerType, p_date: endDate });
+                data = res.data; error = res.error;
             }
+
+            if (error) throw error;
+            setReportData(data);
         } catch (err: any) {
-            console.error(err);
+            console.error('Report fetch error:', err);
+            setReportData(null);
         } finally {
             setLoading(false);
         }
@@ -256,7 +263,7 @@ export const FinancialReports: React.FC = () => {
                             </div>
                         )}
 
-                        {activeReport === 'tb' && (
+                        {activeReport === 'tb' && Array.isArray(reportData) && (
                             <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-zinc-800">
                                 <table className="w-full text-sm text-left border-collapse">
                                     <thead className="bg-slate-50 dark:bg-zinc-800 text-[10px] font-black text-slate-400 uppercase tracking-widest">
@@ -293,7 +300,7 @@ export const FinancialReports: React.FC = () => {
                             </div>
                         )}
 
-                        {activeReport === 'aging' && (
+                        {activeReport === 'aging' && Array.isArray(reportData) && (
                             <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-zinc-800">
                                 <table className="w-full text-xs text-left border-collapse">
                                     <thead className="bg-slate-50 dark:bg-zinc-800 font-black uppercase text-[9px] text-slate-400 tracking-widest">
@@ -308,7 +315,7 @@ export const FinancialReports: React.FC = () => {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
-                                        {(reportData as any[]).map((row: any, idx: number) => (
+                                        {reportData.map((row: any, idx: number) => (
                                             <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
                                                 <td className="px-4 py-4 font-bold text-indigo-600 dark:text-indigo-400 underline decoration-indigo-500/30 underline-offset-4 cursor-pointer">{row.partner_name}</td>
                                                 <td className="px-4 py-4 text-right font-mono">{formatCurrency(row.current)}</td>
