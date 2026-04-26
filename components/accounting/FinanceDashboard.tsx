@@ -64,7 +64,10 @@ const fmtFull = (n: number) =>
     'QAR ' + new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(n);
 
 const daysDiff = (dateStr: string) => {
-    const diff = new Date().getTime() - new Date(dateStr).getTime();
+    if (!dateStr) return 0;
+    const target = new Date(dateStr);
+    if (isNaN(target.getTime())) return 0;
+    const diff = new Date().getTime() - target.getTime();
     return Math.floor(diff / (1000 * 60 * 60 * 24));
 };
 

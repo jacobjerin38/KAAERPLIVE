@@ -2,21 +2,27 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { BarChart3, Calendar, TrendingUp } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { useAuth } from '../../../contexts/AuthContext';
 
 export const DailySalesReport: React.FC = () => {
+    const { currentCompanyId } = useAuth();
     const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]);
     const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
     const [data, setData] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => { fetchSales(); }, [startDate, endDate]);
+    useEffect(() => { 
+        if (currentCompanyId) fetchSales(); 
+    }, [startDate, endDate, currentCompanyId]);
 
     const fetchSales = async () => {
+        if (!currentCompanyId) return;
         setLoading(true);
         try {
             const { data: invoices, error } = await supabase
                 .from('accounting_moves')
                 .select('date, amount_total, partner:accounting_partners(name)')
+                .eq('company_id', currentCompanyId)
                 .eq('move_type', 'out_invoice').eq('state', 'Posted')
                 .gte('date', startDate).lte('date', endDate)
                 .order('date', { ascending: true });

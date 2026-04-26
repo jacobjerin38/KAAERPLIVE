@@ -39,6 +39,7 @@ export const BudgetAnalysis: React.FC = () => {
             const { data: actuals } = await supabase
                 .from('accounting_move_lines')
                 .select('account_id, debit, credit')
+                .eq('company_id', currentCompanyId)
                 .gte('date', startDate).lte('date', endDate);
 
             // Fetch budgets (from localStorage for now — DB table can be added later)

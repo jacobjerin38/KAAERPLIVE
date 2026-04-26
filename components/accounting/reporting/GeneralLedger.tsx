@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { BookOpen, Filter, Download } from 'lucide-react';
+import { useAuth } from '../../../contexts/AuthContext';
 
 interface GLEntry {
     date: string; journal_name: string; reference: string;
@@ -9,6 +10,7 @@ interface GLEntry {
 }
 
 export const GeneralLedger: React.FC = () => {
+    const { currentCompanyId } = useAuth();
     const [accounts, setAccounts] = useState<any[]>([]);
     const [selectedAccount, setSelectedAccount] = useState('');
     const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]);
@@ -17,27 +19,38 @@ export const GeneralLedger: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [companyCurrency, setCompanyCurrency] = useState('QAR');
 
-    useEffect(() => { fetchAccounts(); fetchCurrency(); }, []);
-    useEffect(() => { if (selectedAccount) fetchLedger(); }, [selectedAccount, startDate, endDate]);
+    useEffect(() => { 
+        if (currentCompanyId) {
+            fetchAccounts(); 
+            fetchCurrency(); 
+        }
+    }, [currentCompanyId]);
+
+    useEffect(() => { 
+        if (selectedAccount && currentCompanyId) fetchLedger(); 
+    }, [selectedAccount, startDate, endDate, currentCompanyId]);
 
     const fetchAccounts = async () => {
-        const { data } = await supabase.from('chart_of_accounts').select('id, code, name, type').order('code');
+        if (!currentCompanyId) return;
+        const { data } = await supabase.from('chart_of_accounts')
+            .select('id, code, name, type')
+            .eq('company_id', currentCompanyId)
+            .order('code');
         setAccounts(data || []);
     };
 
     const fetchCurrency = async () => {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-            const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', user.id).maybeSingle();
-            if (profile?.company_id) {
-                const { data } = await supabase.from('companies').select('currency').eq('id', profile.company_id).maybeSingle();
-                if (data?.currency) setCompanyCurrency(data.currency);
-            }
+        if (!currentCompanyId) return;
+        try {
+            const { data } = await supabase.from('companies').select('currency').eq('id', currentCompanyId).maybeSingle();
+            if (data?.currency) setCompanyCurrency(data.currency);
+        } catch (e) {
+            console.error('Error fetching currency:', e);
         }
     };
 
     const fetchLedger = async () => {
-        if (!selectedAccount) return;
+        if (!selectedAccount || !currentCompanyId) return;
         setLoading(true);
         try {
             const { data, error } = await supabase
@@ -48,6 +61,7 @@ export const GeneralLedger: React.FC = () => {
                     journal:journals(name),
                     partner:accounting_partners(name)
                 `)
+                .eq('company_id', currentCompanyId)
                 .eq('account_id', selectedAccount)
                 .gte('date', startDate)
                 .lte('date', endDate)

@@ -128,14 +128,14 @@ export const Dashboard: React.FC = () => {
         // Projects & Documents counts
         try {
           if (currentCompanyId) {
-            const [projCount, docCount] = await Promise.all([
+            const [projRes, docRes] = await Promise.all([
               supabase.from('pm_projects').select('*', { count: 'exact', head: true }).eq('company_id', currentCompanyId).neq('status', 'Completed'),
               supabase.from('doc_documents').select('*', { count: 'exact', head: true }).eq('company_id', currentCompanyId)
             ]);
             setStats(prev => ({
               ...prev,
-              projectCount: projCount.status === 'fulfilled' ? ((projCount as any).value?.count ?? 0) : 0,
-              documentCount: docCount.status === 'fulfilled' ? ((docCount as any).value?.count ?? 0) : 0
+              projectCount: projRes.count ?? 0,
+              documentCount: docRes.count ?? 0
             }));
           }
         } catch (e) {
