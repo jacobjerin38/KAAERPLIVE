@@ -1,233 +1,202 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
-import { useAuth } from '../../contexts/AuthContext';
 import {
-    Factory, Plus, CheckCircle, Clock, Box, ListChecks, Settings2, ChevronRight,
-    Play, Cog, Package, AlertTriangle
+  Factory, ListChecks, Box, Cog,
+  TrendingUp, ClipboardList, CheckCircle2, Play,
+  AlertCircle, Loader
 } from 'lucide-react';
-
-// Types
-interface ProductionOrder {
-    id: string;
-    name: string;
-    product_id: string;
-    quantity_to_produce: number;
-    quantity_produced: number;
-    state: 'draft' | 'confirmed' | 'in_progress' | 'done' | 'cancelled';
-    date_planned: string;
-    product_name?: string;
-    bom_name?: string;
-}
-
-interface BOM {
-    id: string;
-    name: string;
-    product_id: string;
-    quantity: number;
-    is_active: boolean;
-    product_name?: string;
-}
-
-interface WorkCenter {
-    id: string;
-    name: string;
-    code: string;
-    capacity_per_day: number;
-    cost_per_hour: number;
-    is_active: boolean;
-}
+import { ProductionOrders } from './ProductionOrders';
+import { BOMManager } from './BOMManager';
+import { WorkCenters } from './WorkCenters';
 
 type TabId = 'orders' | 'bom' | 'workcenters';
 
+interface Summary {
+  total_orders: number;
+  draft: number;
+  confirmed: number;
+  in_progress: number;
+  done: number;
+  cancelled: number;
+  total_boms: number;
+  total_workcenters: number;
+}
+
 const TABS: { id: TabId; label: string; icon: React.ElementType }[] = [
-    { id: 'orders', label: 'Production Orders', icon: ListChecks },
-    { id: 'bom', label: 'Bill of Materials', icon: Box },
-    { id: 'workcenters', label: 'Work Centers', icon: Cog }
+  { id: 'orders',      label: 'Production Orders', icon: ListChecks },
+  { id: 'bom',         label: 'Bill of Materials',  icon: Box },
+  { id: 'workcenters', label: 'Work Centers',        icon: Cog },
 ];
 
-const STATE_COLORS: Record<string, string> = {
-    draft: 'bg-gray-100 text-gray-700',
-    confirmed: 'bg-blue-100 text-blue-700',
-    in_progress: 'bg-amber-100 text-amber-700',
-    done: 'bg-green-100 text-green-700',
-    cancelled: 'bg-red-100 text-red-700',
-};
+const KPI_CARDS = (s: Summary) => [
+  {
+    label: 'Total Orders',
+    value: s.total_orders,
+    icon: ClipboardList,
+    color: 'from-indigo-500 to-indigo-600',
+    bg: 'bg-indigo-50 dark:bg-indigo-900/20',
+    text: 'text-indigo-600 dark:text-indigo-400',
+  },
+  {
+    label: 'In Progress',
+    value: s.in_progress,
+    icon: Play,
+    color: 'from-amber-500 to-amber-600',
+    bg: 'bg-amber-50 dark:bg-amber-900/20',
+    text: 'text-amber-600 dark:text-amber-400',
+  },
+  {
+    label: 'Completed',
+    value: s.done,
+    icon: CheckCircle2,
+    color: 'from-green-500 to-green-600',
+    bg: 'bg-green-50 dark:bg-green-900/20',
+    text: 'text-green-600 dark:text-green-400',
+  },
+  {
+    label: 'Pending Confirm',
+    value: s.draft + s.confirmed,
+    icon: AlertCircle,
+    color: 'from-slate-400 to-slate-500',
+    bg: 'bg-slate-100 dark:bg-slate-700/40',
+    text: 'text-slate-600 dark:text-slate-300',
+  },
+  {
+    label: 'Active BOMs',
+    value: s.total_boms,
+    icon: Box,
+    color: 'from-violet-500 to-violet-600',
+    bg: 'bg-violet-50 dark:bg-violet-900/20',
+    text: 'text-violet-600 dark:text-violet-400',
+  },
+  {
+    label: 'Work Centers',
+    value: s.total_workcenters,
+    icon: Cog,
+    color: 'from-teal-500 to-teal-600',
+    bg: 'bg-teal-50 dark:bg-teal-900/20',
+    text: 'text-teal-600 dark:text-teal-400',
+  },
+];
 
 export const ManufacturingDashboard: React.FC = () => {
-    const { session } = useAuth();
-    const [activeTab, setActiveTab] = useState<TabId>('orders');
-    const [orders, setOrders] = useState<ProductionOrder[]>([]);
-    const [boms, setBoms] = useState<BOM[]>([]);
-    const [workcenters, setWorkcenters] = useState<WorkCenter[]>([]);
-    const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<TabId>('orders');
+  const [summary, setSummary] = useState<Summary | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(true);
 
-    useEffect(() => {
-        fetchData();
-    }, [activeTab]);
+  const fetchSummary = useCallback(async () => {
+    setSummaryLoading(true);
+    const { data, error } = await (supabase as any).rpc('rpc_manufacturing_summary');
+    if (!error && data) setSummary(data);
+    setSummaryLoading(false);
+  }, []);
 
-    const fetchData = async () => {
-        setLoading(true);
-        if (activeTab === 'orders') {
-            const { data } = await (supabase as any).from('mrp_production_orders').select('*, item_master!product_id(name), mrp_bom!bom_id(name)').order('created_at', { ascending: false });
-            setOrders((data || []).map((d: any) => ({ ...d, product_name: d.item_master?.name, bom_name: d.mrp_bom?.name })));
-        } else if (activeTab === 'bom') {
-            const { data } = await (supabase as any).from('mrp_bom').select('*, item_master!product_id(name)').order('created_at', { ascending: false });
-            setBoms((data || []).map((d: any) => ({ ...d, product_name: d.item_master?.name })));
-        } else if (activeTab === 'workcenters') {
-            const { data } = await (supabase as any).from('mrp_work_centers').select('*').order('name');
-            setWorkcenters(data || []);
-        }
-        setLoading(false);
-    };
+  useEffect(() => { fetchSummary(); }, [fetchSummary]);
 
-    const handleProduce = async (orderId: string) => {
-        if (!session?.user?.id) return;
-        const { data, error } = await (supabase as any).rpc('rpc_produce_items', {
-            p_order_id: orderId,
-            p_user_id: session.user.id
-        });
-        if (error) {
-            alert(`Error: ${error.message}`);
-        } else if (data && !(data as any).success) {
-            alert(`Failed: ${(data as any).message}`);
-        } else {
-            fetchData();
-        }
-    };
+  // Refresh summary when tab changes (orders/bom/wc may have been edited)
+  const handleTabChange = (tab: TabId) => {
+    setActiveTab(tab);
+    fetchSummary();
+  };
 
-    // ---- Render Orders ----
-    const renderOrders = () => (
-        <div className="space-y-4">
-            <div className="flex justify-between items-center">
-                <h2 className="text-lg font-bold text-slate-700 dark:text-white">Production Orders</h2>
-                <button className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors">
-                    <Plus className="w-4 h-4" /> New Order
-                </button>
+  const EMPTY_SUMMARY: Summary = {
+    total_orders: 0, draft: 0, confirmed: 0, in_progress: 0,
+    done: 0, cancelled: 0, total_boms: 0, total_workcenters: 0,
+  };
+
+  const s = summary ?? EMPTY_SUMMARY;
+
+  return (
+    <div className="h-full overflow-y-auto">
+      <div className="p-6 space-y-6 max-w-screen-2xl mx-auto">
+
+        {/* ─── Page Header ─── */}
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-3 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 shadow-lg shadow-indigo-500/25">
+              <Factory className="w-6 h-6 text-white" />
             </div>
-            {loading ? <p>Loading...</p> : orders.length === 0 ? (
-                <div className="text-center py-10 text-slate-400"><Factory className="w-12 h-12 mx-auto mb-2 opacity-50" />No production orders found.</div>
-            ) : (
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {orders.map(order => (
-                        <div key={order.id} className="p-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-shadow">
-                            <div className="flex justify-between items-start mb-2">
-                                <h3 className="font-bold text-slate-800 dark:text-white">{order.name}</h3>
-                                <span className={`text-xs font-bold uppercase px-2 py-0.5 rounded-full ${STATE_COLORS[order.state]}`}>{order.state.replace('_', ' ')}</span>
-                            </div>
-                            <p className="text-sm text-slate-500 dark:text-slate-400 truncate"><Package className="w-3 h-3 inline mr-1" />{order.product_name || 'Unknown Product'}</p>
-                            <p className="text-sm text-slate-500 dark:text-slate-400"><Clock className="w-3 h-3 inline mr-1" />Planned: {order.date_planned}</p>
-                            <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700 flex justify-between items-center">
-                                <span className="text-sm font-semibold text-indigo-600 dark:text-indigo-400">{order.quantity_produced} / {order.quantity_to_produce}</span>
-                                {order.state !== 'done' && order.state !== 'cancelled' && (
-                                    <button
-                                        onClick={() => handleProduce(order.id)}
-                                        className="flex items-center gap-1 text-xs font-bold text-green-600 hover:text-green-700"
-                                    >
-                                        <Play className="w-3 h-3" /> Produce
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
+            <div>
+              <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Manufacturing</h1>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                MRP · Production Orders · BOM · Work Centers
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500">
+            <TrendingUp className="w-4 h-4" />
+            <span>Phase 3 Active</span>
+          </div>
         </div>
-    );
 
-    // ---- Render BOMs ----
-    const renderBoms = () => (
-        <div className="space-y-4">
-            <div className="flex justify-between items-center">
-                <h2 className="text-lg font-bold text-slate-700 dark:text-white">Bill of Materials</h2>
-                <button className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors">
-                    <Plus className="w-4 h-4" /> New BOM
-                </button>
-            </div>
-            {loading ? <p>Loading...</p> : boms.length === 0 ? (
-                <div className="text-center py-10 text-slate-400"><Box className="w-12 h-12 mx-auto mb-2 opacity-50" />No BOMs found.</div>
-            ) : (
-                <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-                    <table className="w-full text-left">
-                        <thead className="bg-slate-50 dark:bg-slate-700/50 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">
-                            <tr><th className="p-3">Name</th><th className="p-3">Product</th><th className="p-3 text-right">Quantity</th><th className="p-3 text-center">Active</th></tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                            {boms.map(bom => (
-                                <tr key={bom.id} className="text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/30">
-                                    <td className="p-3 font-medium">{bom.name}</td>
-                                    <td className="p-3">{bom.product_name}</td>
-                                    <td className="p-3 text-right">{bom.quantity}</td>
-                                    <td className="p-3 text-center">{bom.is_active ? <CheckCircle className="w-4 h-4 text-green-500 mx-auto" /> : <AlertTriangle className="w-4 h-4 text-red-500 mx-auto" />}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+        {/* ─── KPI Cards ─── */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
+          {summaryLoading ? (
+            Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-4 animate-pulse">
+                <div className="h-8 w-8 bg-slate-200 dark:bg-slate-700 rounded-xl mb-3" />
+                <div className="h-7 w-12 bg-slate-200 dark:bg-slate-700 rounded mb-1" />
+                <div className="h-3 w-20 bg-slate-100 dark:bg-slate-700 rounded" />
+              </div>
+            ))
+          ) : (
+            KPI_CARDS(s).map(card => {
+              const Icon = card.icon;
+              return (
+                <div
+                  key={card.label}
+                  className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-4 shadow-sm hover:shadow-md transition-shadow"
+                >
+                  <div className={`inline-flex p-2 rounded-xl mb-3 ${card.bg}`}>
+                    <Icon className={`w-4 h-4 ${card.text}`} />
+                  </div>
+                  <p className={`text-2xl font-bold ${card.text}`}>{card.value}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-tight">{card.label}</p>
                 </div>
-            )}
+              );
+            })
+          )}
         </div>
-    );
 
-    // ---- Render Work Centers ----
-    const renderWorkcenters = () => (
-        <div className="space-y-4">
-            <div className="flex justify-between items-center">
-                <h2 className="text-lg font-bold text-slate-700 dark:text-white">Work Centers</h2>
-                <button className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors">
-                    <Plus className="w-4 h-4" /> New Work Center
-                </button>
-            </div>
-            {loading ? <p>Loading...</p> : workcenters.length === 0 ? (
-                <div className="text-center py-10 text-slate-400"><Settings2 className="w-12 h-12 mx-auto mb-2 opacity-50" />No work centers found.</div>
-            ) : (
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {workcenters.map(wc => (
-                        <div key={wc.id} className="p-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
-                            <div className="flex items-center gap-3 mb-2">
-                                <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-400"><Cog className="w-5 h-5" /></div>
-                                <div>
-                                    <h3 className="font-bold text-slate-800 dark:text-white">{wc.name}</h3>
-                                    <p className="text-xs text-slate-400">{wc.code}</p>
-                                </div>
-                            </div>
-                            <div className="text-sm text-slate-500 dark:text-slate-400 space-y-1">
-                                <p>Capacity: <span className="font-semibold text-slate-700 dark:text-slate-200">{wc.capacity_per_day} hrs/day</span></p>
-                                <p>Cost/hr: <span className="font-semibold text-slate-700 dark:text-slate-200">${wc.cost_per_hour.toFixed(2)}</span></p>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
+        {/* ─── Tabs ─── */}
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+          {/* Tab nav */}
+          <div className="border-b border-slate-200 dark:border-slate-700 px-4">
+            <nav className="flex gap-0 -mb-px overflow-x-auto">
+              {TABS.map(tab => {
+                const Icon = tab.icon;
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => handleTabChange(tab.id)}
+                    className={`
+                      flex items-center gap-2 px-4 py-3.5 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap
+                      ${isActive
+                        ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                        : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}
+                    `}
+                  >
+                    <Icon className="w-4 h-4" />
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
+
+          {/* Tab content */}
+          <div className="p-5">
+            {activeTab === 'orders'      && <ProductionOrders />}
+            {activeTab === 'bom'         && <BOMManager />}
+            {activeTab === 'workcenters' && <WorkCenters />}
+          </div>
         </div>
-    );
 
-    return (
-        <div className="p-6 space-y-6">
-            {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2"><Factory className="w-7 h-7 text-indigo-500" /> Manufacturing</h1>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">Manage production orders, BOMs, and work centers.</p>
-                </div>
-            </div>
-
-            {/* Tabs */}
-            <div className="border-b border-slate-200 dark:border-slate-700">
-                <nav className="flex gap-6 -mb-px">
-                    {TABS.map(tab => (
-                        <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`py-3 px-1 flex items-center gap-2 text-sm font-semibold border-b-2 transition-colors ${activeTab === tab.id ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}>
-                            <tab.icon className="w-4 h-4" />
-                            {tab.label}
-                        </button>
-                    ))}
-                </nav>
-            </div>
-
-            {/* Content */}
-            {activeTab === 'orders' && renderOrders()}
-            {activeTab === 'bom' && renderBoms()}
-            {activeTab === 'workcenters' && renderWorkcenters()}
-        </div>
-    );
+      </div>
+    </div>
+  );
 };
 
 export default ManufacturingDashboard;
