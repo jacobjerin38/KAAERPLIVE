@@ -9,6 +9,9 @@ import { Invoices } from './operations/Invoices';
 import { Bills } from './operations/Bills';
 import { Partners } from './masters/Partners';
 import { ChartOfAccounts } from './masters/ChartOfAccounts';
+import { Taxes } from './masters/Taxes';
+import { Journals } from './masters/Journals';
+import { FiscalYears } from './masters/FiscalYears';
 import { Payments } from './operations/Payments';
 import { PaymentReminders } from './operations/PaymentReminders';
 import { BankStatements } from './operations/BankStatements';
@@ -95,9 +98,12 @@ export const AccountingDashboard: React.FC = () => {
 
             {/* Sub-Header for Masters */}
             {activeTab === 'masters' && (
-                <div className="px-6 py-2 border-b border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900/50 flex gap-4">
-                    <button onClick={() => setSubTab('coa')} className={`text-sm font-medium ${subTab === 'coa' ? 'text-blue-600' : 'text-slate-500'}`}>Chart of Accounts</button>
-                    <button onClick={() => setSubTab('all_partners')} className={`text-sm font-medium ${subTab === 'all_partners' ? 'text-blue-600' : 'text-slate-500'}`}>All Partners</button>
+                <div className="px-6 py-2 border-b border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900/50 flex gap-4 overflow-x-auto">
+                    <button onClick={() => setSubTab('coa')} className={`text-sm font-medium whitespace-nowrap ${subTab === 'coa' ? 'text-blue-600' : 'text-slate-500'}`}>Chart of Accounts</button>
+                    <button onClick={() => setSubTab('all_partners')} className={`text-sm font-medium whitespace-nowrap ${subTab === 'all_partners' ? 'text-blue-600' : 'text-slate-500'}`}>All Partners</button>
+                    <button onClick={() => setSubTab('taxes')} className={`text-sm font-medium whitespace-nowrap ${subTab === 'taxes' ? 'text-blue-600' : 'text-slate-500'}`}>Taxes</button>
+                    <button onClick={() => setSubTab('journals')} className={`text-sm font-medium whitespace-nowrap ${subTab === 'journals' ? 'text-blue-600' : 'text-slate-500'}`}>Journals</button>
+                    <button onClick={() => setSubTab('fiscal')} className={`text-sm font-medium whitespace-nowrap ${subTab === 'fiscal' ? 'text-blue-600' : 'text-slate-500'}`}>Fiscal Years</button>
                 </div>
             )}
 
@@ -127,6 +133,9 @@ export const AccountingDashboard: React.FC = () => {
 
                 {activeTab === 'masters' && subTab === 'coa' && <ChartOfAccounts />}
                 {activeTab === 'masters' && subTab === 'all_partners' && <Partners />}
+                {activeTab === 'masters' && subTab === 'taxes' && <Taxes />}
+                {activeTab === 'masters' && subTab === 'journals' && <Journals />}
+                {activeTab === 'masters' && subTab === 'fiscal' && <FiscalYears />}
 
                 {activeTab === 'settings' && <AccountingSettings />}
             </div>
