@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
 import { Calendar, Filter, Download, FileText, TrendingUp, TrendingDown } from 'lucide-react';
+import { QatarVATReport } from './QatarVATReport';
 
 interface ReportData {
     assets: any[];
@@ -17,7 +18,7 @@ interface ReportData {
 
 export const FinancialReports: React.FC = () => {
     const { currentCompanyId } = useAuth();
-    const [activeReport, setActiveReport] = useState<'bs' | 'pl' | 'tb' | 'aging'>('bs');
+    const [activeReport, setActiveReport] = useState<'bs' | 'pl' | 'tb' | 'aging' | 'vat'>('bs');
     const [loading, setLoading] = useState(false);
     const [reportData, setReportData] = useState<any>(null);
     const [companyCurrency, setCompanyCurrency] = useState('QAR');
@@ -50,6 +51,7 @@ export const FinancialReports: React.FC = () => {
 
     const fetchReport = async () => {
         if (!currentCompanyId) return;
+        if (activeReport === 'vat') return;
         setLoading(true);
         try {
             let data: any = null;
@@ -151,7 +153,8 @@ export const FinancialReports: React.FC = () => {
                         { id: 'bs', label: 'Balance Sheet' },
                         { id: 'pl', label: 'Profit & Loss' },
                         { id: 'tb', label: 'Trial Balance' },
-                        { id: 'aging', label: 'Aging Report' }
+                        { id: 'aging', label: 'Aging Report' },
+                        { id: 'vat', label: 'Qatar VAT Report' }
                     ].map(r => (
                         <button
                             key={r.id}
@@ -177,7 +180,7 @@ export const FinancialReports: React.FC = () => {
                             <option value="Vendor">Payables</option>
                         </select>
                     )}
-                    {activeReport === 'pl' && (
+                    {(activeReport === 'pl' || activeReport === 'vat') && (
                         <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="p-2 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs focus:ring-2 ring-indigo-500/20 outline-none" />
                     )}
                     <span className="text-slate-400 hidden md:block">→</span>
@@ -191,6 +194,13 @@ export const FinancialReports: React.FC = () => {
                         <FileText className="w-12 h-12 mb-4 opacity-20" />
                         <p className="font-bold tracking-widest uppercase text-xs">Generating Report...</p>
                     </div>
+                ) : activeReport === 'vat' ? (
+                    <QatarVATReport 
+                        currentCompanyId={currentCompanyId} 
+                        startDate={startDate} 
+                        endDate={endDate} 
+                        formatCurrency={formatCurrency} 
+                    />
                 ) : !reportData ? (
                     <div className="flex flex-col justify-center items-center h-full text-slate-400">
                          <FileText className="w-16 h-16 mb-4 opacity-10" />
