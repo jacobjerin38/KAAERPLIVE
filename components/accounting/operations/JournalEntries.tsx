@@ -186,10 +186,30 @@ export const JournalEntries: React.FC = () => {
     };
 
     const handleDelete = async (id: string) => {
+        const { data: { user: currentAuthUser } } = await supabase.auth.getUser();
         if (!confirm('Are you sure you want to delete this journal entry? This will permanently delete the transaction and all its ledger lines from the database.')) return;
 
         setLoading(true);
         try {
+            // Find the entry details before deleting so we can log it nicely
+            const { data: entry } = await supabase
+                .from('accounting_moves')
+                .select('*')
+                .eq('id', id)
+                .maybeSingle();
+
+            // 1. Log deletion
+            if (currentAuthUser && entry) {
+                await (supabase.from as any)('delete_audit_logs').insert([{
+                    deleted_by_email: currentAuthUser.email || 'unknown',
+                    deleted_by_uid: currentAuthUser.id,
+                    record_type: 'journal_entry',
+                    record_id: id,
+                    record_name: `Date: ${entry.date}, Ref: ${entry.reference || '-'}, Amount: ${entry.amount_total}`
+                }]);
+            }
+
+            // 2. Perform deletion
             const { error } = await supabase
                 .from('accounting_moves')
                 .delete()

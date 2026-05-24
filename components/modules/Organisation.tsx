@@ -2553,19 +2553,43 @@ export const Organisation: React.FC = () => {
         }
     };
 
-    const handleDeleteUser = async (user: any) => {
+    const handleDeleteUser = async (userObj: any) => {
         // Safety: prevent deleting own account
         const { data: { user: currentAuthUser } } = await supabase.auth.getUser();
-        if (currentAuthUser && currentAuthUser.id === user.id) {
+        if (currentAuthUser && currentAuthUser.id === userObj.id) {
             alert('You cannot delete your own account.');
             return;
         }
-        if (!confirm(`Delete user "${user.name}" (${user.email})? This will remove their profile record. The auth account will remain but will be unlinked.`)) return;
-        const { error } = await supabase.from('profiles').delete().eq('id', user.id);
-        if (error) {
-            alert('Error deleting user: ' + error.message);
-        } else {
+        if (!confirm(`Delete user "${userObj.name}" (${userObj.email})? This will remove their profile record and revoke their company access.`)) return;
+
+        // 1. Audit log the deletion
+        try {
+            if (currentAuthUser) {
+                await (supabase.from as any)('delete_audit_logs').insert([{
+                    deleted_by_email: currentAuthUser.email || 'unknown',
+                    deleted_by_uid: currentAuthUser.id,
+                    record_type: 'user',
+                    record_id: userObj.id,
+                    record_name: `${userObj.name} (${userObj.email})`
+                }]);
+            }
+        } catch (logErr) {
+            console.error('Audit logging failed:', logErr);
+        }
+
+        // 2. Revoke company access and delete profile
+        try {
+            // Delete company access
+            await supabase.from('user_company_access').delete().eq('user_id', userObj.id);
+            
+            // Delete profile
+            const { error } = await supabase.from('profiles').delete().eq('id', userObj.id);
+            if (error) throw error;
+
+            alert('User account and access deleted successfully.');
             refreshData();
+        } catch (err: any) {
+            alert('Error deleting user: ' + err.message);
         }
     };
 
