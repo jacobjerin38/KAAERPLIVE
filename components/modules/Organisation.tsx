@@ -2577,13 +2577,9 @@ export const Organisation: React.FC = () => {
             console.error('Audit logging failed:', logErr);
         }
 
-        // 2. Revoke company access and delete profile
+        // 2. Revoke company access and delete profile securely via RPC
         try {
-            // Delete company access
-            await supabase.from('user_company_access').delete().eq('user_id', userObj.id);
-            
-            // Delete profile
-            const { error } = await supabase.from('profiles').delete().eq('id', userObj.id);
+            const { error } = await (supabase.rpc as any)('admin_delete_user', { p_user_id: userObj.id });
             if (error) throw error;
 
             alert('User account and access deleted successfully.');
