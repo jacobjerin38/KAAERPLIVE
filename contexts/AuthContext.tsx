@@ -179,12 +179,39 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         // 3. Force token refresh to ensure claims (if using custom claims later) are updated
         await supabase.auth.refreshSession();
 
-        // No reload needed if our app is reactive, but good for clean slate
+        // 4. Log LOGIN activity
+        if (user) {
+            try {
+                await supabase.from('activity_logs' as any).insert({
+                    company_id: companyId,
+                    user_id: user.id,
+                    user_email: user.email,
+                    action: 'LOGIN',
+                    description: `User session activated: ${user.email}`
+                });
+            } catch (err) {
+                console.error('Failed to log login activity:', err);
+            }
+        }
     };
 
     const signOut = async () => {
+        // Log LOGOUT activity before clearing credentials and session
+        try {
+            if (user && currentCompanyId) {
+                await supabase.from('activity_logs' as any).insert({
+                    company_id: currentCompanyId,
+                    user_id: user.id,
+                    user_email: user.email,
+                    action: 'LOGOUT',
+                    description: `User session ended: ${user.email}`
+                });
+            }
+        } catch (err) {
+            console.error('Failed to log logout activity:', err);
+        }
+
         localStorage.removeItem('app.current_company');
-        setCurrentCompanyId(null);
         setCurrentCompanyId(null);
         setUserRole(null);
         setPermissions([]);

@@ -1,7 +1,8 @@
 import React, { useRef, useState } from 'react';
-import { Moon, Sun, Download, Upload, LogOut, Database, Shield, Monitor, Server, Loader2 } from 'lucide-react';
+import { Moon, Sun, Download, Upload, LogOut, Database, Shield, Monitor, Server, Loader2, Clock } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { DeviceIntegrationHub } from './settings/DeviceIntegrationHub';
+import { ActivityLogs } from './settings/ActivityLogs';
 import { createFullBackup, restoreFullBackup } from '../lib/backupRestore';
 
 interface SettingsProps {
@@ -14,6 +15,7 @@ export const Settings: React.FC<SettingsProps> = ({ isDarkMode, toggleTheme, onL
   const { hasPermission } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showDeviceHub, setShowDeviceHub] = useState(false);
+  const [showActivityLogs, setShowActivityLogs] = useState(false);
 
   const [progressStatus, setProgressStatus] = useState<string | null>(null);
 
@@ -79,6 +81,22 @@ export const Settings: React.FC<SettingsProps> = ({ isDarkMode, toggleTheme, onL
     };
     reader.readAsText(file);
   };
+
+  if (showActivityLogs) {
+    return (
+      <div className="p-8 md:p-12 h-full overflow-y-auto animate-page-enter bg-slate-50 dark:bg-zinc-950">
+        <div className="max-w-7xl mx-auto">
+          <button
+            onClick={() => setShowActivityLogs(false)}
+            className="mb-6 flex items-center gap-2 px-4 py-2 bg-white dark:bg-zinc-900 text-slate-700 dark:text-slate-300 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/80 rounded-xl text-sm font-semibold transition-all duration-200 shadow-sm active:scale-95"
+          >
+            ← Back to Settings
+          </button>
+          <ActivityLogs />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 md:p-12 h-full overflow-y-auto animate-page-enter relative">
@@ -152,6 +170,29 @@ export const Settings: React.FC<SettingsProps> = ({ isDarkMode, toggleTheme, onL
                   <span className="font-bold text-zinc-600 dark:text-zinc-300 group-hover:text-violet-700 dark:group-hover:text-violet-400">Open Device Hub</span>
                 </button>
               )}
+            </section>
+          )}
+
+          {/* Activity Log Section */}
+          {hasPermission('org.settings.manage') && (
+            <section className="bg-white dark:bg-zinc-900/50 backdrop-blur-xl rounded-[2rem] p-8 border border-zinc-200 dark:border-zinc-800 shadow-sm">
+              <div className="flex items-center gap-4 mb-6">
+                <div className="p-3 bg-indigo-50 dark:bg-indigo-900/30 rounded-2xl text-indigo-600 dark:text-indigo-400">
+                  <Clock className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white">Activity Audit Log</h2>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">Track data entry addition, edit, delete, and session logins/logouts.</p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowActivityLogs(true)}
+                className="w-full flex items-center justify-center gap-3 p-6 rounded-2xl border-2 border-dashed border-zinc-200 dark:border-zinc-700 hover:border-indigo-500 dark:hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all group"
+              >
+                <Clock className="w-6 h-6 text-zinc-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400" />
+                <span className="font-bold text-zinc-600 dark:text-zinc-300 group-hover:text-indigo-700 dark:group-hover:text-indigo-400">Open Activity Logs</span>
+              </button>
             </section>
           )}
 
