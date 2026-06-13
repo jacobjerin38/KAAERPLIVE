@@ -301,6 +301,18 @@ The project utilizes Supabase **RPC (Remote Procedure Calls)** for complex logic
 
 ## 10. Changelog & Recent Updates
 
+### v2.3 — Navigation Restructuring & Portal Activation (Jun 13, 2026)
+Restructured monolithic HRMS navigation into four dedicated top-level modules, activated Help Desk, Marketing, and Sales portals, and upgraded logo styling.
+
+| Area | File(s) | Change |
+|:---|:---|:---|
+| **HRMS Restructure** | `App.tsx`, `Dashboard.tsx`, `Sidebar.tsx`, `constants.tsx` | Split monolithic HRMS module into four dedicated modules: Employees, Attendance, Leave, and Payroll with dynamic compatibility redirects |
+| **Sales Portal** | `App.tsx`, `Dashboard.tsx`, `SalesOrders.tsx` | Enabled Sales Orders portal; added a live dashboard card tracking sales volume; mapped `/sales` directly to `ProcurementSalesDashboard` (with sales tab active) |
+| **Help Desk** | `HelpDeskHub.tsx` [NEW], `App.tsx`, `Dashboard.tsx` | Created a dedicated `/help_desk` route and container displaying real-time ticket counts and loading `HelpDeskModule` |
+| **Marketing Portal** | `MarketingHub.tsx` [NEW], `App.tsx`, `Dashboard.tsx` | Mapped `/marketing` to a premium marketing dashboard with active campaigns status, conversion metrics, and leads management |
+| **Premium Logo Badge** | Multiple | Wrapped KAA logo inside a styled white rounded app-icon container with subtle borders and shadows to eliminate raw box while preserving brand colors |
+| **Global Search** | `GlobalSearchModal.tsx` | Added Employees, Attendance, Leave, Payroll, Sales, Help Desk, and Marketing routes to Command Center search |
+
 ### v2.2 — Advanced Accounting Enterprise Upgrades (Apr 21, 2026)
 Enterprise-grade financial controls and reporting capabilities.
 
