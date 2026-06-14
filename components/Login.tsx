@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ArrowRight, Lock, Mail, Building2, User, Loader2 } from 'lucide-react';
 import { KAA_LOGO_URL } from '../constants';
 import { supabase } from '../lib/supabase';
@@ -7,6 +7,8 @@ export const Login: React.FC = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [showSplash, setShowSplash] = useState(false);
+    const [progress, setProgress] = useState(0);
     const [isSignUp, setIsSignUp] = useState(false);
 
     // Sign Up Extra Fields
@@ -82,7 +84,6 @@ export const Login: React.FC = () => {
 
             } else {
                 // Sign In
-                // Transform User ID to Email if needed
                 let loginEmail = email.trim();
                 if (!loginEmail.includes('@')) {
                     loginEmail = `${loginEmail}@kaa.com`;
@@ -93,6 +94,11 @@ export const Login: React.FC = () => {
                     password,
                 });
                 if (error) throw error;
+
+                // Show branded splash for 3 seconds
+                setShowSplash(true);
+                setProgress(0);
+                return; // Let the splash handle the rest
             }
         } catch (err: any) {
             console.error("Auth Error:", err);
@@ -107,6 +113,79 @@ export const Login: React.FC = () => {
             setIsLoading(false);
         }
     };
+
+    // Animate progress bar during splash
+    useEffect(() => {
+        if (!showSplash) return;
+        setProgress(0);
+        const interval = setInterval(() => {
+            setProgress(p => {
+                if (p >= 100) { clearInterval(interval); return 100; }
+                return p + (100 / 30);
+            });
+        }, 100);
+        return () => clearInterval(interval);
+    }, [showSplash]);
+
+    // ERP-style login splash — dark enterprise theme, only shown during sign-in
+    if (showSplash) {
+        return (
+            <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center overflow-hidden"
+                style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%)' }}>
+
+                {/* Subtle grid overlay */}
+                <div className="absolute inset-0 opacity-[0.04]"
+                    style={{ backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)', backgroundSize: '48px 48px' }} />
+
+                {/* Faint radial glow */}
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="w-[600px] h-[600px] rounded-full opacity-20"
+                        style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.6) 0%, transparent 70%)' }} />
+                </div>
+
+                {/* Main content */}
+                <div className="relative z-10 flex flex-col items-center gap-10">
+                    {/* Logo card */}
+                    <div className="flex flex-col items-center gap-5">
+                        <div className="p-6 rounded-[2.5rem] bg-white border border-slate-100 shadow-2xl flex items-center justify-center h-28 w-28 md:h-32 md:w-32 transition-transform duration-500 hover:scale-105 active:scale-95 cursor-pointer">
+                            <img src={KAA_LOGO_URL} alt="KAA Logo" className="h-full w-full object-contain" />
+                        </div>
+                        <div className="flex flex-col items-center gap-1">
+                            <h1 className="text-white text-xl font-black tracking-[0.1em] uppercase">KAA ERP</h1>
+                            <p className="text-indigo-300/70 text-[10px] font-bold tracking-[0.3em] uppercase">Enterprise Resource Planning</p>
+                        </div>
+                    </div>
+
+                    {/* Status row */}
+                    <div className="flex flex-col items-center gap-5">
+                        <div className="flex items-center gap-3">
+                            <span className="relative flex h-2.5 w-2.5">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-indigo-500"></span>
+                            </span>
+                            <span className="text-indigo-200/80 text-xs font-bold tracking-[0.2em] uppercase">Initialising Workspace</span>
+                        </div>
+
+                        {/* Segmented progress bar */}
+                        <div className="w-64 h-[3px] rounded-full bg-white/10 overflow-hidden">
+                            <div
+                                className="h-full rounded-full transition-all duration-100 ease-linear"
+                                style={{
+                                    width: `${Math.min(progress, 100)}%`,
+                                    background: 'linear-gradient(90deg, #6366f1, #818cf8, #a5b4fc)'
+                                }}
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                {/* Footer */}
+                <div className="absolute bottom-8 text-center">
+                    <p className="text-white/20 text-[10px] font-bold tracking-[0.25em] uppercase">Powered by Kaa Technologies</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-zinc-950 p-6 relative overflow-hidden transition-colors duration-500">
@@ -123,8 +202,10 @@ export const Login: React.FC = () => {
                     {/* Header */}
                     <div className="flex flex-col items-center mb-10">
                         <div className="relative mb-6 group">
-                            <div className="absolute inset-0 bg-indigo-500/20 rounded-full blur-xl group-hover:blur-2xl transition-all duration-500 opacity-0 group-hover:opacity-100"></div>
-                            <img src={KAA_LOGO_URL} alt="Kaa Logo" className="h-16 w-auto relative z-10 drop-shadow-sm" />
+                            <div className="absolute inset-0 bg-indigo-500/20 rounded-[2rem] blur-xl group-hover:blur-2xl transition-all duration-500 opacity-0 group-hover:opacity-100"></div>
+                            <div className="relative z-10 bg-white border border-slate-100 shadow-xl rounded-[2rem] p-4 flex items-center justify-center h-20 w-20 md:h-24 md:w-24 transition-transform duration-300 group-hover:scale-105">
+                                <img src={KAA_LOGO_URL} alt="Kaa Logo" className="h-full w-full object-contain" />
+                            </div>
                         </div>
                         <h2 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-br from-slate-900 to-slate-600 dark:from-white dark:to-slate-400 tracking-tight mb-2">
                             {isSignUp ? 'Join the Future' : 'Welcome Back'}
@@ -220,17 +301,6 @@ export const Login: React.FC = () => {
                         </button>
                     </form>
 
-                    <div className="mt-8 text-center pt-6 border-t border-slate-200/50 dark:border-white/5">
-                        <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">
-                            {isSignUp ? "Already a partner?" : "New to Kaa ERP?"}
-                            <button
-                                onClick={() => setIsSignUp(!isSignUp)}
-                                className="text-indigo-600 dark:text-indigo-400 font-bold hover:text-indigo-700 dark:hover:text-indigo-300 ml-1.5 transition-all outline-none focus:underline"
-                            >
-                                {isSignUp ? "Log In Here" : "Create Account"}
-                            </button>
-                        </p>
-                    </div>
                 </div>
 
                 <div className="mt-8 text-center">
@@ -239,104 +309,6 @@ export const Login: React.FC = () => {
                     </p>
                 </div>
             </div>
-
-            {/* Dev Helper: Quick Seed */}
-            {
-                import.meta.env.DEV && (
-                    <button
-                        onClick={async () => {
-                            if (!confirm("This will create specific demo users (admin@kaa.com, staff@kaa.com). Continue?")) return;
-                            setIsLoading(true);
-                            try {
-                                const password = "kaa12345";
-
-                                // 0. Try Login First checking if already good
-                                const { data: loginData, error: loginErr } = await supabase.auth.signInWithPassword({
-                                    email: 'admin@kaa.com',
-                                    password: password
-                                });
-
-                                if (loginData.session) {
-                                    alert("Admin user (admin@kaa.com) already exists and password is correct! You can just log in.");
-                                    setIsLoading(false);
-                                    return;
-                                }
-
-                                // 1. Create Admin
-                                console.log("Creating admin...");
-                                const { data: adminAuth, error: adminErr } = await supabase.auth.signUp({
-                                    email: 'admin@kaa.com',
-                                    password: password,
-                                });
-
-                                if (adminErr) throw adminErr;
-
-                                // CHECK: Failed Session (User exists or Email Verify on)
-                                if (adminAuth.user && !adminAuth.session) {
-                                    alert("⚠️ User 'admin@kaa.com' already exists OR Email Confirmation is ON.\n\nSince you cannot log in, the password might be wrong or the user is unconfirmed.\n\nACTION REQUIRED:\n1. Go to Supabase Dashboard -> Authentication -> Users.\n2. DELETE 'admin@kaa.com' and 'staff@kaa.com'.\n3. Refresh this page and click this button again.");
-                                    setIsLoading(false);
-                                    return;
-                                }
-
-                                if (adminAuth.user) {
-                                    // Create Company
-                                    const { data: company } = await supabase.from('companies').insert([{ name: 'Kaa Tech Demo' }]).select().single();
-                                    if (company) {
-                                        // Admin Profile
-                                        await supabase.from('profiles').upsert({
-                                            id: adminAuth.user.id,
-                                            company_id: company.id,
-                                            full_name: 'Kaa Admin',
-                                            role: 'admin'
-                                        });
-
-                                        // 2. Create Employee User
-                                        await supabase.auth.signOut();
-
-                                        const { data: empAuth } = await supabase.auth.signUp({
-                                            email: 'staff@kaa.com',
-                                            password: password
-                                        });
-
-                                        if (empAuth.user) {
-                                            // Employee Profile
-                                            await supabase.from('profiles').upsert({
-                                                id: empAuth.user.id,
-                                                company_id: company.id, // Same company
-                                                full_name: 'Sarah Staff',
-                                                role: 'employee'
-                                            });
-
-                                            // Employee Record in HRMS table
-                                            await supabase.from('employees').insert({
-                                                company_id: company.id,
-                                                profile_id: empAuth.user.id, // Link to auth user
-                                                name: 'Sarah Staff',
-                                                email: 'staff@kaa.com',
-                                                role: 'Product Designer',
-                                                department: 'Design',
-                                                status: 'Active',
-                                                join_date: new Date().toISOString().split('T')[0],
-                                                salary_amount: 60000
-                                            });
-                                        }
-                                    }
-                                }
-                                await supabase.auth.signOut();
-                                alert(`Demo Users Created!\n\nAdmin: admin@kaa.com\nStaff: staff@kaa.com\nPassword: ${password}`);
-                            } catch (e: any) {
-                                console.error(e);
-                                alert("Seeding failed: " + e.message);
-                            } finally {
-                                setIsLoading(false);
-                            }
-                        }}
-                        className="absolute top-4 right-4 px-3 py-1 bg-white/50 backdrop-blur text-slate-500 text-xs font-bold rounded-lg border border-slate-200/50 hover:bg-white/80 transition-colors z-50"
-                    >
-                        ⚡ Seed Demo Data
-                    </button>
-                )
-            }
         </div >
     );
 };

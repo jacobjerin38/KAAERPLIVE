@@ -103,8 +103,27 @@ export const Bills: React.FC = () => {
         e.stopPropagation();
         if (!confirm('Confirm Post? This will lock the bill.')) return;
 
-        const { data, error } = await supabase.rpc('rpc_post_move', { p_move_id: id });
+        const { data, error } = await supabase.rpc('rpc_post_move', { 
+            p_move_id: id,
+            p_user_id: (await supabase.auth.getUser()).data.user?.id 
+        });
         if (error) alert('Error posting: ' + error.message);
+        else {
+            const res = data as any;
+            if (res?.success) alert('Posted Successfully');
+            else alert('Post Failed: ' + (res?.message || 'Unknown error'));
+            fetchBills();
+        }
+    };
+
+    const handleApprove = async (id: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        const { error } = await supabase
+            .from('accounting_moves')
+            .update({ approval_status: 'approved' })
+            .eq('id', id);
+        
+        if (error) alert('Error approving: ' + error.message);
         else fetchBills();
     };
 
@@ -130,13 +149,14 @@ export const Bills: React.FC = () => {
                             <th className="px-6 py-4">Vendor</th>
                             <th className="px-6 py-4">Date</th>
                             <th className="px-6 py-4">Status</th>
+                            <th className="px-6 py-4">Approval</th>
                             <th className="px-6 py-4 text-right">Total</th>
                             <th className="px-6 py-4 text-center">Actions</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
                         {loading ? (
-                            <tr><td colSpan={6} className="px-6 py-8 text-center text-slate-500">Loading...</td></tr>
+                            <tr><td colSpan={7} className="px-6 py-8 text-center text-slate-500">Loading...</td></tr>
                         ) : bills.map(bill => (
                             <tr key={bill.id} className="hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-colors">
                                 <td className="px-6 py-4 font-bold text-slate-700 dark:text-slate-300">
@@ -153,18 +173,33 @@ export const Bills: React.FC = () => {
                                         {bill.state}
                                     </span>
                                 </td>
+                                <td className="px-6 py-4">
+                                    <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${bill.approval_status === 'approved' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
+                                        {bill.approval_status}
+                                    </span>
+                                </td>
                                 <td className="px-6 py-4 text-right font-bold text-slate-800 dark:text-white">
                                     ${Number(bill.amount_total).toFixed(2)}
                                 </td>
                                 <td className="px-6 py-4 text-center">
-                                    {bill.state === 'Draft' && (
-                                        <button
-                                            onClick={(e) => handlePost(bill.id, e)}
-                                            className="px-3 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors"
-                                        >
-                                            POST
-                                        </button>
-                                    )}
+                                    <div className="flex gap-2 justify-center">
+                                        {bill.state === 'Draft' && bill.approval_status !== 'approved' && (
+                                            <button
+                                                onClick={(e) => handleApprove(bill.id, e)}
+                                                className="px-3 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                                            >
+                                                APPROVE
+                                            </button>
+                                        )}
+                                        {bill.state === 'Draft' && bill.approval_status === 'approved' && (
+                                            <button
+                                                onClick={(e) => handlePost(bill.id, e)}
+                                                className="px-3 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors"
+                                            >
+                                                POST
+                                            </button>
+                                        )}
+                                    </div>
                                 </td>
                             </tr>
                         ))}

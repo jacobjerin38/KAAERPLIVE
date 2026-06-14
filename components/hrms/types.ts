@@ -49,7 +49,7 @@ export type AttendanceStatusType = 'Present' | 'Absent' | 'Half Day' | 'Weekend'
 
 // Master Data Interfaces
 export interface Department {
-  id: string;
+  id: number;
   code: string;
   name: string;
   description?: string;
@@ -58,7 +58,7 @@ export interface Department {
 }
 
 export interface Location {
-  id: string;
+  id: number;
   name: string;
   address?: string;
   status: 'Active' | 'Inactive';
@@ -76,7 +76,7 @@ export interface Role {
 
 // Generic Interface for simple masters (Designation, Grade, etc.)
 export interface BaseMaster {
-  id: string;
+  id: number;
   code: string;
   name: string;
   description?: string;
@@ -94,6 +94,9 @@ export interface Faith extends BaseMaster { }
 export interface MaritalStatus extends BaseMaster { }
 export interface BloodGroup extends BaseMaster { }
 export interface Nationality extends BaseMaster { }
+export interface VisaType extends BaseMaster { }
+export interface EmployeeStatusMaster extends BaseMaster { }
+export interface LeavePlan extends BaseMaster { }
 
 export interface LeaveType extends BaseMaster {
   default_balance?: number;
@@ -168,11 +171,34 @@ export interface Employee {
   account_number?: string;
   ifsc_code?: string;
 
+  // Display name fields
+  designation?: string;
+
   // Personal
   personal_email?: string;
   personal_mobile?: string;
   current_address?: string;
   permanent_address?: string;
+
+  // Extended HR Fields
+  nationality?: string;
+  nationality_id?: number | null;
+  visa_type_id?: number | null;
+  employee_status_id?: number | null;
+  leave_plan_id?: number | null;
+  annual_leave_duration_policy?: string;
+  air_ticket?: string;
+  ticket_frequency?: string;
+  memo?: string;
+  remarks?: string;
+  client_name?: string;
+  passport_number?: string;
+  passport_expiry?: string;
+  visa_number?: string;
+  visa_expiry?: string;
+  visa_sponsor?: string;
+  visa_type?: string;
+  age?: number;
 
   // Extended Profile
   skills?: string[];
@@ -192,6 +218,29 @@ export interface AttendanceRecord {
   status: string; // Mapped name
   attendanceStatusId?: number;
   duration: number;
+  source?: string; // 'punch' | 'manual' | 'missed_punch_approval' | 'bulk_import'
+  edited_by?: string;
+  edited_at?: string;
+  edit_reason?: string;
+  notes?: string;
+}
+
+export interface MissedPunchRequest {
+  id: string;
+  created_at: string;
+  company_id: string;
+  employee_id: string;
+  request_date: string;
+  punch_type: 'check_in' | 'check_out';
+  requested_time: string;
+  reason: string;
+  status: 'Pending' | 'Approved' | 'Rejected';
+  reviewed_by?: string;
+  reviewed_at?: string;
+  review_notes?: string;
+  is_active: boolean;
+  // Joined fields
+  employee?: { name: string; employee_code?: string; profile_photo_url?: string };
 }
 
 export interface LeaveRequest {
@@ -209,6 +258,8 @@ export interface LeaveRequest {
   // Helper for UI
   startDate?: string;
   endDate?: string;
+  level1_status?: string | null;
+  level2_status?: string | null;
 }
 
 export interface Announcement {

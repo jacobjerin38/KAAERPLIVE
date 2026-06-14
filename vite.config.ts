@@ -18,11 +18,6 @@ export default defineConfig(({ mode }) => {
         '@': resolve(__dirname, './'),
       },
     },
-    define: {
-      // Define specific replacement to avoid clobbering the whole process.env object
-      // and ensure the key is injected as a string literal.
-      'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY)
-    },
     server: {
       host: true
     }

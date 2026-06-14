@@ -96,7 +96,7 @@ export const InventoryAdjustments: React.FC = () => {
                 warehouse: Array.isArray(adj.warehouse) ? adj.warehouse[0] : adj.warehouse,
                 reason: Array.isArray(adj.reason) ? adj.reason[0] : adj.reason
             }));
-            setAdjustments(formatted);
+            setAdjustments(formatted as any);
         }
         setLoading(false);
     };
@@ -165,7 +165,7 @@ export const InventoryAdjustments: React.FC = () => {
             setNewAdj({ warehouse_id: '', reason_id: '', notes: '' });
             setStatusMessage({ type: 'success', text: 'Adjustment created successfully!' });
             fetchAdjustments();
-            setSelectedAdj(data);
+            setSelectedAdj(data as any);
         }
     };
 

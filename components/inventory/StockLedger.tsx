@@ -76,7 +76,7 @@ export const StockLedger: React.FC = () => {
                 .limit(200);
 
             if (error) throw error;
-            setTransactions(data || []);
+            setTransactions((data || []) as any);
         } catch (error) {
             console.error('Error fetching stock ledger:', error);
         } finally {

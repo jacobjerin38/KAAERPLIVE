@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { PieChart, RefreshCw, AlertTriangle, CheckCircle } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface ReconciliationData {
     inventory_value: number;
@@ -13,20 +14,26 @@ export const InventoryReconciliation: React.FC = () => {
     const [data, setData] = useState<ReconciliationData | null>(null);
     const [loading, setLoading] = useState(false);
 
+    const { user } = useAuth();
+
     useEffect(() => {
         fetchReconciliation();
-    }, []);
+    }, [user]);
 
     const fetchReconciliation = async () => {
+        if (!user) return;
         setLoading(true);
         try {
+            const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', user.id).single();
+            const currentCompanyId = profile?.company_id;
+            if (!currentCompanyId) return;
             // 1. Get total inventory value from stock ledger (valuation)
             // Note: In a real system, we might have a materialized view or current_stock table.
             // For now, we simulate by summing transactions or using a simplified approach.
             // Let's assume we have a stored procedure or we sum current stock * cost.
 
             // Calling a hypothetical RPC for report
-            const { data: reportData, error } = await supabase.rpc('rpc_get_inventory_valuation');
+            const { data, error } = await (supabase as any).rpc('rpc_get_inventory_valuation', { p_company_id: currentCompanyId });
 
             if (error) {
                 // Fallback / Mock for demo if RPC doesn't exist yet
@@ -38,7 +45,7 @@ export const InventoryReconciliation: React.FC = () => {
                     last_updated: new Date().toISOString()
                 });
             } else {
-                setData(reportData);
+                setData(data as any);
             }
 
         } catch (error) {

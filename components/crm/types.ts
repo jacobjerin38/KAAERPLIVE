@@ -175,6 +175,8 @@ export interface CRMItem {
   buying_price: number;
   is_stockable?: boolean;
   status?: string;
+  weight?: number;
+  expiry_date?: string;
   created_at: string;
 }
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Command, X, ArrowRight, User, Building, FileText, Settings, LogOut, LayoutGrid } from 'lucide-react';
+import { Search, Command, X, ArrowRight, User, Building, FileText, Settings, LogOut, LayoutGrid, Clock, Calendar, Headphones, Megaphone, Briefcase, Award, Plane, DollarSign } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useUI } from '../contexts/UIContext';
 import { supabase } from '../lib/supabase';
@@ -37,7 +37,10 @@ export const GlobalSearchModal: React.FC = () => {
     // Static Navigation Items
     const staticItems: SearchResult[] = [
         { id: 'nav-home', type: 'NAVIGATION', title: 'Dashboard', subtitle: 'Go to Home', icon: <LayoutGrid className="w-4 h-4" />, action: () => navigate('/') },
-        { id: 'nav-hrms', type: 'NAVIGATION', title: 'HRMS', subtitle: 'Human Resources Module', icon: <User className="w-4 h-4" />, action: () => navigate('/hrms') },
+        { id: 'nav-employees', type: 'NAVIGATION', title: 'Employees', subtitle: 'Employee Directory & Assets', icon: <User className="w-4 h-4" />, action: () => navigate('/employees') },
+        { id: 'nav-attendance', type: 'NAVIGATION', title: 'Attendance', subtitle: 'Attendance Logs & Shifts', icon: <Clock className="w-4 h-4" />, action: () => navigate('/attendance') },
+        { id: 'nav-leave', type: 'NAVIGATION', title: 'Leave', subtitle: 'Leave Requests & Calendars', icon: <Calendar className="w-4 h-4" />, action: () => navigate('/leave') },
+        { id: 'nav-payroll', type: 'NAVIGATION', title: 'Payroll', subtitle: 'Salary Runs & Payslips', icon: <FileText className="w-4 h-4" />, action: () => navigate('/payroll') },
         { id: 'nav-crm', type: 'NAVIGATION', title: 'CRM', subtitle: 'Customer Relationship Module', icon: <User className="w-4 h-4" />, action: () => navigate('/crm') },
         { id: 'nav-org', type: 'NAVIGATION', title: 'Organisation', subtitle: 'Company Settings & Structure', icon: <Building className="w-4 h-4" />, action: () => navigate('/organisation') },
         { id: 'nav-essp', type: 'NAVIGATION', title: 'ESSP', subtitle: 'Employee Self Service', icon: <User className="w-4 h-4" />, action: () => navigate('/essp') },
@@ -45,6 +48,13 @@ export const GlobalSearchModal: React.FC = () => {
         { id: 'nav-inventory', type: 'NAVIGATION', title: 'Inventory', subtitle: 'Stock, Logistics & Warehouse', icon: <FileText className="w-4 h-4" />, action: () => navigate('/inventory') },
         { id: 'nav-manufacturing', type: 'NAVIGATION', title: 'Manufacturing', subtitle: 'Work Orders, BOM & PLM', icon: <FileText className="w-4 h-4" />, action: () => navigate('/manufacturing') },
         { id: 'nav-procurement', type: 'NAVIGATION', title: 'Procurement', subtitle: 'Purchase Orders & Vendors', icon: <FileText className="w-4 h-4" />, action: () => navigate('/procurement') },
+        { id: 'nav-sales', type: 'NAVIGATION', title: 'Sales', subtitle: 'Sales Orders & Customers', icon: <FileText className="w-4 h-4" />, action: () => navigate('/sales') },
+        { id: 'nav-help-desk', type: 'NAVIGATION', title: 'Help Desk', subtitle: 'Tickets & Customer Support', icon: <Headphones className="w-4 h-4" />, action: () => navigate('/help_desk') },
+        { id: 'nav-marketing', type: 'NAVIGATION', title: 'Marketing', subtitle: 'Campaigns & Lead Generation', icon: <Megaphone className="w-4 h-4" />, action: () => navigate('/marketing') },
+        { id: 'nav-recruitment', type: 'NAVIGATION', title: 'Recruitment', subtitle: 'ATS, Hiring & Job Openings', icon: <Briefcase className="w-4 h-4" />, action: () => navigate('/recruitment') },
+        { id: 'nav-performance', type: 'NAVIGATION', title: 'Performance', subtitle: 'Goals, OKRs & Reviews', icon: <Award className="w-4 h-4" />, action: () => navigate('/performance') },
+        { id: 'nav-loans', type: 'NAVIGATION', title: 'Loans & Benefits', subtitle: 'Advances, Claims & Insurance', icon: <DollarSign className="w-4 h-4" />, action: () => navigate('/loans') },
+        { id: 'nav-travel', type: 'NAVIGATION', title: 'Travel & Expenses', subtitle: 'Trips, Hotel & Flight Bookings', icon: <Plane className="w-4 h-4" />, action: () => navigate('/travel') },
         { id: 'nav-settings', type: 'NAVIGATION', title: 'Settings', subtitle: 'App Preferences', icon: <Settings className="w-4 h-4" />, action: () => navigate('/settings') },
         { id: 'act-notifs', type: 'ACTION', title: 'Notifications', subtitle: 'View latest alerts', icon: <Settings className="w-4 h-4" />, action: () => { toggleSearch(false); toggleNotifications(true); } },
     ];
@@ -87,7 +97,7 @@ export const GlobalSearchModal: React.FC = () => {
                                 title: name,
                                 subtitle: `${emp.designation || 'Employee'} • ${emp.department || ''}`.trim(),
                                 icon: <User className="w-4 h-4" />,
-                                action: () => { navigate('/hrms'); }
+                                action: () => { navigate('/employees'); }
                             });
                         });
                     }
@@ -95,7 +105,7 @@ export const GlobalSearchModal: React.FC = () => {
 
                 // Search CRM Leads
                 if (q.length > 1) {
-                    const { data: leads } = await supabase
+                    const { data: leads } = await (supabase as any)
                         .from('crm_leads')
                         .select('id, first_name, last_name, email, company, source')
                         .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%,email.ilike.%${query}%,company.ilike.%${query}%`)
@@ -118,7 +128,7 @@ export const GlobalSearchModal: React.FC = () => {
 
                 // Search CRM Customers
                 if (q.length > 1) {
-                    const { data: customers } = await supabase
+                    const { data: customers } = await (supabase as any)
                         .from('crm_customers')
                         .select('id, name, email, company, industry')
                         .or(`name.ilike.%${query}%,email.ilike.%${query}%,company.ilike.%${query}%`)
@@ -140,7 +150,7 @@ export const GlobalSearchModal: React.FC = () => {
 
                 // Search CRM Opportunities
                 if (q.length > 1) {
-                    const { data: opps } = await supabase
+                    const { data: opps } = await (supabase as any)
                         .from('crm_opportunities')
                         .select('id, title, stage, value')
                         .ilike('title', `%${query}%`)
@@ -152,7 +162,7 @@ export const GlobalSearchModal: React.FC = () => {
                                 id: `opp-${opp.id}`,
                                 type: 'DATA',
                                 title: opp.title || 'Untitled Opportunity',
-                                subtitle: `Opportunity • ${opp.stage || ''} • ${opp.value ? '₹' + Number(opp.value).toLocaleString('en-IN') : ''}`.trim(),
+                                subtitle: `Opportunity • ${opp.stage || ''} • ${opp.value ? 'QAR ' + Number(opp.value).toLocaleString() : ''}`.trim(),
                                 icon: <FileText className="w-4 h-4" />,
                                 action: () => { navigate('/crm'); }
                             });

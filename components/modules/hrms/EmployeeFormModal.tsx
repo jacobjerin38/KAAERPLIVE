@@ -7,7 +7,7 @@ import { supabase } from '../../../lib/supabase';
 import { EmployeeDocuments } from './EmployeeDocuments';
 import {
     Employee, Department, Location, Designation, Grade, EmploymentType,
-    PayGroup, Faith, MaritalStatus, BloodGroup, Role, LeaveType,
+    PayGroup, Faith, MaritalStatus, BloodGroup, Nationality, VisaType, EmployeeStatusMaster, LeavePlan, Role, LeaveType,
     ShiftTiming, WeekoffRule, SalaryComponent
 } from '../../hrms/types';
 import { Modal } from '../../ui/Modal';
@@ -25,6 +25,10 @@ interface EmployeeFormModalProps {
     faiths: Faith[];
     maritalStatuses: MaritalStatus[];
     bloodGroups: BloodGroup[];
+    nationalities: Nationality[];
+    visaTypes: VisaType[];
+    employeeStatuses: EmployeeStatusMaster[];
+    leavePlans: LeavePlan[];
     roles: Role[];
     leaveTypes: LeaveType[];
     shiftTimings: ShiftTiming[];
@@ -36,7 +40,7 @@ interface EmployeeFormModalProps {
 export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
     initialData, onClose, refreshData,
     departments, locations, designations, grades, employmentTypes,
-    payGroups, faiths, maritalStatuses, bloodGroups, roles,
+    payGroups, faiths, maritalStatuses, bloodGroups, nationalities, visaTypes, employeeStatuses, leavePlans, roles,
     shiftTimings, weekoffRules, salaryComponents, employees
 }) => {
     // Split name for UI if needed, but keeping single name field in DB for simplicity unless requested split
@@ -62,7 +66,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
         location_id: initialData?.location_id?.toString() || '',
         employment_type_id: initialData?.employment_type_id?.toString() || '',
         join_date: initialData?.join_date || initialData?.joinDate || '',
-        reporting_manager_id: initialData?.reporting_manager_id?.toString() || '',
+        reporting_manager_id: (initialData as any)?.manager_id?.toString() || '',
         shift_timing_id: initialData?.shift_timing_id?.toString() || '',
         weekoff_rule_id: initialData?.weekoff_rule_id?.toString() || '',
         pay_group_id: initialData?.pay_group_id?.toString() || '',
@@ -71,11 +75,28 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
         account_number: initialData?.account_number || '',
         ifsc_code: initialData?.ifsc_code || '',
         role_id: initialData?.role_id?.toString() || '',
-        status: initialData?.status || 'Active',
-        profile_photo_url: initialData?.profile_photo_url || ''
+        status: (initialData as any)?.status || 'Active',
+        employee_status_id: (initialData as any)?.employee_status_id?.toString() || '',
+        profile_photo_url: initialData?.profile_photo_url || '',
+        // Immigration & Travel Documents
+        passport_number: (initialData as any)?.passport_number || '',
+        passport_expiry: (initialData as any)?.passport_expiry || '',
+        visa_number: (initialData as any)?.visa_number || '',
+        visa_expiry: (initialData as any)?.visa_expiry || '',
+        visa_sponsor: (initialData as any)?.visa_sponsor || '',
+        visa_type: (initialData as any)?.visa_type || '',
+        visa_type_id: (initialData as any)?.visa_type_id?.toString() || '',
+        client_name: (initialData as any)?.client_name || '',
+        // Additional fields
+        nationality_id: (initialData as any)?.nationality_id?.toString() || '',
+        annual_leave_duration_policy: (initialData as any)?.annual_leave_duration_policy || '',
+        leave_plan_id: (initialData as any)?.leave_plan_id?.toString() || '',
+        air_ticket: (initialData as any)?.air_ticket || '',
+        memo: (initialData as any)?.memo || '',
+        remarks: (initialData as any)?.remarks || '',
     });
 
-    const [activeSection, setActiveSection] = useState<'OVERVIEW' | 'PROFESSIONAL' | 'CONTACT' | 'FINANCIAL' | 'DOCUMENTS' | 'LEAVE'>('OVERVIEW');
+    const [activeSection, setActiveSection] = useState<'OVERVIEW' | 'PROFESSIONAL' | 'CONTACT' | 'IMMIGRATION' | 'FINANCIAL' | 'DOCUMENTS' | 'LEAVE'>('OVERVIEW');
     const [submitError, setSubmitError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -102,7 +123,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
 
     const fetchEmpSalaryComponents = async () => {
         if (!initialData?.id) return;
-        const { data } = await supabase
+        const { data } = await (supabase as any)
             .from('employee_salary_components')
             .select(`
                 *,
@@ -126,19 +147,19 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
             is_active: true
         };
 
-        const { error } = await supabase.from('employee_salary_components').insert([payload]);
+        const { error } = await (supabase as any).from('employee_salary_components').insert([payload]);
         if (error) alert(error.message);
         else fetchEmpSalaryComponents();
     };
 
     const handleRemoveComponent = async (id: string) => {
-        const { error } = await supabase.from('employee_salary_components').delete().eq('id', id);
+        const { error } = await (supabase as any).from('employee_salary_components').delete().eq('id', id);
         if (error) alert(error.message);
         else fetchEmpSalaryComponents();
     };
 
     const handleUpdateComponentAmount = async (id: string, amount: number) => {
-        const { error } = await supabase.from('employee_salary_components').update({ amount }).eq('id', id);
+        const { error } = await (supabase as any).from('employee_salary_components').update({ amount }).eq('id', id);
         if (error) alert(error.message);
         else {
             // update local state optimistically or refetch
@@ -263,25 +284,25 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                 // ... map all other fields - UUID fields use string directly ...
                 date_of_birth: formData.date_of_birth || null,
                 gender: formData.gender || null,
-                faith_id: formData.faith_id || null,
-                blood_group_id: formData.blood_group_id || null,
-                marital_status_id: formData.marital_status_id || null,
+                faith_id: formData.faith_id ? parseInt(formData.faith_id) : null,
+                blood_group_id: formData.blood_group_id ? parseInt(formData.blood_group_id) : null,
+                marital_status_id: formData.marital_status_id ? parseInt(formData.marital_status_id) : null,
                 personal_mobile: formData.personal_mobile || null,
                 office_mobile: formData.office_mobile || null,
                 personal_email: formData.personal_email || null,
                 office_email: formData.office_email || null,
                 current_address: formData.current_address || null,
                 permanent_address: formData.permanent_address || null,
-                department_id: formData.department_id || null,
-                designation_id: formData.designation_id || null,
-                grade_id: formData.grade_id || null,
-                location_id: formData.location_id || null,
-                employment_type_id: formData.employment_type_id || null,
+                department_id: formData.department_id ? parseInt(formData.department_id) : null,
+                designation_id: formData.designation_id ? parseInt(formData.designation_id) : null,
+                grade_id: formData.grade_id ? parseInt(formData.grade_id) : null,
+                location_id: formData.location_id ? parseInt(formData.location_id) : null,
+                employment_type_id: formData.employment_type_id ? parseInt(formData.employment_type_id) : null,
                 join_date: formData.join_date || null,
-                reporting_manager_id: formData.reporting_manager_id || null,
-                shift_timing_id: formData.shift_timing_id || null,
-                weekoff_rule_id: formData.weekoff_rule_id || null,
-                pay_group_id: formData.pay_group_id || null,
+                manager_id: formData.reporting_manager_id || null, // Keeping as string if UUID, but check if manager_id is also numeric
+                shift_timing_id: formData.shift_timing_id ? parseInt(formData.shift_timing_id) : null,
+                weekoff_rule_id: formData.weekoff_rule_id ? parseInt(formData.weekoff_rule_id) : null,
+                pay_group_id: formData.pay_group_id ? parseInt(formData.pay_group_id) : null,
                 salary_amount: formData.salary_amount ? parseFloat(formData.salary_amount) : null,
                 bank_name: formData.bank_name || null,
                 account_number: formData.account_number || null,
@@ -292,8 +313,22 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                 email: formData.office_email || formData.personal_email || null,
                 phone: formData.office_mobile || formData.personal_mobile || null,
                 role: roles.find(r => r.id === formData.role_id)?.name || null,
-                department: departments.find(d => d.id === formData.department_id)?.name || null,
-                location: locations.find(l => l.id === formData.location_id)?.name || null
+                department: departments.find(d => d.id === (formData.department_id ? parseInt(formData.department_id) : null))?.name || null,
+                // Immigration fields
+                passport_number: formData.passport_number || null,
+                passport_expiry: formData.passport_expiry || null,
+                visa_number: formData.visa_number || null,
+                visa_expiry: formData.visa_expiry || null,
+                visa_sponsor: formData.visa_sponsor || null,
+                visa_type: formData.visa_type || null,
+                visa_type_id: formData.visa_type_id ? parseInt(formData.visa_type_id) : null,
+                client_name: formData.client_name || null,
+                nationality_id: formData.nationality_id ? parseInt(formData.nationality_id) : null,
+                leave_plan_id: formData.leave_plan_id ? parseInt(formData.leave_plan_id) : null,
+                annual_leave_duration_policy: formData.annual_leave_duration_policy || null,
+                air_ticket: formData.air_ticket || null,
+                memo: formData.memo || null,
+                remarks: formData.remarks || null,
             };
 
             let employeeId = initialData?.id;
@@ -342,6 +377,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
         { id: 'OVERVIEW', label: 'Overview', icon: User },
         { id: 'PROFESSIONAL', label: 'Professional', icon: Briefcase },
         { id: 'CONTACT', label: 'Personal & Contact', icon: Phone },
+        { id: 'IMMIGRATION', label: 'Immigration', icon: Calendar },
         { id: 'FINANCIAL', label: 'Financial & Statutory', icon: DollarSign },
         { id: 'DOCUMENTS', label: 'Documents', icon: FileText },
         { id: 'LEAVE', label: 'Leave', icon: Leaf }
@@ -474,15 +510,13 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                                                 <div className="space-y-2">
                                                     <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Status</label>
                                                     <select
-                                                        name="status"
-                                                        value={formData.status}
+                                                        name="employee_status_id"
+                                                        value={formData.employee_status_id}
                                                         onChange={handleChange}
                                                         className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-slate-800 dark:text-white"
                                                     >
-                                                        <option>Active</option>
-                                                        <option>Probation</option>
-                                                        <option>Notice Period</option>
-                                                        <option>Inactive</option>
+                                                        <option value="">Select Status</option>
+                                                        {employeeStatuses.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                                     </select>
                                                 </div>
                                                 <div className="space-y-2">
@@ -493,6 +527,26 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                                                         value={formData.join_date}
                                                         onChange={handleChange}
                                                         className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-slate-800 dark:text-white"
+                                                    />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Date of Birth <span className="text-rose-500">*</span></label>
+                                                    <input
+                                                        type="date"
+                                                        name="date_of_birth"
+                                                        value={formData.date_of_birth}
+                                                        onChange={handleChange}
+                                                        className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-slate-800 dark:text-white"
+                                                    />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Age</label>
+                                                    <input
+                                                        type="text"
+                                                        readOnly
+                                                        value={formData.date_of_birth ? Math.floor((Date.now() - new Date(formData.date_of_birth).getTime()) / (365.25 * 24 * 60 * 60 * 1000)) + " yrs" : ''}
+                                                        className="w-full bg-slate-100 dark:bg-zinc-800/50 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm font-bold text-slate-500 outline-none cursor-not-allowed"
+                                                        placeholder="Auto"
                                                     />
                                                 </div>
                                             </div>
@@ -597,6 +651,139 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                                         <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Current Address</label>
                                         <textarea name="current_address" value={formData.current_address} onChange={handleChange} className="w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm outline-none min-h-[100px] text-slate-900 dark:text-white" />
                                     </div>
+
+                                    {/* Demographics & Origin */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6 pt-6 border-t border-slate-100 dark:border-zinc-800">
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Date of Birth</label>
+                                            <input type="date" name="date_of_birth" value={formData.date_of_birth} onChange={handleChange} className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm outline-none text-slate-900 dark:text-white" />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Gender</label>
+                                            <select name="gender" value={formData.gender} onChange={handleChange} className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm outline-none text-slate-900 dark:text-white">
+                                                <option value="">Select Gender</option>
+                                                <option value="Male">Male</option>
+                                                <option value="Female">Female</option>
+                                                <option value="Other">Other</option>
+                                            </select>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Civil Status</label>
+                                            <select name="marital_status_id" value={formData.marital_status_id} onChange={handleChange} className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm outline-none text-slate-900 dark:text-white">
+                                                <option value="">Select Status</option>
+                                                {maritalStatuses.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Nationality</label>
+                                            <select name="nationality_id" value={formData.nationality_id} onChange={handleChange} className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm outline-none text-slate-900 dark:text-white">
+                                                <option value="">Select Nationality</option>
+                                                {nationalities.map(n => <option key={n.id} value={n.id}>{n.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Blood Group</label>
+                                            <select name="blood_group_id" value={formData.blood_group_id} onChange={handleChange} className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm outline-none text-slate-900 dark:text-white">
+                                                <option value="">Select Blood Group</option>
+                                                {bloodGroups.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Faith / Religion</label>
+                                            <select name="faith_id" value={formData.faith_id} onChange={handleChange} className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm outline-none text-slate-900 dark:text-white">
+                                                <option value="">Select Faith</option>
+                                                {faiths.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    {/* Additional Info */}
+                                    <div className="mt-4 bg-white dark:bg-[#18181b] border border-slate-200 dark:border-zinc-800 rounded-2xl p-6">
+                                        <h4 className="font-bold text-slate-800 dark:text-white mb-4 text-sm">Additional Information</h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Leave Plan</label>
+                                                <select name="leave_plan_id" value={formData.leave_plan_id} onChange={handleChange} className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm outline-none text-slate-900 dark:text-white">
+                                                    <option value="">Select Leave Plan</option>
+                                                    {leavePlans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                                </select>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Air Ticket</label>
+                                                <select name="air_ticket" value={formData.air_ticket} onChange={handleChange} className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm outline-none text-slate-900 dark:text-white">
+                                                    <option value="">Select Option</option>
+                                                    <option value="Yearly">Yearly</option>
+                                                    <option value="Every Two Years">Every Two Years</option>
+                                                </select>
+                                            </div>
+                                            <div className="space-y-2 md:col-span-2">
+                                                <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Memo</label>
+                                                <input name="memo" value={formData.memo} onChange={handleChange} placeholder="Internal memo..." className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm outline-none text-slate-900 dark:text-white" />
+                                            </div>
+                                        </div>
+                                        <div className="mt-4 space-y-2">
+                                            <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Remarks</label>
+                                            <textarea name="remarks" value={formData.remarks} onChange={handleChange} placeholder="Additional notes..." className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm outline-none min-h-[80px] text-slate-900 dark:text-white" />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeSection === 'IMMIGRATION' && (
+                                <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                                    {/* Client Assignment */}
+                                    <div className="bg-white dark:bg-[#18181b] border border-slate-200 dark:border-zinc-800 rounded-2xl p-6">
+                                        <h4 className="font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
+                                            <Briefcase className="w-4 h-4 text-indigo-500" /> Client Assignment
+                                        </h4>
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Client / Project Name</label>
+                                            <input name="client_name" value={formData.client_name} onChange={handleChange} placeholder="e.g. PEC, IMPERIAL..." className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none text-slate-800 dark:text-white" />
+                                        </div>
+                                    </div>
+                                    {/* Passport */}
+                                    <div className="bg-white dark:bg-[#18181b] border border-slate-200 dark:border-zinc-800 rounded-2xl p-6">
+                                        <h4 className="font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
+                                            <Hash className="w-4 h-4 text-blue-500" /> Passport Details
+                                        </h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Passport Number</label>
+                                                <input name="passport_number" value={formData.passport_number} onChange={handleChange} placeholder="e.g. N1234567" className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-slate-800 dark:text-white" />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Passport Expiry Date</label>
+                                                <input type="date" name="passport_expiry" value={formData.passport_expiry} onChange={handleChange} className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-slate-800 dark:text-white" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {/* Visa / OD */}
+                                    <div className="bg-white dark:bg-[#18181b] border border-slate-200 dark:border-zinc-800 rounded-2xl p-6">
+                                        <h4 className="font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
+                                            <Mail className="w-4 h-4 text-emerald-500" /> Visa / OD Details
+                                        </h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Visa / OD Number</label>
+                                                <input name="visa_number" value={formData.visa_number} onChange={handleChange} placeholder="e.g. 2925243890" className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none text-slate-800 dark:text-white" />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Visa / OD Valid Until</label>
+                                                <input type="date" name="visa_expiry" value={formData.visa_expiry} onChange={handleChange} className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none text-slate-800 dark:text-white" />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Visa Sponsor</label>
+                                                <input name="visa_sponsor" value={formData.visa_sponsor} onChange={handleChange} placeholder="e.g. PEC" className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none text-slate-800 dark:text-white" />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Visa Type</label>
+                                                <select name="visa_type_id" value={formData.visa_type_id} onChange={handleChange} className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none text-slate-800 dark:text-white">
+                                                    <option value="">Select Visa Type</option>
+                                                    {visaTypes.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             )}
 
@@ -633,7 +820,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                                                     <button
                                                         key={sc.id}
                                                         type="button"
-                                                        onClick={() => handleAddComponent(sc.id)}
+                                                        onClick={() => handleAddComponent(sc.id.toString())}
                                                         className="px-3 py-1 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-full text-xs font-bold text-slate-600 dark:text-slate-300 hover:border-blue-500 hover:text-blue-500 whitespace-nowrap transition-colors"
                                                     >
                                                         + {sc.name}

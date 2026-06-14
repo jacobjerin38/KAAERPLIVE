@@ -13,7 +13,8 @@ import {
     EmploymentType, PayGroup, Faith, MaritalStatus, BloodGroup,
     Nationality, LeaveType, SalaryComponent, ShiftTiming,
     AttendanceStatusMaster, WeekoffRule, AttendanceRecord,
-    LeaveRequest, Asset, Announcement, HRMSViewMode
+    LeaveRequest, Asset, Announcement, HRMSViewMode,
+    VisaType, EmployeeStatusMaster, LeavePlan
 } from '../hrms/types';
 import { EmployeeFormModal } from './hrms/EmployeeFormModal';
 import { EmployeeDetailModal } from './hrms/EmployeeDetailModal';
@@ -83,6 +84,9 @@ export const HRMS: React.FC = () => {
     const [roles, setRoles] = useState<Role[]>([]);
     const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
     const [salaryComponents, setSalaryComponents] = useState<SalaryComponent[]>([]);
+    const [visaTypes, setVisaTypes] = useState<VisaType[]>([]);
+    const [employeeStatuses, setEmployeeStatuses] = useState<EmployeeStatusMaster[]>([]);
+    const [leavePlans, setLeavePlans] = useState<LeavePlan[]>([]);
     const [shiftTimings, setShiftTimings] = useState<ShiftTiming[]>([]);
     const [attendanceStatuses, setAttendanceStatuses] = useState<AttendanceStatusMaster[]>([]);
     const [weekoffRules, setWeekoffRules] = useState<WeekoffRule[]>([]);
@@ -111,7 +115,12 @@ export const HRMS: React.FC = () => {
         if (!user) return;
 
         // Fetch Employees
-        const { data: empData } = await supabase.from('employees').select('*');
+        const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', user.id).maybeSingle();
+        if (!profile) return;
+
+        const { data: empData } = await supabase.from('employees')
+            .select('*')
+            .eq('company_id', profile.company_id);
         if (empData) setEmployees(empData.map((e: any) => ({
             ...e,
             joinDate: e.join_date,
@@ -120,11 +129,22 @@ export const HRMS: React.FC = () => {
         })));
 
         // Admin Dashboard Data
-        const { count: empCount } = await supabase.from('employees').select('id', { count: 'exact' });
+        const { count: empCount } = await supabase.from('employees')
+            .select('id', { count: 'exact' })
+            .eq('company_id', profile.company_id);
         const today = new Date().toISOString().split('T')[0];
-        const { count: presentCount } = await supabase.from('attendance').select('id', { count: 'exact' }).like('status', 'Present').gte('date', today).lte('date', today);
-        const { count: deptCount } = await supabase.from('departments').select('id', { count: 'exact' });
-        const { data: salaryData } = await supabase.from('employees').select('salary_amount');
+        const { count: presentCount } = await supabase.from('attendance')
+            .select('id', { count: 'exact' })
+            .like('status', 'Present')
+            .gte('date', today)
+            .lte('date', today)
+            .eq('company_id', profile.company_id);
+        const { count: deptCount } = await supabase.from('departments')
+            .select('id', { count: 'exact' })
+            .eq('company_id', profile.company_id);
+        const { data: salaryData } = await supabase.from('employees')
+            .select('salary_amount')
+            .eq('company_id', profile.company_id);
         const totalLiability = salaryData?.reduce((acc, curr) => acc + (curr.salary_amount || 0), 0) || 0;
 
         setStats({
@@ -165,59 +185,78 @@ export const HRMS: React.FC = () => {
             }
         }
         // Fetch Leaves
-        const { data: leaveData } = await supabase.from('leaves').select('*').order('created_at', { ascending: false });
-        if (leaveData) setLeaves(leaveData);
+        const { data: leaveData } = await supabase.from('leaves')
+            .select('*')
+            .eq('company_id', profile.company_id)
+            .order('created_at', { ascending: false });
+        if (leaveData) setLeaves(leaveData as any);
 
         setLoading(false);
     };
 
     const fetchMasterData = async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', user.id).maybeSingle();
+        if (!profile) return;
+
         // Batch 1: Core Org Data
         const [dept, loc, desig, grade, empType, payGrp] = await Promise.all([
-            supabase.from('departments').select('*'),
-            supabase.from('locations').select('*'),
-            supabase.from('org_designations').select('*'),
-            supabase.from('org_grades').select('*'),
-            supabase.from('org_employment_types').select('*'),
-            supabase.from('org_pay_groups').select('*')
+            supabase.from('departments').select('*').eq('company_id', profile.company_id),
+            supabase.from('locations').select('*').eq('company_id', profile.company_id),
+            supabase.from('org_designations').select('*').eq('company_id', profile.company_id),
+            supabase.from('org_grades').select('*').eq('company_id', profile.company_id),
+            supabase.from('org_employment_types').select('*').eq('company_id', profile.company_id),
+            supabase.from('org_pay_groups').select('*').eq('company_id', profile.company_id)
         ]);
 
-        if (dept.data) setDepartments(dept.data);
-        if (loc.data) setLocations(loc.data);
-        if (desig.data) setDesignations(desig.data);
-        if (grade.data) setGrades(grade.data);
-        if (empType.data) setEmploymentTypes(empType.data);
-        if (payGrp.data) setPayGroups(payGrp.data);
+        if (dept.data) setDepartments(dept.data as any);
+        if (loc.data) setLocations(loc.data as any);
+        if (desig.data) setDesignations(desig.data as any);
+        if (grade.data) setGrades(grade.data as any);
+        if (empType.data) setEmploymentTypes(empType.data as any);
+        if (payGrp.data) setPayGroups(payGrp.data as any);
 
         // Batch 2: Demographics & Roles
         const [faith, marital, blood, nation, role] = await Promise.all([
-            supabase.from('org_faiths').select('*'),
-            supabase.from('org_marital_status').select('*'),
-            supabase.from('org_blood_groups').select('*'),
-            supabase.from('org_nationalities').select('*'),
-            supabase.from('roles').select('*')
+            supabase.from('org_faiths').select('*').eq('company_id', profile.company_id),
+            supabase.from('org_marital_status').select('*').eq('company_id', profile.company_id),
+            supabase.from('org_blood_groups').select('*').eq('company_id', profile.company_id),
+            supabase.from('org_nationalities').select('*').eq('company_id', profile.company_id),
+            supabase.from('roles').select('*').eq('company_id', profile.company_id)
         ]);
 
-        if (faith.data) setFaiths(faith.data);
-        if (marital.data) setMaritalStatuses(marital.data);
-        if (blood.data) setBloodGroups(blood.data);
-        if (nation.data) setNationalities(nation.data);
-        if (role.data) setRoles(role.data);
+        if (faith.data) setFaiths(faith.data as any);
+        if (marital.data) setMaritalStatuses(marital.data as any);
+        if (blood.data) setBloodGroups(blood.data as any);
+        if (nation.data) setNationalities(nation.data as any);
+        if (role.data) setRoles(role.data as any);
 
-        // Batch 3: HRMS Specifics
+        // Batch 3: HRMS Specific
+        const [visa, status, plan] = await Promise.all([
+            supabase.from('org_visa_types').select('*').eq('company_id', profile.company_id),
+            supabase.from('org_employee_statuses').select('*').eq('company_id', profile.company_id),
+            supabase.from('org_leave_plans').select('*').eq('company_id', profile.company_id)
+        ]);
+
+        if (visa.data) setVisaTypes(visa.data as any);
+        if (status.data) setEmployeeStatuses(status.data as any);
+        if (plan.data) setLeavePlans(plan.data as any);
+
+        // Batch 4: HRMS Specifics
         const [lvType, salComp, shifts, attStatus, weekoff] = await Promise.all([
-            supabase.from('org_leave_types').select('*'),
-            supabase.from('org_salary_components').select('*'),
-            supabase.from('org_shift_timings').select('*'),
-            supabase.from('org_attendance_status').select('*'),
-            supabase.from('org_weekoff_rules').select('*')
+            supabase.from('org_leave_types').select('*').eq('company_id', profile.company_id),
+            supabase.from('org_salary_components').select('*').eq('company_id', profile.company_id),
+            supabase.from('org_shift_timings').select('*').eq('company_id', profile.company_id),
+            supabase.from('org_attendance_status').select('*').eq('company_id', profile.company_id),
+            supabase.from('org_weekoff_rules').select('*').eq('company_id', profile.company_id)
         ]);
 
-        if (lvType.data) setLeaveTypes(lvType.data);
-        if (salComp.data) setSalaryComponents(salComp.data);
-        if (shifts.data) setShiftTimings(shifts.data);
-        if (attStatus.data) setAttendanceStatuses(attStatus.data);
-        if (weekoff.data) setWeekoffRules(weekoff.data);
+        if (lvType.data) setLeaveTypes(lvType.data as any);
+        if (salComp.data) setSalaryComponents(salComp.data as any);
+        if (shifts.data) setShiftTimings(shifts.data as any);
+        if (attStatus.data) setAttendanceStatuses(attStatus.data as any);
+        if (weekoff.data) setWeekoffRules(weekoff.data as any);
     };
 
     useEffect(() => {
@@ -244,8 +283,21 @@ export const HRMS: React.FC = () => {
         return new Date(isoStr).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
     };
 
-    const handleUpdateLeaveStatus = async (id: string, status: 'Approved' | 'Rejected') => {
-        const { error } = await supabase.from('leaves').update({ status }).eq('id', id);
+    const handleUpdateLeaveStatus = async (id: string, status: 'Approved' | 'Rejected', level?: 1 | 2) => {
+        let updateData: any = {};
+        if (level === 1) {
+            updateData.level1_status = status;
+            if (status === 'Rejected') updateData.status = 'Rejected';
+        } else if (level === 2) {
+            updateData.level2_status = status;
+            if (status === 'Approved') updateData.status = 'Approved';
+            else updateData.status = 'Rejected';
+        } else {
+            updateData.status = status;
+            updateData.level1_status = status;
+            updateData.level2_status = status;
+        }
+        const { error } = await supabase.from('leaves').update(updateData).eq('id', id);
         if (error) alert(error.message);
         else refreshData();
     };
@@ -264,18 +316,18 @@ export const HRMS: React.FC = () => {
                 e.preventDefault();
                 const formData = new FormData(e.target as HTMLFormElement);
                 const leaveTypeId = formData.get('leave_type_id') as string;
-                const typeName = leaveTypes.find(lt => lt.id === leaveTypeId)?.code || 'OTHER';
+                const typeName = leaveTypes.find(lt => lt.id.toString() === leaveTypeId.toString())?.code || 'OTHER';
                 const { error } = await supabase.from('leaves').insert([{
                     employee_id: currentEmployee?.id,
                     company_id: currentEmployee?.company_id,
-                    leave_type_id: leaveTypeId ? parseInt(leaveTypeId) : null, // Convert for DB if needed, but keep var as string for lookup
+                    leave_type_id: leaveTypeId ? parseInt(leaveTypeId) : null,
                     type: typeName,
                     start_date: formData.get('startDate'),
                     end_date: formData.get('endDate'),
                     reason: formData.get('reason'),
                     status: 'Pending',
                     applied_on: new Date().toISOString()
-                }]);
+                } as any]);
                 if (error) alert('Error: ' + error.message);
                 else {
                     alert('Leave request submitted successfully!');
@@ -307,7 +359,7 @@ export const HRMS: React.FC = () => {
     );
 
     const navItems = useMemo(() => [
-        { id: 'OVERVIEW', icon: LayoutDashboard, label: 'Dashboard', permission: 'hrms.employees.view' }, // Basic access
+        { id: 'OVERVIEW', icon: LayoutDashboard, label: 'Dashboard', permission: 'hrms.employees.view' },
         { id: 'PEOPLE', icon: Users, label: 'People', permission: 'hrms.employees.view' },
         { id: 'APPROVALS', icon: ShieldCheck, label: 'Approvals', permission: 'hrms.approvals.manage' },
         { id: 'ATTENDANCE', icon: Clock, label: 'Attendance', permission: 'hrms.attendance.view' },
@@ -333,7 +385,9 @@ export const HRMS: React.FC = () => {
                 <div className="flex flex-col gap-3">
                     <div className="mb-8 px-2 hidden md:block">
                         <div className="flex items-center gap-2 mb-1">
-                            <img src={KAA_LOGO_URL} alt="HRMS Logo" className="h-8 w-auto object-contain brightness-100 dark:brightness-[1.15]" />
+                            <div className="bg-white border border-slate-100 shadow-sm rounded-xl p-1.5 flex items-center justify-center h-10 w-10 shrink-0">
+                                <img src={KAA_LOGO_URL} alt="HRMS Logo" className="h-full w-full object-contain" />
+                            </div>
                             <span className="text-lg font-extrabold text-slate-800 dark:text-white tracking-tight">HRMS</span>
                         </div>
                         <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest bg-white/50 dark:bg-zinc-800/50 px-2 py-1 rounded-md">Core Suite</span>
@@ -358,51 +412,17 @@ export const HRMS: React.FC = () => {
 
             {/* Content Area */}
             <div className="flex-1 overflow-hidden relative">
-                {activeTab === 'OVERVIEW' && <OverviewDashboard stats={stats} announcements={announcements} />}
-                {activeTab === 'OVERVIEW' && <OverviewDashboard stats={stats} announcements={announcements} />}
+                {activeTab === 'OVERVIEW' && <OverviewDashboard stats={stats} announcements={announcements} employees={employees} />}
                 {activeTab === 'PEOPLE' && <EmployeeDirectory
                     employees={employees}
                     roles={roles}
                     departments={departments}
+                    designations={designations}
                     onSelectEmployee={setSelectedEmployee}
                     onAddEmployee={hasPermission('hrms.employees.manage') ? () => { setShowEmployeeForm(true); setEditingEmployee(null); } : undefined}
                 />}
                 {activeTab === 'APPROVALS' && <ApprovalsModule currentEmployee={currentEmployee} />}
-                {activeTab === 'ATTENDANCE' && <AttendanceModule
-                    viewMode={attendanceViewMode}
-                    setViewMode={setAttendanceViewMode}
-                    attendanceDate={attendanceDate}
-                    setAttendanceDate={setAttendanceDate}
-                    refreshData={refreshData}
-                    attendance={attendance}
-                    employees={employees}
-                    onEditAttendance={(id) => { setSelectedAttendanceId(id); setShowAttendanceEditModal(true); }}
-                    onExportCSV={() => {
-                        // CSV export logic
-                        const headers = ['Employee', 'Date', 'Check In', 'Check Out', 'Status', 'Duration'];
-                        const rows = attendance.map(r => {
-                            const emp = employees.find(e => e.id === r.employeeId);
-                            return [`"${emp?.name || ''}"`, r.date, formatTime(r.checkIn), formatTime(r.checkOut), r.status, r.duration].join(',');
-                        });
-                        const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...rows].join('\n');
-                        const link = document.createElement("a");
-                        link.setAttribute("href", encodeURI(csvContent));
-                        link.setAttribute("download", `attendance_${attendanceDate}.csv`);
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-                    }}
-                    onMarkAllPresent={async () => {
-                        if (!user) return;
-                        const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', user.id).maybeSingle();
-                        if (profile) {
-                            const { data, error } = await supabase.rpc('rpc_mark_all_present', { p_date: attendanceDate, p_company_id: profile.company_id });
-                            if (error) alert("Error: " + error.message);
-                            else { alert(data); refreshData(); }
-                        }
-                    }}
-                    formatTime={formatTime}
-                />}
+                {activeTab === 'ATTENDANCE' && <AttendanceModule employees={employees} />}
                 {activeTab === 'LEAVES' && <LeaveModule leaves={leaves} leaveTypes={leaveTypes} setShowLeaveModal={setShowLeaveModal} onUpdateStatus={handleUpdateLeaveStatus} formatDate={formatDate} />}
                 {activeTab === 'ASSETS' && <AssetModule assets={assets} employees={employees} refreshData={refreshData} />}
                 {activeTab === 'HELPDESK' && <HelpDeskModule employees={employees} currentEmployee={currentEmployee} />}
@@ -428,6 +448,11 @@ export const HRMS: React.FC = () => {
                     roles={roles}
                     employees={employees}
                     salaryComponents={salaryComponents}
+                    maritalStatuses={maritalStatuses}
+                    nationalities={nationalities}
+                    visaTypes={visaTypes}
+                    employeeStatuses={employeeStatuses}
+                    leavePlans={leavePlans}
                 />
             )}
             {showAttendanceEditModal && selectedAttendanceId && (
@@ -451,6 +476,10 @@ export const HRMS: React.FC = () => {
                     faiths={faiths}
                     maritalStatuses={maritalStatuses}
                     bloodGroups={bloodGroups}
+                    nationalities={nationalities}
+                    visaTypes={visaTypes}
+                    employeeStatuses={employeeStatuses}
+                    leavePlans={leavePlans}
                     roles={roles}
                     leaveTypes={leaveTypes}
                     shiftTimings={shiftTimings}

@@ -2,7 +2,8 @@ import React from 'react';
 import {
     Users, Building2, TrendingUp, TrendingDown, Calendar, Briefcase,
     ChevronRight, PieChart, Activity, UserPlus, Package, Boxes,
-    AlertTriangle, DollarSign, Landmark, Clock, Bell
+    AlertTriangle, DollarSign, Landmark, Clock, Bell, FileText,
+    Headphones, Megaphone, Award, Plane
 } from 'lucide-react';
 
 interface WidgetProps {
@@ -41,46 +42,103 @@ const WidgetCard: React.FC<{
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const fmt = (n: number) =>
-    new Intl.NumberFormat('en-IN', {
-        style: 'currency', currency: 'INR',
+    'QAR ' + new Intl.NumberFormat('en-US', {
         maximumFractionDigits: 0, notation: 'compact'
     }).format(n);
 
 // ─── HRMS Widget ──────────────────────────────────────────────────────────────
 
-export const HRMSWidget: React.FC<WidgetProps & {
+export const EmployeesWidget: React.FC<WidgetProps & {
     count?: number;
-    attendancePercentage?: number;
-    openLeaves?: number;
-}> = ({ onClick, className, count = 0, attendancePercentage = 0, openLeaves = 0 }) => (
+}> = ({ onClick, className, count = 0 }) => (
     <WidgetCard onClick={onClick} className={className} gradient="bg-gradient-to-br from-pink-400 to-rose-600">
         <div className="flex justify-between items-start mb-4">
             <div className="p-3 rounded-2xl bg-pink-50 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400">
                 <Users className="w-6 h-6" />
             </div>
+            <span className="px-2 py-1 rounded-full bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300 text-[10px] font-bold uppercase">
+                Directory
+            </span>
+        </div>
+        <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-1">Employees</h3>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">People, Assets & Exits</p>
+        <div className="mt-auto">
+            <div className="flex items-end gap-2">
+                <span className="text-3xl font-light text-slate-700 dark:text-slate-200">{count}</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400 mb-1 font-bold uppercase tracking-wider">Active Staff</span>
+            </div>
+        </div>
+    </WidgetCard>
+);
+
+export const AttendanceWidget: React.FC<WidgetProps & {
+    percentage?: number;
+}> = ({ onClick, className, percentage = 0 }) => (
+    <WidgetCard onClick={onClick} className={className} gradient="bg-gradient-to-br from-cyan-400 to-blue-600">
+        <div className="flex justify-between items-start mb-4">
+            <div className="p-3 rounded-2xl bg-cyan-50 dark:bg-cyan-900/30 text-cyan-600 dark:text-cyan-400">
+                <Clock className="w-6 h-6" />
+            </div>
+            <span className="px-2 py-1 rounded-full bg-cyan-100 dark:bg-cyan-900/40 text-cyan-700 dark:text-cyan-300 text-[10px] font-bold uppercase">
+                Shifts
+            </span>
+        </div>
+        <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-1">Attendance</h3>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Logs, Shifts & Roster</p>
+        <div className="mt-auto">
+            <div className="w-full bg-slate-200 dark:bg-zinc-700/50 rounded-full h-1.5 overflow-hidden">
+                <div className="bg-cyan-500 h-full transition-all duration-1000" style={{ width: `${percentage}%` }} />
+            </div>
+            <p className="text-xs text-slate-500 mt-2 font-medium">{percentage}% Present Today</p>
+        </div>
+    </WidgetCard>
+);
+
+export const LeaveWidget: React.FC<WidgetProps & {
+    openLeaves?: number;
+}> = ({ onClick, className, openLeaves = 0 }) => (
+    <WidgetCard onClick={onClick} className={className} gradient="bg-gradient-to-br from-emerald-400 to-teal-600">
+        <div className="flex justify-between items-start mb-4">
+            <div className="p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400">
+                <Calendar className="w-6 h-6" />
+            </div>
             {openLeaves > 0 && (
-                <span className="flex items-center gap-1 text-xs font-bold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 px-2 py-1 rounded-full">
-                    <Clock className="w-3 h-3" />{openLeaves} pending
+                <span className="flex items-center gap-1 text-[10px] font-bold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 px-2 py-1 rounded-full">
+                    {openLeaves} pending
                 </span>
             )}
         </div>
-        <div className="mt-auto">
-            <h3 className="text-2xl font-bold text-slate-800 dark:text-white mb-1">Human Resources</h3>
-            <div className="flex items-end gap-2 mb-2">
-                <span className="text-4xl font-light text-slate-700 dark:text-slate-200">{count}</span>
-                <span className="text-sm text-slate-500 dark:text-slate-400 mb-1">Active Employees</span>
+        <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-1">Leave</h3>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Requests & Accruals</p>
+        <div className="mt-auto flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-bold text-sm">
+            <span>Manage Time-Off</span>
+            <ChevronRight className="w-4 h-4" />
+        </div>
+    </WidgetCard>
+);
+
+export const PayrollWidget: React.FC<WidgetProps> = ({ onClick, className }) => (
+    <WidgetCard onClick={onClick} className={className} gradient="bg-gradient-to-br from-violet-400 to-purple-600">
+        <div className="flex justify-between items-start mb-4">
+            <div className="p-3 rounded-2xl bg-violet-50 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400">
+                <DollarSign className="w-6 h-6" />
             </div>
-            <div className="w-full bg-slate-200 dark:bg-zinc-700/50 rounded-full h-1.5 overflow-hidden">
-                <div className="bg-pink-500 h-full transition-all duration-1000" style={{ width: `${attendancePercentage}%` }} />
-            </div>
-            <p className="text-xs text-slate-500 mt-2 font-medium">{attendancePercentage}% Attendance today</p>
+            <span className="px-2 py-1 rounded-full bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300 text-[10px] font-bold uppercase">
+                Payouts
+            </span>
+        </div>
+        <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-1">Payroll</h3>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Salary runs & payslips</p>
+        <div className="mt-auto flex items-center gap-2 text-violet-600 dark:text-violet-400 font-bold text-sm">
+            <span>Process Salary</span>
+            <ChevronRight className="w-4 h-4" />
         </div>
     </WidgetCard>
 );
 
 // ─── CRM Widget ───────────────────────────────────────────────────────────────
 
-export const CRMWidget: React.FC<WidgetProps & { pipelineValue?: string; dealCount?: number }> = ({ onClick, className, pipelineValue = '₹0', dealCount = 0 }) => (
+export const CRMWidget: React.FC<WidgetProps & { pipelineValue?: string; dealCount?: number }> = ({ onClick, className, pipelineValue = 'QAR 0', dealCount = 0 }) => (
     <WidgetCard onClick={onClick} className={className} gradient="bg-gradient-to-br from-orange-400 to-amber-600">
         <div className="flex justify-between items-start mb-auto">
             <div className="p-3 rounded-2xl bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400">
@@ -139,6 +197,53 @@ export const ESSPWidget: React.FC<WidgetProps> = ({ onClick, className }) => (
                 </li>
             ))}
         </ul>
+    </WidgetCard>
+);
+
+// ─── Projects Widget ──────────────────────────────────────────────────────────
+
+export const ProjectsWidget: React.FC<WidgetProps & { count?: number }> = ({ onClick, className, count = 0 }) => (
+    <WidgetCard onClick={onClick} className={className} gradient="bg-gradient-to-br from-cyan-400 to-blue-600">
+        <div className="flex justify-between items-start mb-4">
+            <div className="p-3 rounded-2xl bg-cyan-50 dark:bg-cyan-900/30 text-cyan-600 dark:text-cyan-400">
+                <Briefcase className="w-6 h-6" />
+            </div>
+            <div className="flex items-center gap-1 bg-white/30 dark:bg-black/20 px-2 py-1 rounded-full">
+                <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300">Active</span>
+            </div>
+        </div>
+        <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-1">Projects</h3>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Tasks, Timesheets & Planning</p>
+        <div className="mt-auto">
+            <div className="flex items-end gap-2">
+                <span className="text-3xl font-light text-slate-700 dark:text-slate-200">{count}</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400 mb-1 font-bold uppercase tracking-wider">Ongoing Projects</span>
+            </div>
+        </div>
+    </WidgetCard>
+);
+
+// ─── Documents Widget ─────────────────────────────────────────────────────────
+
+export const DocumentsWidget: React.FC<WidgetProps & { count?: number }> = ({ onClick, className, count = 0 }) => (
+    <WidgetCard onClick={onClick} className={className} gradient="bg-gradient-to-br from-blue-400 to-indigo-600">
+        <div className="flex justify-between items-start mb-4">
+            <div className="p-3 rounded-2xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">
+                <FileText className="w-6 h-6" />
+            </div>
+            <span className="px-2 py-1 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-[10px] font-bold uppercase">
+                Repository
+            </span>
+        </div>
+        <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-1">Documents</h3>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Policies, Contracts & Records</p>
+        <div className="mt-auto">
+            <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold text-sm">
+                <span>{count} Total Documents</span>
+                <ChevronRight className="w-4 h-4" />
+            </div>
+        </div>
     </WidgetCard>
 );
 
@@ -348,3 +453,157 @@ export const AlertsWidget: React.FC<WidgetProps & { alerts: Alert[] }> = ({ onCl
         </div>
     </WidgetCard>
 );
+
+// ─── Sales Widget ────────────────────────────────────────────────────────────
+export const SalesWidget: React.FC<WidgetProps & { totalSales?: string; pendingOrders?: number }> = ({ onClick, className, totalSales = "QAR 0", pendingOrders = 0 }) => (
+    <WidgetCard onClick={onClick} className={className} gradient="bg-gradient-to-br from-emerald-400 to-teal-600">
+        <div className="p-3 w-fit rounded-2xl bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 mb-3">
+            <FileText className="w-6 h-6" />
+        </div>
+        <h3 className="text-lg font-bold text-slate-800 dark:text-white">Sales Orders</h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 mb-3">Quotations, Orders &amp; Invoicing</p>
+
+        <div className="grid grid-cols-2 gap-2 mt-auto">
+            <div className="bg-white/40 dark:bg-black/20 rounded-xl p-2">
+                <p className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Total Sales</p>
+                <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300">{totalSales}</p>
+            </div>
+            <div className="bg-white/40 dark:bg-black/20 rounded-xl p-2">
+                <p className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Pending</p>
+                <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300">{pendingOrders} orders</p>
+            </div>
+        </div>
+
+        <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800 flex items-center gap-2 text-xs font-bold text-slate-500 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors uppercase tracking-widest">
+            <span>Open Sales Portal</span>
+            <ChevronRight className="w-3 h-3" strokeWidth={3} />
+        </div>
+    </WidgetCard>
+);
+
+// ─── Help Desk Widget ────────────────────────────────────────────────────────
+export const HelpDeskWidget: React.FC<WidgetProps & { openTickets?: number }> = ({ onClick, className, openTickets = 0 }) => (
+    <WidgetCard onClick={onClick} className={className} gradient="bg-gradient-to-br from-pink-400 to-rose-600">
+        <div className="p-3 w-fit rounded-2xl bg-pink-50 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400 mb-3">
+            <Headphones className="w-6 h-6" />
+        </div>
+        <h3 className="text-lg font-bold text-slate-800 dark:text-white">Help Desk</h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 mb-3">Support Tickets &amp; Issues</p>
+
+        <div className="mt-auto">
+            <div className="bg-white/40 dark:bg-black/20 rounded-xl p-3 flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-600 dark:text-slate-300">Open Tickets</span>
+                <span className="text-lg font-black text-rose-700 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/35 px-2.5 py-0.5 rounded-lg">{openTickets}</span>
+            </div>
+        </div>
+
+        <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800 flex items-center gap-2 text-xs font-bold text-slate-500 group-hover:text-rose-600 dark:group-hover:text-rose-400 transition-colors uppercase tracking-widest">
+            <span>Open Tickets Support</span>
+            <ChevronRight className="w-3 h-3" strokeWidth={3} />
+        </div>
+    </WidgetCard>
+);
+
+// ─── Marketing Widget ────────────────────────────────────────────────────────
+export const MarketingWidget: React.FC<WidgetProps & { activeCampaigns?: number; leadsGenerated?: number }> = ({ onClick, className, activeCampaigns = 4, leadsGenerated = 1240 }) => (
+    <WidgetCard onClick={onClick} className={className} gradient="bg-gradient-to-br from-orange-400 to-amber-600">
+        <div className="p-3 w-fit rounded-2xl bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 mb-3">
+            <Megaphone className="w-6 h-6" />
+        </div>
+        <h3 className="text-lg font-bold text-slate-800 dark:text-white">Marketing</h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 mb-3">Campaigns &amp; Lead Generation</p>
+
+        <div className="grid grid-cols-2 gap-2 mt-auto">
+            <div className="bg-white/40 dark:bg-black/20 rounded-xl p-2">
+                <p className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Campaigns</p>
+                <p className="text-sm font-bold text-orange-700 dark:text-orange-300">{activeCampaigns} Active</p>
+            </div>
+            <div className="bg-white/40 dark:bg-black/20 rounded-xl p-2">
+                <p className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Total Leads</p>
+                <p className="text-sm font-bold text-orange-700 dark:text-orange-300">{leadsGenerated}</p>
+            </div>
+        </div>
+
+        <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800 flex items-center gap-2 text-xs font-bold text-slate-500 group-hover:text-orange-600 dark:group-hover:text-orange-400 transition-colors uppercase tracking-widest">
+            <span>Manage Campaigns</span>
+            <ChevronRight className="w-3 h-3" strokeWidth={3} />
+        </div>
+    </WidgetCard>
+);
+
+// ─── Recruitment Widget ──────────────────────────────────────────────────────
+export const RecruitmentWidget: React.FC<WidgetProps & { jobOpenings?: number }> = ({ onClick, className, jobOpenings = 3 }) => (
+    <WidgetCard onClick={onClick} className={className} gradient="bg-gradient-to-br from-amber-400 to-amber-600">
+        <div className="p-3 w-fit rounded-2xl bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 mb-3">
+            <Briefcase className="w-6 h-6" />
+        </div>
+        <h3 className="text-lg font-bold text-slate-800 dark:text-white">Recruitment</h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 mb-3">ATS &amp; Job Openings</p>
+        <div className="mt-auto">
+            <p className="text-2xl font-light text-slate-700 dark:text-slate-200">{jobOpenings} Jobs</p>
+            <p className="text-[10px] font-bold uppercase text-slate-400">Currently Hiring</p>
+        </div>
+        <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800 flex items-center gap-2 text-xs font-bold text-slate-500 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors uppercase tracking-widest">
+            <span>Open Job Board</span>
+            <ChevronRight className="w-3 h-3" strokeWidth={3} />
+        </div>
+    </WidgetCard>
+);
+
+// ─── Loans & Benefits Widget ──────────────────────────────────────────────────
+export const LoansWidget: React.FC<WidgetProps & { activeLoansCount?: number }> = ({ onClick, className, activeLoansCount = 2 }) => (
+    <WidgetCard onClick={onClick} className={className} gradient="bg-gradient-to-br from-emerald-400 to-emerald-600">
+        <div className="p-3 w-fit rounded-2xl bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 mb-3">
+            <DollarSign className="w-6 h-6" />
+        </div>
+        <h3 className="text-lg font-bold text-slate-800 dark:text-white">Loans &amp; Benefits</h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 mb-3">Advances, Claims &amp; Insurance</p>
+        <div className="mt-auto">
+            <p className="text-2xl font-light text-slate-700 dark:text-slate-200">{activeLoansCount} Disbursed</p>
+            <p className="text-[10px] font-bold uppercase text-slate-400">Salary Deductions</p>
+        </div>
+        <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800 flex items-center gap-2 text-xs font-bold text-slate-500 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors uppercase tracking-widest">
+            <span>Manage Loans</span>
+            <ChevronRight className="w-3 h-3" strokeWidth={3} />
+        </div>
+    </WidgetCard>
+);
+
+// ─── Performance Widget ─────────────────────────────────────────────────────
+export const PerformanceWidget: React.FC<WidgetProps & { activeReviewsCount?: number }> = ({ onClick, className, activeReviewsCount = 1 }) => (
+    <WidgetCard onClick={onClick} className={className} gradient="bg-gradient-to-br from-violet-400 to-violet-600">
+        <div className="p-3 w-fit rounded-2xl bg-violet-50 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 mb-3">
+            <Award className="w-6 h-6" />
+        </div>
+        <h3 className="text-lg font-bold text-slate-800 dark:text-white">Performance</h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 mb-3">Goal Tracking &amp; OKRs</p>
+        <div className="mt-auto">
+            <p className="text-2xl font-light text-slate-700 dark:text-slate-200">{activeReviewsCount} Active Reviews</p>
+            <p className="text-[10px] font-bold uppercase text-slate-400">Appraisal Cycles</p>
+        </div>
+        <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800 flex items-center gap-2 text-xs font-bold text-slate-500 group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors uppercase tracking-widest">
+            <span>View OKRs</span>
+            <ChevronRight className="w-3 h-3" strokeWidth={3} />
+        </div>
+    </WidgetCard>
+);
+
+// ─── Travel Widget ──────────────────────────────────────────────────────────
+export const TravelWidget: React.FC<WidgetProps & { pendingTripsCount?: number }> = ({ onClick, className, pendingTripsCount = 0 }) => (
+    <WidgetCard onClick={onClick} className={className} gradient="bg-gradient-to-br from-rose-400 to-rose-600">
+        <div className="p-3 w-fit rounded-2xl bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 mb-3">
+            <Plane className="w-6 h-6" />
+        </div>
+        <h3 className="text-lg font-bold text-slate-800 dark:text-white">Travel &amp; Expenses</h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 mb-3">Logistics &amp; Per Diems</p>
+        <div className="mt-auto">
+            <p className="text-2xl font-light text-slate-700 dark:text-slate-200">{pendingTripsCount} Requests</p>
+            <p className="text-[10px] font-bold uppercase text-slate-400">Reimbursement Claims</p>
+        </div>
+        <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800 flex items-center gap-2 text-xs font-bold text-slate-500 group-hover:text-rose-600 dark:group-hover:text-rose-400 transition-colors uppercase tracking-widest">
+            <span>Manage Trips</span>
+            <ChevronRight className="w-3 h-3" strokeWidth={3} />
+        </div>
+    </WidgetCard>
+);
+

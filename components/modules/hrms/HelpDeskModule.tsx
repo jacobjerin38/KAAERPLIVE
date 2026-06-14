@@ -41,7 +41,7 @@ export const HelpDeskModule: React.FC<HelpDeskModuleProps> = ({ employees, curre
         if (!user) return;
         const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', user.id).single();
 
-        const { error } = await supabase.from('tickets').insert([{
+        const { error } = await (supabase as any).from('tickets').insert([{
             company_id: profile?.company_id,
             employee_id: currentEmployee.id,
             subject: formData.get('subject'),
@@ -50,7 +50,7 @@ export const HelpDeskModule: React.FC<HelpDeskModuleProps> = ({ employees, curre
             description: formData.get('description') || '',
             status: 'Open',
             created_at: new Date().toISOString()
-        }]);
+        } as any]);
 
         if (error) alert("Error creating ticket: " + error.message);
         else {

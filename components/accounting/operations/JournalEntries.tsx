@@ -48,7 +48,7 @@ export const JournalEntries: React.FC = () => {
             `)
             .order('date', { ascending: false });
         if (error) console.error(error);
-        else setEntries(data || []);
+        else setEntries((data || []) as any);
     };
 
     const fetchMasters = async () => {
@@ -175,12 +175,54 @@ export const JournalEntries: React.FC = () => {
 
         if (error) alert('Error: ' + error.message);
         else {
-            if (data.success) {
+            const res = data as any;
+            if (res?.success) {
                 alert('Posted Successfully');
                 fetchEntries();
             } else {
-                alert('Post Failed: ' + data.message);
+                alert('Post Failed: ' + (res?.message || 'Unknown error'));
             }
+        }
+    };
+
+    const handleDelete = async (id: string) => {
+        const { data: { user: currentAuthUser } } = await supabase.auth.getUser();
+        if (!confirm('Are you sure you want to delete this journal entry? This will permanently delete the transaction and all its ledger lines from the database.')) return;
+
+        setLoading(true);
+        try {
+            // Find the entry details before deleting so we can log it nicely
+            const { data: entry } = await supabase
+                .from('accounting_moves')
+                .select('*')
+                .eq('id', id)
+                .maybeSingle();
+
+            // 1. Log deletion
+            if (currentAuthUser && entry) {
+                await (supabase.from as any)('delete_audit_logs').insert([{
+                    deleted_by_email: currentAuthUser.email || 'unknown',
+                    deleted_by_uid: currentAuthUser.id,
+                    record_type: 'journal_entry',
+                    record_id: id,
+                    record_name: `Date: ${entry.date}, Ref: ${entry.reference || '-'}, Amount: ${entry.amount_total}`
+                }]);
+            }
+
+            // 2. Perform deletion
+            const { error } = await supabase
+                .from('accounting_moves')
+                .delete()
+                .eq('id', id);
+
+            if (error) throw error;
+            alert('Journal Entry deleted successfully.');
+            fetchEntries();
+        } catch (error: any) {
+            console.error('Error deleting move:', error);
+            alert('Failed to delete entry: ' + error.message);
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -227,14 +269,23 @@ export const JournalEntries: React.FC = () => {
                                     </span>
                                 </td>
                                 <td className="p-4 text-right">
-                                    {entry.state === 'Draft' && (
+                                    <div className="flex items-center justify-end gap-2">
+                                        {entry.state === 'Draft' && (
+                                            <button
+                                                onClick={() => handlePost(entry.id)}
+                                                className="text-xs px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 transition"
+                                            >
+                                                POST
+                                            </button>
+                                        )}
                                         <button
-                                            onClick={() => handlePost(entry.id)}
-                                            className="text-xs px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 transition"
+                                            onClick={() => handleDelete(entry.id)}
+                                            className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded transition"
+                                            title="Delete Entry"
                                         >
-                                            POST
+                                            <Trash2 className="w-4 h-4" />
                                         </button>
-                                    )}
+                                    </div>
                                 </td>
                             </tr>
                         ))}

@@ -13,7 +13,7 @@ export class WebsiteFinderService {
     static async createJob(companyId: string, userId: string, companies: { name: string }[], countries: string[]): Promise<WebsiteFinderJob | null> {
         try {
             // 1. Create Job
-            const { data: job, error } = await supabase
+            const { data: job, error } = await (supabase as any)
                 .from('crm_website_finder_jobs')
                 .insert([{
                     company_id: companyId,
@@ -37,7 +37,7 @@ export class WebsiteFinderService {
                 attempts: 0
             }));
 
-            const { error: resultsError } = await supabase
+            const { error: resultsError } = await (supabase as any)
                 .from('crm_website_finder_results')
                 .insert(resultsPayload);
 
@@ -52,7 +52,7 @@ export class WebsiteFinderService {
 
     static async startJob(jobId: string) {
         // Update status to RUNNING
-        await supabase
+        await (supabase as any)
             .from('crm_website_finder_jobs')
             .update({ status: 'RUNNING' })
             .eq('id', jobId);
@@ -69,17 +69,22 @@ export class WebsiteFinderService {
 
         try {
             // 1. Get Job & Settings
-            const { data: job } = await supabase.from('crm_website_finder_jobs').select('*').eq('id', jobId).single();
+            const { data: job } = await (supabase as any).from('crm_website_finder_jobs').select('*').eq('id', jobId).single();
             if (!job || job.status !== 'RUNNING') {
                 this.isProcessing = false;
                 return;
             }
 
-            const { data: settings } = await supabase.from('org_ai_settings').select('*').eq('company_id', job.company_id).single();
+            const { data: leadData, error: leadError } = await ((supabase as any) as any)
+                .from('crm_leads')
+                .select('website, organization_name, company_id')
+                .single();
+
+            const { data: settings } = await (supabase as any).from('org_ai_settings').select('*').eq('company_id', job.company_id).single();
 
             if (!settings || !settings.api_key_encrypted || settings.status !== 'ACTIVE') {
                 // Fail the job if no settings
-                await supabase.from('crm_website_finder_jobs').update({ status: 'FAILED' }).eq('id', jobId);
+                await (supabase as any).from('crm_website_finder_jobs').update({ status: 'FAILED' }).eq('id', jobId);
                 this.isProcessing = false;
                 return;
             }
@@ -91,7 +96,7 @@ export class WebsiteFinderService {
 
             while (hasPending) {
                 // Fetch next batch
-                const { data: batch } = await supabase
+                const { data: batch } = await (supabase as any)
                     .from('crm_website_finder_results')
                     .select('*')
                     .eq('job_id', jobId)
@@ -104,23 +109,23 @@ export class WebsiteFinderService {
                 }
 
                 // Process batch in parallel
-                await Promise.all(batch.map(item => this.processItem(item, job.countries_checked, apiKey)));
+                await Promise.all((batch || []).map(item => this.processItem(item as any, job.countries_checked, apiKey)));
 
                 // Update Progress
-                const { count } = await supabase
+                const { count } = await (supabase as any)
                     .from('crm_website_finder_results')
                     .select('*', { count: 'exact', head: true })
                     .eq('job_id', jobId)
                     .eq('status', 'SUCCESS');
 
                 // Also count failed as processed for progress bar
-                const { count: failedCount } = await supabase
+                const { count: failedCount } = await (supabase as any)
                     .from('crm_website_finder_results')
                     .select('*', { count: 'exact', head: true })
                     .eq('job_id', jobId)
                     .neq('status', 'PENDING');
 
-                await supabase
+                await (supabase as any)
                     .from('crm_website_finder_jobs')
                     .update({ processed_records: failedCount })
                     .eq('id', jobId);
@@ -130,11 +135,11 @@ export class WebsiteFinderService {
             }
 
             // 3. Mark Complete
-            await supabase.from('crm_website_finder_jobs').update({ status: 'COMPLETED' }).eq('id', jobId);
+            await (supabase as any).from('crm_website_finder_jobs').update({ status: 'COMPLETED' }).eq('id', jobId);
 
         } catch (error) {
             console.error('Job processing error:', error);
-            await supabase.from('crm_website_finder_jobs').update({ status: 'FAILED' }).eq('id', jobId);
+            await (supabase as any).from('crm_website_finder_jobs').update({ status: 'FAILED' }).eq('id', jobId);
         } finally {
             this.isProcessing = false;
         }
@@ -162,7 +167,7 @@ export class WebsiteFinderService {
             const response = await this.mockGeminiCall(apiKey, prompt, item.company_name);
 
             // Update Result
-            await supabase
+            await (supabase as any)
                 .from('crm_website_finder_results')
                 .update({
                     status: 'SUCCESS',
@@ -174,7 +179,7 @@ export class WebsiteFinderService {
 
         } catch (error) {
             console.error('Item error:', error);
-            await supabase
+            await (supabase as any)
                 .from('crm_website_finder_results')
                 .update({
                     status: 'FAILED',
@@ -187,7 +192,7 @@ export class WebsiteFinderService {
     // Real Edge Function Call
     private static async mockGeminiCall(apiKey: string, prompt: string, companyName: string): Promise<any> {
         try {
-            const { data, error } = await supabase.functions.invoke('crm-website-finder', {
+            const { data, error } = await (supabase as any).functions.invoke('crm-website-finder', {
                 body: { prompt, companyName }
             });
 
@@ -201,6 +206,6 @@ export class WebsiteFinderService {
 
     // helper to get all jobs
     static async getJobs() {
-        return supabase.from('crm_website_finder_jobs').select('*').order('created_at', { ascending: false });
+        return (supabase as any).from('crm_website_finder_jobs').select('*').order('created_at', { ascending: false });
     }
 }

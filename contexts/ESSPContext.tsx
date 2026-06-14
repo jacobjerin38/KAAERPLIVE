@@ -43,9 +43,10 @@ export const ESSPProvider = ({ children }: { children: React.ReactNode }) => {
             if (profile?.employee_id) linkedEmployeeId = profile.employee_id;
 
             // 1. Fetch Employee Profile
+            // @ts-ignore
             let query = supabase.from('employees').select(`
                     *,
-                    reporting_manager:reporting_manager_id(id, name),
+                    reporting_manager:manager_id(id, name),
                     departments:department_id(id, name),
                     org_designations:designation_id(id, name),
                     org_grades:grade_id(id, name),
@@ -71,7 +72,8 @@ export const ESSPProvider = ({ children }: { children: React.ReactNode }) => {
                 // Fallback attempt with ID if email match fails (depends on schemas)
                 // Only try this if we haven't already tried linkedId
                 if (!linkedEmployeeId) {
-                    const { data: empDataById } = await supabase.from('employees').select('*, reporting_manager:reporting_manager_id(id, name), departments:department_id(id, name), org_designations:designation_id(id, name), org_grades:grade_id(id, name), org_employment_types:employment_type_id(id, name), locations:location_id(id, name)').eq('id', user.id).maybeSingle();
+                    // @ts-ignore
+                    const { data: empDataById } = await supabase.from('employees').select('*, reporting_manager:manager_id(id, name), departments:department_id(id, name), org_designations:designation_id(id, name), org_grades:grade_id(id, name), org_employment_types:employment_type_id(id, name), locations:location_id(id, name)').eq('id', user.id).maybeSingle();
                     if (empDataById) {
                         processEmployeeData(empDataById);
                         return;
@@ -98,7 +100,7 @@ export const ESSPProvider = ({ children }: { children: React.ReactNode }) => {
         const { count } = await supabase
             .from('employees')
             .select('id', { count: 'exact', head: true })
-            .eq('reporting_manager_id', empData.id);
+            .eq('manager_id', empData.id);
 
         // Check HR role (simple check on department or role name for now)
         const isHR = empData.department?.toLowerCase()?.includes('hr') || empData.role?.toLowerCase()?.includes('hr') || false;

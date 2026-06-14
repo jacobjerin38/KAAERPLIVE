@@ -8,6 +8,7 @@ import { Employee } from '../../hrms/types';
 import { JobTransitionModal } from '../../hrms/transitions/JobTransitionModal';
 import { CompensationChangeModal } from '../../hrms/transitions/CompensationChangeModal';
 import { CareerTimeline } from '../../hrms/transitions/CareerTimeline';
+import { EmployeeDocuments } from './EmployeeDocuments';
 
 interface EmployeeDetailModalProps {
     emp: Employee;
@@ -25,11 +26,17 @@ interface EmployeeDetailModalProps {
     roles: any[];
     employees: Employee[]; // For manager lookup
     salaryComponents: any[]; // New prop for mapping
+    maritalStatuses?: any[];
+    nationalities?: any[];
+    visaTypes?: any[];
+    employeeStatuses?: any[];
+    leavePlans?: any[];
 }
 
 export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
     emp, onClose, onEdit, refreshData,
-    departments, locations, designations, grades, employmentTypes, payGroups, roles, employees, salaryComponents
+    departments, locations, designations, grades, employmentTypes, payGroups, roles, employees, salaryComponents, maritalStatuses, nationalities,
+    visaTypes, employeeStatuses, leavePlans
 }) => {
     const [tab, setTab] = useState<'PROFILE' | 'JOB' | 'CONTACT' | 'FINANCIAL' | 'DOCUMENTS' | 'TIMELINE'>('PROFILE');
 
@@ -57,13 +64,16 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
     // Fetch Salary Mapping
     const fetchSalaryMapping = async () => {
         setLoadingComponents(true);
-        const { data, error } = await supabase
+        const { data } = await (supabase as any)
             .from('employee_salary_components')
-            .select('*, org_salary_components(name, code, component_type)')
+            .select(`
+                *,
+                org_salary_components(name, component_type)
+            `)
             .eq('employee_id', emp.id)
-            .order('effective_from', { ascending: false });
+            .eq('is_active', true);
 
-        if (data) setEmpSalaryComponents(data);
+        if (data) setEmpSalaryComponents(data as any[]);
         setLoadingComponents(false);
     };
 
@@ -76,7 +86,7 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
     const handleAddComponent = async () => {
         if (!newComponentId || !newAmount) return;
 
-        const { error } = await supabase.from('employee_salary_components').insert([{
+        const { error } = await (supabase as any).from('employee_salary_components').insert([{
             employee_id: emp.id,
             salary_component_id: parseInt(newComponentId),
             amount: parseFloat(newAmount),
@@ -96,7 +106,7 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
 
     const handleDeleteComponent = async (id: string) => {
         if (!confirm('Are you sure you want to remove this salary component?')) return;
-        const { error } = await supabase.from('employee_salary_components').delete().eq('id', id);
+        const { error } = await (supabase as any).from('employee_salary_components').update({ is_active: false }).eq('id', id);
         if (error) alert('Error deleting: ' + error.message);
         else fetchSalaryMapping();
     };
@@ -180,23 +190,68 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
 
                     {/* TABS */}
                     {tab === 'PROFILE' && (
-                        <div className="space-y-10">
+                        <div className="space-y-8">
+                            {/* Professional Details */}
                             <div>
                                 <h3 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">Professional Details</h3>
-                                <div className="grid grid-cols-2 gap-6">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <ViewField label="Staff No." value={emp.employee_code || '-'} />
                                     <ViewField label="Department" value={departments.find(d => d.id === emp.department_id)?.name || emp.department || '-'} />
-                                    <ViewField label="Join Date" value={formatDate(emp.joinDate)} />
-                                    <ViewField label="Email" value={emp.email} />
+                                    <ViewField label="Designation / Position" value={designations.find(d => d.id === emp.designation_id)?.name || emp.designation || '-'} />
+                                    <ViewField label="Grade" value={grades.find(g => g.id === emp.grade_id)?.name || '-'} />
+                                    <ViewField label="Employment Type" value={employmentTypes.find(e => e.id === emp.employment_type_id)?.name || '-'} />
+                                    <ViewField label="Join Date" value={formatDate(emp.joinDate || emp.join_date)} />
                                     <ViewField label="Location" value={locations.find(l => l.id === emp.location_id)?.name || emp.location || '-'} />
+                                    <ViewField label="Reporting Manager" value={employees.find(e => e.id === (emp as any).manager_id || e.id === emp.reporting_manager_id)?.name || '-'} />
+                                    <ViewField label="Client" value={emp.client_name || '-'} />
+                                    <ViewField label="Status" value={employeeStatuses?.find(s => s.id === (emp as any).employee_status_id)?.name || emp.status || '-'} />
                                 </div>
                             </div>
+
+                            {/* Personal Details */}
                             <div>
-                                <h3 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">Skills</h3>
-                                <div className="flex flex-wrap gap-2">
-                                    {emp.skills?.map(skill => (
-                                        <span key={skill} className="px-4 py-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-xl text-sm font-bold border border-indigo-100 dark:border-indigo-800">{skill}</span>
-                                    ))}
-                                    {(!emp.skills || emp.skills.length === 0) && <span className="text-slate-400 text-sm italic">No skills listed</span>}
+                                <h3 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">Personal Details</h3>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <ViewField label="Date of Birth" value={formatDate(emp.date_of_birth)} />
+                                    <ViewField label="Age" value={emp.age || (emp.date_of_birth ? Math.floor((Date.now() - new Date(emp.date_of_birth).getTime()) / (365.25 * 24 * 60 * 60 * 1000)) : '-')} />
+                                    <ViewField label="Gender" value={emp.gender || '-'} />
+                                    <ViewField label="Nationality" value={nationalities?.find(n => n.id === emp.nationality_id)?.name || emp.nationality || '-'} />
+                                    <ViewField label="Civil Status" value={maritalStatuses?.find(m => m.id === emp.marital_status_id)?.name || '-'} />
+                                </div>
+                            </div>
+
+                            {/* Immigration & Travel */}
+                            <div>
+                                <h3 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">Immigration & Travel</h3>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <ViewField label="Passport No." value={emp.passport_number || '-'} />
+                                    <ViewField label="Passport Expiry" value={formatDate(emp.passport_expiry)} />
+                                    <ViewField label="QID / Visa Number" value={emp.visa_number || '-'} />
+                                    <ViewField label="Visa / QID Validity" value={formatDate(emp.visa_expiry)} />
+                                    <ViewField label="Visa Sponsor" value={emp.visa_sponsor || '-'} />
+                                    <ViewField label="Visa Type" value={visaTypes?.find(v => v.id === (emp as any).visa_type_id)?.name || emp.visa_type || '-'} />
+                                </div>
+                            </div>
+
+                            {/* Contact */}
+                            <div>
+                                <h3 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">Contact Information</h3>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <ViewField label="Personal Mobile" value={emp.personal_mobile || emp.phone || '-'} />
+                                    <ViewField label="Office Mobile" value={emp.office_mobile || '-'} />
+                                    <ViewField label="Personal Email" value={emp.personal_email || '-'} />
+                                    <ViewField label="Office Email" value={emp.office_email || emp.email || '-'} />
+                                </div>
+                            </div>
+
+                            {/* Additional Info */}
+                            <div>
+                                <h3 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">Additional Information</h3>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <ViewField label="Annual Leave Duration Policy" value={leavePlans?.find(p => p.id === (emp as any).leave_plan_id)?.name || emp.annual_leave_duration_policy || '-'} />
+                                    <ViewField label="Air Ticket" value={emp.air_ticket || '-'} />
+                                    <ViewField label="Memo" value={emp.memo || '-'} />
+                                    <ViewField label="Remarks" value={emp.remarks || '-'} />
                                 </div>
                             </div>
                         </div>
@@ -342,27 +397,18 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
 
                     {tab === 'DOCUMENTS' && (
                         <div className="animate-fade-in-up">
-                            <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-6 tracking-tight">Employee Documents</h3>
-                            <div className="space-y-4">
-                                {emp.documents?.map((doc, i) => (
-                                    <div key={i} className="flex items-center justify-between p-5 bg-white dark:bg-zinc-800 rounded-[1.5rem] border border-slate-100 dark:border-zinc-700 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all">
-                                        <div className="flex items-center gap-4">
-                                            <div className="p-3 bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 rounded-2xl"><FileText className="w-6 h-6" /></div>
-                                            <div>
-                                                <p className="font-bold text-slate-800 dark:text-slate-100">{doc.name}</p>
-                                                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Uploaded {doc.date}</p>
-                                            </div>
-                                        </div>
-                                        <button className="text-indigo-600 dark:text-indigo-400 font-bold text-sm bg-indigo-50 dark:bg-indigo-900/30 px-4 py-2 rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors">Download</button>
-                                    </div>
-                                ))}
-                                {(!emp.documents || emp.documents.length === 0) && (
-                                    <div className="p-10 border-2 border-dashed border-slate-200 dark:border-zinc-700 rounded-[2rem] text-center text-slate-400 dark:text-slate-500">
-                                        <FileText className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                                        <p className="text-sm">No documents uploaded.</p>
-                                    </div>
-                                )}
-                            </div>
+                            {emp.id && emp.company_id ? (
+                                <EmployeeDocuments
+                                    employeeId={emp.id}
+                                    companyId={emp.company_id}
+                                    readOnly={false}
+                                />
+                            ) : (
+                                <div className="p-10 border-2 border-dashed border-slate-200 dark:border-zinc-700 rounded-[2rem] text-center text-slate-400 dark:text-slate-500">
+                                    <FileText className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                                    <p className="text-sm">Employee profile not loaded.</p>
+                                </div>
+                            )}
                         </div>
                     )}
 

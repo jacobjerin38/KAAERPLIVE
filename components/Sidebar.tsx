@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { AppView } from '../types';
-import { LayoutGrid, Settings, Bell, Search, LogOut, KeyRound } from 'lucide-react';
+import { LayoutGrid, Settings, Bell, Search, LogOut, KeyRound, Briefcase, FileText } from 'lucide-react';
 import { KAA_LOGO_URL } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -11,7 +11,16 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => {
-  if (currentView === AppView.HRMS) return null;
+  if ([
+    AppView.EMPLOYEES, 
+    AppView.ATTENDANCE, 
+    AppView.LEAVE, 
+    AppView.PAYROLL,
+    AppView.RECRUITMENT,
+    AppView.PERFORMANCE,
+    AppView.LOANS,
+    AppView.TRAVEL
+  ].includes(currentView)) return null;
 
   const { signOut } = useAuth();
   const [showMenu, setShowMenu] = useState(false);
@@ -67,10 +76,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => 
     <div className="h-screen w-20 flex flex-col items-center py-6 bg-white dark:bg-zinc-900 border-r border-zinc-100 dark:border-zinc-800 z-50 transition-colors duration-300">
       {/* Brand Icon (Image) */}
       <div
-        className="mb-12 cursor-pointer flex justify-center w-full active:scale-95 transition-transform duration-200 overflow-hidden px-2"
+        className="mb-12 cursor-pointer flex justify-center w-full active:scale-95 transition-transform duration-200 px-2"
         onClick={() => onNavigate(AppView.DASHBOARD)}
       >
-        <img src={KAA_LOGO_URL} alt="Kaa" className="w-16 h-auto object-contain brightness-100 dark:brightness-110" />
+        <div className="bg-white border border-slate-100 shadow-md rounded-2xl p-2 flex items-center justify-center h-14 w-14">
+          <img src={KAA_LOGO_URL} alt="Kaa" className="h-full w-full object-contain" />
+        </div>
       </div>
 
       {/* Main Nav Actions */}
@@ -80,6 +91,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => 
           label="Apps"
           active={currentView === AppView.DASHBOARD}
           onClick={() => onNavigate(AppView.DASHBOARD)}
+        />
+        <NavItem 
+          icon={Briefcase} 
+          label="Projects" 
+          active={currentView === AppView.PROJECTS}
+          onClick={() => onNavigate(AppView.PROJECTS)}
+        />
+        <NavItem 
+          icon={FileText} 
+          label="Documents" 
+          active={currentView === AppView.DOCUMENTS}
+          onClick={() => onNavigate(AppView.DOCUMENTS)}
         />
         <NavItem icon={Search} label="Search" />
         <NavItem icon={Bell} label="Notifications" hasBadge />

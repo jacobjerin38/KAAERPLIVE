@@ -25,7 +25,7 @@ import {
     Circle,
     Play
 } from 'lucide-react';
-import { GoogleGenAI } from "@google/genai";
+import { supabase } from '../../lib/supabase';
 import { LiveView } from '../crm/LiveView';
 import {
     analyzeLead,
@@ -117,24 +117,19 @@ export const CRM: React.FC = () => {
         setIsTyping(true);
 
         try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            const chat = ai.chats.create({ model: 'gemini-3-flash-preview', config: { systemInstruction: 'You are KAA CRM Assistant.' } });
-            const result = await chat.sendMessageStream({ message: inputMsg });
+            const { data, error } = await supabase.functions.invoke('gemini-ai', {
+                body: { action: 'chat', payload: { message: inputMsg } }
+            });
 
-            let fullResponse = "";
+            if (error) throw error;
+
             const botMsgId = (Date.now() + 1).toString();
-
-            setMessages(prev => [...prev, { id: botMsgId, role: 'model', text: '', timestamp: new Date() }]);
-
-            for await (const chunk of result) {
-                const text = chunk.text;
-                if (text) {
-                    fullResponse += text;
-                    setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, text: fullResponse } : m));
-                }
-            }
+            const responseText = typeof data === 'string' ? data : (data?.text || data?.message || JSON.stringify(data));
+            setMessages(prev => [...prev, { id: botMsgId, role: 'model', text: responseText, timestamp: new Date() }]);
         } catch (e) {
             console.error(e);
+            const errorMsgId = (Date.now() + 1).toString();
+            setMessages(prev => [...prev, { id: errorMsgId, role: 'model', text: 'Sorry, the AI assistant is temporarily unavailable. Please try again later.', timestamp: new Date() }]);
         } finally {
             setIsTyping(false);
         }

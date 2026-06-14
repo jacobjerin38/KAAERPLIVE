@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
     Building2, MapPin, LayoutGrid, Users, Settings, Plus, Check, Edit3, X, Shield, User, Database, GitMerge, PlayCircle, StopCircle, ArrowRight, Bell, Clock, Save, Search, Trash2, Sparkles, Radio, BarChart2, Loader2, KeyRound,
-    Banknote, Package, Factory, ShoppingCart
+    Banknote, Package, Factory, ShoppingCart, Calendar
 }
     from 'lucide-react';
 import { PollsView } from './organization/PollsView';
@@ -102,7 +102,7 @@ const CompanyProfileView = () => {
         setSaving(true);
         if (company.id) {
             // Upsert based on ID
-            const { error } = await supabase.from('companies').upsert(company);
+            const { error } = await (supabase as any).from('companies').upsert([company], { onConflict: 'id' });
             if (!error) {
                 // Success notification could go here
             }
@@ -269,6 +269,119 @@ const CompanyProfileView = () => {
     );
 };
 
+// --- Attendance Settings View (Company-level default off days) ---
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+const AttendanceSettingsView = () => {
+    const [offDays, setOffDays] = useState<number[]>([5, 6]); // Default Fri+Sat
+    const [loading, setLoading] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [hasRecord, setHasRecord] = useState(false);
+    const { currentCompanyId } = useAuth();
+
+    useEffect(() => {
+        if (currentCompanyId) fetchSettings();
+    }, [currentCompanyId]);
+
+    const fetchSettings = async () => {
+        setLoading(true);
+        if (currentCompanyId) {
+            const { data } = await (supabase as any).from('org_attendance_settings').select('*').eq('company_id', currentCompanyId).maybeSingle();
+            if (data) {
+                setHasRecord(true);
+                const parsed = (data.default_weekly_off_days || '5,6').split(',').map(Number).filter((n: number) => !isNaN(n));
+                setOffDays(parsed);
+            } else {
+                setHasRecord(false);
+                setOffDays([5, 6]);
+            }
+        }
+        setLoading(false);
+    };
+
+    const toggleDay = (day: number) => {
+        setOffDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day].sort());
+    };
+
+    const handleSave = async () => {
+        setSaving(true);
+        const payload = {
+            company_id: currentCompanyId,
+            default_weekly_off_days: offDays.join(',')
+        };
+        const { error } = await (supabase as any).from('org_attendance_settings').upsert([payload], { onConflict: 'company_id' });
+        if (error) alert('Error saving: ' + error.message);
+        else alert('Attendance settings saved!');
+        setSaving(false);
+    };
+
+    if (loading) return <div className="p-8">Loading settings...</div>;
+
+    return (
+        <div className="p-8 h-full flex flex-col animate-page-enter overflow-y-auto">
+            <div className="flex justify-between items-center mb-8">
+                <div>
+                    <h2 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+                        <Calendar className="w-8 h-8 text-indigo-500" /> Attendance Settings
+                    </h2>
+                    <p className="text-slate-500 dark:text-slate-400 mt-1">Company-wide attendance configuration.</p>
+                </div>
+            </div>
+
+            <div className="bg-white/70 dark:bg-zinc-900/70 backdrop-blur-xl p-8 rounded-[2rem] border border-white/60 dark:border-zinc-800 shadow-xl shadow-slate-200/50 dark:shadow-black/30 max-w-3xl space-y-8">
+                {/* Default Weekly Off Days */}
+                <div>
+                    <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-2">Default Weekly Off Days</h3>
+                    <p className="text-sm text-slate-500 mb-5">
+                        These apply to all employees who are <strong>not assigned a shift</strong> or <strong>not on the duty roster</strong>.
+                        Employees on the duty roster or with a specific shift will use that shift's off-day configuration instead.
+                    </p>
+                    <div className="grid grid-cols-7 gap-3">
+                        {DAY_NAMES.map((name, idx) => (
+                            <button
+                                key={idx}
+                                type="button"
+                                onClick={() => toggleDay(idx)}
+                                className={`flex flex-col items-center gap-1 py-4 rounded-2xl border-2 transition-all active:scale-95 ${
+                                    offDays.includes(idx)
+                                        ? 'bg-rose-50 dark:bg-rose-900/20 border-rose-300 dark:border-rose-700 text-rose-700 dark:text-rose-400 shadow-md shadow-rose-200/50 dark:shadow-rose-900/30'
+                                        : 'bg-white dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-500 dark:text-slate-400 hover:border-slate-300'
+                                }`}
+                            >
+                                <span className="text-lg font-black">{DAY_SHORT[idx]}</span>
+                                <span className="text-[9px] font-bold uppercase tracking-wider">
+                                    {offDays.includes(idx) ? 'OFF' : 'Working'}
+                                </span>
+                            </button>
+                        ))}
+                    </div>
+                    <p className="text-xs text-slate-400 mt-3">
+                        Currently: {offDays.length === 0 ? 'No off days' : offDays.map(d => DAY_NAMES[d]).join(', ')}
+                    </p>
+                </div>
+
+                {/* Info Box */}
+                <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl border border-indigo-100 dark:border-indigo-800">
+                    <h4 className="font-bold text-slate-800 dark:text-white text-sm mb-2">Off-Day Priority</h4>
+                    <ol className="text-xs text-slate-600 dark:text-slate-300 space-y-1 list-decimal list-inside">
+                        <li><strong>Duty Roster</strong> — Employee has a shift on that date → Working day (overrides everything)</li>
+                        <li><strong>Shift Off Days</strong> — Employee's assigned shift defines off days (configured in Organisation → Masters → Shift Timings)</li>
+                        <li><strong>Company Default</strong> — Uses the setting above for employees without a shift assignment</li>
+                    </ol>
+                </div>
+
+                <div className="pt-4 border-t border-slate-100 dark:border-zinc-800 flex justify-end">
+                    <button onClick={handleSave} disabled={saving} className="px-8 py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-indigo-500/20">
+                        {saving ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <Save className="w-5 h-5" />}
+                        Save Settings
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 // --- Payroll Settings View ---
 const PayrollSettingsView = () => {
     const [settings, setSettings] = useState<any>({
@@ -292,7 +405,7 @@ const PayrollSettingsView = () => {
     const fetchSettings = async () => {
         setLoading(true);
         if (currentCompanyId) {
-            const { data } = await supabase.from('org_payroll_settings').select('*').eq('company_id', currentCompanyId).maybeSingle();
+            const { data } = await (supabase as any).from('org_payroll_settings').select('*').eq('company_id', currentCompanyId).maybeSingle();
             if (data) setSettings(data);
             else setSettings((prev: any) => ({ ...prev, company_id: currentCompanyId }));
         }
@@ -301,7 +414,8 @@ const PayrollSettingsView = () => {
 
     const handleSave = async () => {
         setSaving(true);
-        const { error } = await supabase.from('org_payroll_settings').upsert(settings);
+        const payload = { ...settings, company_id: currentCompanyId };
+        const { error } = await (supabase as any).from('org_payroll_settings').upsert([payload], { onConflict: 'company_id' });
         if (error) alert('Error saving settings: ' + error.message);
         else alert('Settings saved successfully!');
         setSaving(false);
@@ -405,7 +519,7 @@ const AISettingsView = () => {
         if (currentCompanyId) {
             const { data } = await supabase.from('org_ai_settings').select('*').eq('company_id', currentCompanyId).maybeSingle();
             if (data) {
-                setSettings(data);
+                setSettings(data as any);
                 // Don't set API key input for security, just show placeholder if exists
             } else {
                 setSettings(prev => ({ ...prev, company_id: currentCompanyId }));
@@ -421,7 +535,7 @@ const AISettingsView = () => {
             payload.api_key_encrypted = apiKeyInput; // In real production, encrypt this before sending or rely on secure backend connection
         }
 
-        const { error } = await supabase.from('org_ai_settings').upsert(payload, { onConflict: 'company_id,provider' });
+        const { error } = await (supabase as any).from('org_ai_settings').upsert([payload], { onConflict: 'company_id,provider' });
 
         if (error) alert('Error saving AI settings: ' + error.message);
         else {
@@ -588,7 +702,7 @@ export const MASTER_CONFIG: Record<string, MasterTableConfig> = {
             { key: 'name', label: 'Stage Name', type: 'text', required: true },
             { key: 'position', label: 'Position Order', type: 'number', required: true },
             { key: 'win_probability', label: 'Win Probability (%)', type: 'number', required: true },
-            { key: 'status', label: 'Status', type: 'select', required: true, options: ['Active', 'Inactive'] }
+            { key: 'status', label: 'Status', type: 'select', required: true, options: [{label: 'Active', value: 'Active'}, {label: 'Inactive', value: 'Inactive'}] }
         ],
         columns: [
             { key: 'position', label: 'Order' },
@@ -701,9 +815,10 @@ export const MASTER_CONFIG: Record<string, MasterTableConfig> = {
             { key: 'code', label: 'Code', type: 'text', required: true },
             { key: 'start_time', label: 'Start Time', type: 'time', required: true },
             { key: 'end_time', label: 'End Time', type: 'time', required: true },
-            { key: 'grace_period_minutes', label: 'Grace Period (mins)', type: 'number' }
+            { key: 'grace_period_minutes', label: 'Grace Period (mins)', type: 'number' },
+            { key: 'weekly_off_days', label: 'Weekly Off Days (0=Sun,1=Mon,...6=Sat)', type: 'text', placeholder: 'e.g. 5,6 for Fri+Sat' }
         ],
-        columns: [{ key: 'name', label: 'Name' }, { key: 'start_time', label: 'Start' }, { key: 'end_time', label: 'End' }]
+        columns: [{ key: 'name', label: 'Name' }, { key: 'start_time', label: 'Start' }, { key: 'end_time', label: 'End' }, { key: 'weekly_off_days', label: 'Off Days' }]
     },
     'LEAVE_TYPES': {
         tableName: 'org_leave_types',
@@ -767,6 +882,37 @@ export const MASTER_CONFIG: Record<string, MasterTableConfig> = {
         fields: [
             { key: 'name', label: 'Nationality', type: 'text', required: true },
             { key: 'code', label: 'Code', type: 'text', required: true }
+        ],
+        columns: [{ key: 'name', label: 'Name' }, { key: 'code', label: 'Code' }]
+    },
+    'VISA_TYPES': {
+        tableName: 'org_visa_types',
+        displayName: 'Visa Type',
+        description: 'Employee visa categories (e.g., Working, Resident)',
+        fields: [
+            { key: 'name', label: 'Visa Type', type: 'text', required: true },
+            { key: 'code', label: 'Code', type: 'text', required: true }
+        ],
+        columns: [{ key: 'name', label: 'Name' }, { key: 'code', label: 'Code' }]
+    },
+    'EMPLOYEE_STATUSES': {
+        tableName: 'org_employee_statuses',
+        displayName: 'Employee Status',
+        description: 'Contractual status (e.g., Active, Probation)',
+        fields: [
+            { key: 'name', label: 'Status Name', type: 'text', required: true },
+            { key: 'code', label: 'Code', type: 'text', required: true }
+        ],
+        columns: [{ key: 'name', label: 'Name' }, { key: 'code', label: 'Code' }]
+    },
+    'LEAVE_PLANS': {
+        tableName: 'org_leave_plans',
+        displayName: 'Leave Plan',
+        description: 'Annual leave duration policies',
+        fields: [
+            { key: 'name', label: 'Plan Name', type: 'text', required: true },
+            { key: 'code', label: 'Code', type: 'text', required: true },
+            { key: 'description', label: 'Description', type: 'textarea' }
         ],
         columns: [{ key: 'name', label: 'Name' }, { key: 'code', label: 'Code' }]
     },
@@ -867,6 +1013,29 @@ export const MASTER_CONFIG: Record<string, MasterTableConfig> = {
             { key: 'is_stockable', label: 'Is Stockable?', type: 'boolean' }
         ],
         columns: [{ key: 'name', label: 'Name' }, { key: 'code', label: 'Code' }, { key: 'uom', label: 'UOM' }, { key: 'category', label: 'Category' }]
+    },
+    'ATTENDANCE_PERIODS': {
+        tableName: 'attendance_periods',
+        displayName: 'Attendance Period',
+        description: 'Monthly attendance processing cycles',
+        fields: [
+            { key: 'name', label: 'Period Name', type: 'text', required: true, placeholder: 'e.g. April 2026' },
+            { key: 'code', label: 'Code', type: 'text', required: true, placeholder: 'e.g. ATT-2026-04' },
+            { key: 'start_date', label: 'Start Date', type: 'date', required: true },
+            { key: 'end_date', label: 'End Date', type: 'date', required: true },
+            { key: 'status', label: 'Status', type: 'select', required: true, options: [
+                { label: 'Open', value: 'OPEN' },
+                { label: 'Processed', value: 'PROCESSED' },
+                { label: 'Locked', value: 'LOCKED' }
+            ]}
+        ],
+        columns: [
+            { key: 'name', label: 'Period' },
+            { key: 'code', label: 'Code' },
+            { key: 'start_date', label: 'Start' },
+            { key: 'end_date', label: 'End' },
+            { key: 'status', label: 'Status' }
+        ]
     }
 };
 
@@ -898,8 +1067,12 @@ const Modal = ({ title, onClose, children, maxWidth = "max-w-lg" }: { title: str
 
 const GenericMasterModal = ({ config, item, onClose, onRefresh }: { config: MasterTableConfig, item: any, onClose: () => void, onRefresh: () => void }) => {
     const { currentCompanyId } = useAuth();
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        setError(null);
         const form = e.target as HTMLFormElement;
         const formData = new FormData(form);
 
@@ -919,21 +1092,25 @@ const GenericMasterModal = ({ config, item, onClose, onRefresh }: { config: Mast
 
         if (currentCompanyId) {
             payload.company_id = currentCompanyId;
+            setSaving(true);
 
             if (item) {
-                const { error } = await supabase.from(config.tableName).update(payload).eq('id', item.id);
+                const { error } = await (supabase as any).from(config.tableName).update(payload).eq('id', item.id);
                 if (error) {
-                    alert("Error: " + error.message);
+                    setError(error.message);
+                    setSaving(false);
                     return;
                 }
             } else {
-                const { error } = await supabase.from(config.tableName).insert([payload]);
+                const { error } = await (supabase as any).from(config.tableName).insert([payload]);
                 if (error) {
-                    alert("Error: " + error.message);
+                    setError(error.message);
+                    setSaving(false);
                     return;
                 }
             }
 
+            setSaving(false);
             onClose();
             onRefresh();
         }
@@ -942,6 +1119,11 @@ const GenericMasterModal = ({ config, item, onClose, onRefresh }: { config: Mast
     return (
         <Modal title={`${item ? 'Edit' : 'Add'} ${config.displayName}`} onClose={onClose}>
             <form onSubmit={handleSubmit} className="space-y-4">
+                {error && (
+                    <div className="p-3 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-xl text-rose-600 dark:text-rose-400 text-sm font-medium">
+                        {error}
+                    </div>
+                )}
                 {config.fields.map(field => (
                     <div key={field.key}>
                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
@@ -990,8 +1172,9 @@ const GenericMasterModal = ({ config, item, onClose, onRefresh }: { config: Mast
                         )}
                     </div>
                 ))}
-                <button className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20 active:scale-95">
-                    {item ? 'Update' : 'Create'} {config.displayName}
+                <button disabled={saving} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                    {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+                    {saving ? 'Saving...' : `${item ? 'Update' : 'Create'} ${config.displayName}`}
                 </button>
             </form>
         </Modal>
@@ -1054,6 +1237,7 @@ const GenericMastersView = ({
                         { id: 'FINANCIAL_YEARS', label: 'Financial Years' },
                         { id: 'PAYROLL_MONTHS', label: 'Payroll Months' },
                         { id: 'LEAVE_CALENDAR', label: 'Leave Calendar' },
+                        { id: 'ATTENDANCE_PERIODS', label: 'Attendance Periods' },
                         { id: 'BANK_CONFIGS', label: 'Bank Configs' },
                     ].map(tab => (
                         <button
@@ -1074,6 +1258,9 @@ const GenericMastersView = ({
                             { id: 'MARITAL_STATUS', label: 'Marital Status' },
                             { id: 'BLOOD_GROUPS', label: 'Blood Groups' },
                             { id: 'NATIONALITIES', label: 'Nationalities' },
+                            { id: 'VISA_TYPES', label: 'Visa Types' },
+                            { id: 'EMPLOYEE_STATUSES', label: 'Employee Statuses' },
+                            { id: 'LEAVE_PLANS', label: 'Leave Plans' },
                         ].map(tab => (
                             <button
                                 key={tab.id}
@@ -2006,6 +2193,7 @@ export const Organisation: React.FC = () => {
         { id: 'NOTIFICATIONS', icon: Bell, label: 'Notifications', permission: 'org.settings.manage' },
         { id: 'REMINDERS', icon: Clock, label: 'Reminders', permission: 'org.settings.manage' },
         { id: 'AI_SETTINGS', icon: Sparkles, label: 'AI Settings', permission: 'org.settings.manage' },
+        { id: 'ATT_SETTINGS', icon: Calendar, label: 'Attendance Settings', permission: 'org.settings.manage' },
         { id: 'SETTINGS', icon: Settings, label: 'Payroll Settings', permission: 'finance.payroll.manage' },
         { id: 'ACCOUNTING', icon: BarChart2, label: 'Accounting Setup', permission: 'finance.setup.manage' },
         { id: 'ADD_COMPANY', icon: Plus, label: 'Add Company', permission: '*' }, // Restricted to Admin/Owner effectively via *
@@ -2020,11 +2208,11 @@ export const Organisation: React.FC = () => {
     // State for data
     const [departments, setDepartments] = useState<Department[]>([]);
     const [locations, setLocations] = useState<Location[]>([]);
-    const [roles, setRoles] = useState<Role[]>([]);
+    const [roles, setRoles] = useState<any[]>([]);
     const [users, setUsers] = useState<AppUser[]>([]);
     const [workflows, setWorkflows] = useState<any[]>([]);
     const [notificationSettings, setNotificationSettings] = useState<any[]>([]);
-    const [reminders, setReminders] = useState<ReminderConfig[]>([]);
+    const [reminders, setReminders] = useState<any[]>([]);
 
     // State for master data
     const [designations, setDesignations] = useState<any[]>([]);
@@ -2036,6 +2224,7 @@ export const Organisation: React.FC = () => {
     const [leaveCalendarYears, setLeaveCalendarYears] = useState<any[]>([]);
     const [salaryComponents, setSalaryComponents] = useState<any[]>([]);
     const [shiftTimings, setShiftTimings] = useState<any[]>([]);
+    const [attendancePeriods, setAttendancePeriods] = useState<any[]>([]);
     const [faiths, setFaiths] = useState<any[]>([]);
     const [maritalStatus, setMaritalStatus] = useState<any[]>([]);
     const [bloodGroups, setBloodGroups] = useState<any[]>([]);
@@ -2076,7 +2265,7 @@ export const Organisation: React.FC = () => {
     const [addCompanyMsg, setAddCompanyMsg] = useState<string | null>(null);
 
     const [editingWorkflow, setEditingWorkflow] = useState<WorkflowConfig | null>(null);
-    const [workflowLevels, setWorkflowLevels] = useState<WorkflowLevel[]>([]);
+    const [workflowLevels, setWorkflowLevels] = useState<any[]>([]);
     const [showWorkflowList, setShowWorkflowList] = useState(true);
 
     const [selectedNotificationRoles, setSelectedNotificationRoles] = useState<string[]>([]);
@@ -2098,23 +2287,23 @@ export const Organisation: React.FC = () => {
             // Core Organization Masters
             if (activeMasterTab === 'DEPARTMENTS') {
                 const { data } = await supabase.from('departments').select('*');
-                if (data) setDepartments(data);
+                if (data) setDepartments(data as any[]);
             }
             if (activeMasterTab === 'LOCATIONS') {
                 const { data } = await supabase.from('locations').select('*');
-                if (data) setLocations(data);
+                if (data) setLocations(data as any[]);
             }
             if (activeMasterTab === 'DESIGNATIONS') {
                 const { data } = await supabase.from('org_designations').select('*');
-                if (data) setDesignations(data);
+                if (data) setDesignations(data as any[]);
             }
             if (activeMasterTab === 'GRADES') {
                 const { data } = await supabase.from('org_grades').select('*');
-                if (data) setGrades(data);
+                if (data) setGrades(data as any[]);
             }
             if (activeMasterTab === 'EMPLOYMENT_TYPES') {
                 const { data } = await supabase.from('org_employment_types').select('*');
-                if (data) setEmploymentTypes(data);
+                if (data) setEmploymentTypes(data as any[]);
             }
             // Leave Masters
             if (activeMasterTab === 'LEAVE_TYPES') {
@@ -2169,6 +2358,11 @@ export const Organisation: React.FC = () => {
                 const { data } = await supabase.from('org_leave_calendar_years').select('*').order('year', { ascending: false });
                 if (data) setLeaveCalendarYears(data);
             }
+            // Attendance Periods
+            if (activeMasterTab === 'ATTENDANCE_PERIODS') {
+                const { data } = await supabase.from('attendance_periods').select('*').order('start_date', { ascending: false });
+                if (data) setAttendancePeriods(data);
+            }
             // Bank Configs
             if (activeMasterTab === 'BANK_CONFIGS') {
                 const { data } = await supabase.from('org_bank_configs').select('*');
@@ -2186,7 +2380,7 @@ export const Organisation: React.FC = () => {
             }
             if (activeMasterTab === 'POLLS') {
                 const { data } = await supabase.from('polls').select('*').order('created_at', { ascending: false });
-                if (data) setPolls(data);
+                if (data) setPolls(data as any[]);
             }
             if (activeMasterTab === 'SURVEYS') {
                 const { data } = await supabase.from('surveys').select('*').order('created_at', { ascending: false });
@@ -2194,28 +2388,27 @@ export const Organisation: React.FC = () => {
             }
             if (activeMasterTab === 'KUDOS_CATEGORIES') {
                 const { data } = await supabase.from('master_kudos_categories').select('*');
-                if (data) setKudosCategories(data);
+                if (data) setKudosCategories(data as any[]);
             }
             if (activeMasterTab === 'CRM_STAGES') {
                 const { data } = await supabase.from('org_crm_stages').select('*').order('position', { ascending: true });
-                if (data) setCrmStages(data);
+                if (data) setCrmStages(data as any[]);
             }
         }
         if (activeTab === 'ROLES') {
             if (currentCompanyId) {
                 const { data } = await supabase.from('roles').select('*').eq('company_id', currentCompanyId);
-                if (data) setRoles(data);
+                if (data) setRoles(data as any[]);
 
                 // Also fetch users to show counts
                 const { data: userData } = await supabase.from('profiles')
-                    .select('*, roles:role_id(id, name), employees:employee_id(id, name, employee_code, email)')
+                    .select('*, employees:employee_id(id, name, employee_code, email)')
                     .eq('company_id', currentCompanyId);
 
                 if (userData) {
                     const appUsers: AppUser[] = userData.map((p: any) => {
-                        const roleName = p.roles?.name || p.role || 'Employee';
-                        // Link using role_id preferably
-                        const roleId = p.roles?.id || p.role_id || '';
+                        const roleName = p.role || 'Employee';
+                        const roleId = roles.find(r => r.name.toLowerCase() === roleName.toLowerCase())?.id || '';
 
                         return {
                             id: p.id,
@@ -2249,14 +2442,14 @@ export const Organisation: React.FC = () => {
                 if (empList) setAllEmployees(empList);
             }
 
-            const { data } = await supabase.from('profiles')
-                .select('*, roles:role_id(id, name), employees:employee_id(id, name, employee_code, email)');
+            const { data } = await (supabase as any).from('profiles')
+                .select('*, employees:employee_id(id, name, employee_code, email)')
+                .eq('company_id', currentCompanyId);
 
             if (data) {
                 const appUsers: AppUser[] = data.map((p: any) => {
-                    // Prefer role_id link, fall back to text match
-                    const roleName = p.roles?.name || p.role || 'Employee';
-                    const roleId = p.roles?.id || p.role_id || (roles.find(r => r.name.toLowerCase() === roleName.toLowerCase())?.id) || '';
+                    const roleName = p.role || 'Employee';
+                    const roleId = roles.find(r => r.name.toLowerCase() === roleName.toLowerCase())?.id || '';
 
                     return {
                         id: p.id,
@@ -2289,7 +2482,7 @@ export const Organisation: React.FC = () => {
         }
         if (activeTab === 'REMINDERS') {
             const { data } = await supabase.from('reminders').select('*');
-            if (data) setReminders(data);
+            if (data) setReminders(data as any[]);
         }
         if (activeTab === 'BUZZ') {
             const { data: ann } = await supabase.from('announcements').select('*').order('created_at', { ascending: false });
@@ -2360,19 +2553,39 @@ export const Organisation: React.FC = () => {
         }
     };
 
-    const handleDeleteUser = async (user: any) => {
+    const handleDeleteUser = async (userObj: any) => {
         // Safety: prevent deleting own account
         const { data: { user: currentAuthUser } } = await supabase.auth.getUser();
-        if (currentAuthUser && currentAuthUser.id === user.id) {
+        if (currentAuthUser && currentAuthUser.id === userObj.id) {
             alert('You cannot delete your own account.');
             return;
         }
-        if (!confirm(`Delete user "${user.name}" (${user.email})? This will remove their profile record. The auth account will remain but will be unlinked.`)) return;
-        const { error } = await supabase.from('profiles').delete().eq('id', user.id);
-        if (error) {
-            alert('Error deleting user: ' + error.message);
-        } else {
+        if (!confirm(`Delete user "${userObj.name}" (${userObj.email})? This will remove their profile record and revoke their company access.`)) return;
+
+        // 1. Audit log the deletion
+        try {
+            if (currentAuthUser) {
+                await (supabase.from as any)('delete_audit_logs').insert([{
+                    deleted_by_email: currentAuthUser.email || 'unknown',
+                    deleted_by_uid: currentAuthUser.id,
+                    record_type: 'user',
+                    record_id: userObj.id,
+                    record_name: `${userObj.name} (${userObj.email})`
+                }]);
+            }
+        } catch (logErr) {
+            console.error('Audit logging failed:', logErr);
+        }
+
+        // 2. Revoke company access and delete profile securely via RPC
+        try {
+            const { error } = await (supabase.rpc as any)('admin_delete_user', { p_user_id: userObj.id });
+            if (error) throw error;
+
+            alert('User account and access deleted successfully.');
             refreshData();
+        } catch (err: any) {
+            alert('Error deleting user: ' + err.message);
         }
     };
 
@@ -2389,89 +2602,60 @@ export const Organisation: React.FC = () => {
 
         const selectedEmployeeId = formData.get('employeeId') as string;
 
-        const payload: any = {
-            full_name: formData.get('name') as string,
-            role: roleName,
-            role_id: roleId,
-        };
-
-        // Link employee from dropdown selection
-        if (selectedEmployeeId) {
-            payload.employee_id = selectedEmployeeId;
-        } else if (editingUser && !editingUser.employeeId) {
-            // Fallback: auto-link by email match
-            const email = editingUser.email;
+        // Auto-link by email match if no employee selected
+        let linkedEmployeeId = selectedEmployeeId || null;
+        const email = formData.get('email') as string;
+        if (!linkedEmployeeId && email) {
             const { data: emp } = await supabase.from('employees').select('id').eq('email', email).maybeSingle();
-            if (emp) payload.employee_id = emp.id;
+            if (emp) linkedEmployeeId = emp.id;
         }
 
+        const name = formData.get('name') as string;
+
         if (editingUser) {
-            const { error } = await supabase.from('profiles').update(payload).eq('id', editingUser.id);
-            if (error) alert("Error updating user: " + error.message);
-            else {
+            // Update User via RPC to bypass RLS
+            const { error } = await supabase.rpc('admin_update_user', {
+                p_user_id: editingUser.id,
+                p_full_name: name,
+                p_role: roleName,
+                p_employee_id: linkedEmployeeId
+            });
+            
+            if (error) {
+                alert("Error updating user: " + error.message);
+            } else {
+                // Ensure role is updated in user_company_access
+                await supabase.from('user_company_access')
+                    .update({ role_id: roleId })
+                    .eq('user_id', editingUser.id)
+                    .eq('company_id', currentCompanyId);
+
                 alert("User updated successfully");
                 setShowAddUser(false);
                 setEditingUser(null);
                 refreshData();
             }
         } else {
-            // Create new user via supabase.auth.signUp
-            const email = formData.get('email') as string;
-            const name = formData.get('name') as string;
+            // Create new user via RPC to avoid logging out current admin
             if (!email) { alert('Email is required'); return; }
 
             try {
-                const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-                    email: email,
-                    password: '654321',
-                    options: {
-                        data: { full_name: name }
-                    }
+                const { data: result, error } = await supabase.rpc('admin_create_user', {
+                    p_email: email,
+                    p_password: 'Password123!',
+                    p_full_name: name,
+                    p_role: roleName,
+                    p_company_id: currentCompanyId,
+                    p_role_id: roleId,
+                    p_employee_id: linkedEmployeeId
                 });
 
-                if (signUpError) {
-                    alert('Error creating user: ' + signUpError.message);
+                if (error) {
+                    alert('Error creating user: ' + error.message);
                     return;
                 }
 
-                if (signUpData?.user) {
-                    // Try to find matching employee record to link
-                    let linkedEmployeeId = selectedEmployeeId || null;
-                    if (!linkedEmployeeId) {
-                        const { data: matchingEmp } = await supabase.from('employees')
-                            .select('id').eq('email', email).eq('company_id', currentCompanyId).maybeSingle();
-                        if (matchingEmp) linkedEmployeeId = matchingEmp.id;
-                    }
-
-                    // Create/update profile record with employee link
-                    const profilePayload: any = {
-                        id: signUpData.user.id,
-                        full_name: name,
-                        role: roleName,
-                        role_id: roleId,
-                        company_id: currentCompanyId,
-                    };
-                    if (linkedEmployeeId) profilePayload.employee_id = linkedEmployeeId;
-
-                    const { error: profileError } = await supabase.from('profiles').upsert(profilePayload);
-
-                    if (profileError) {
-                        console.error('Profile creation error:', profileError);
-                        alert('User created but profile setup failed: ' + profileError.message);
-                    } else {
-                        // Ensure user_company_access is granted
-                        await supabase.from('user_company_access').upsert({
-                            user_id: signUpData.user.id,
-                            company_id: currentCompanyId,
-                            role_id: roleId,
-                            is_default: true,
-                            status: 'active'
-                        });
-
-                        alert(`User "${name}" created successfully with default password 654321. They will receive a confirmation email.`);
-                    }
-                }
-
+                alert(`User "${name}" created successfully with default password "Password123!".`);
                 setShowAddUser(false);
                 setEditingUser(null);
                 refreshData();
@@ -2714,59 +2898,113 @@ export const Organisation: React.FC = () => {
         );
     };
 
-    const GenericUserModal = ({ setShowAddUser, handleSaveUser, roles, editingUser, allEmployees }: any) => (
-        <Modal title={editingUser ? "Edit User" : "Add New User"} onClose={() => { setShowAddUser(false); setEditingUser(null); }}>
-            <form onSubmit={handleSaveUser} className="space-y-4">
-                <input
-                    name="name"
-                    defaultValue={editingUser?.name || ''}
-                    required
-                    placeholder="Full Name"
-                    className="w-full p-4 bg-slate-50 dark:bg-zinc-800 rounded-2xl border border-slate-200 dark:border-zinc-700 text-slate-900 dark:text-white shadow-sm"
-                />
-                <input
-                    name="email"
-                    defaultValue={editingUser?.email || ''}
-                    required
-                    type="email"
-                    placeholder="Email"
-                    disabled={!!editingUser}
-                    className={`w-full p-4 bg-slate-50 dark:bg-zinc-800 rounded-2xl border border-slate-200 dark:border-zinc-700 text-slate-900 dark:text-white shadow-sm ${editingUser ? 'opacity-60 cursor-not-allowed' : ''}`}
-                />
-                <select
-                    name="roleId"
-                    defaultValue={editingUser?.roleId || ''}
-                    required
-                    className="w-full p-4 bg-slate-50 dark:bg-zinc-800 rounded-2xl border border-slate-200 dark:border-zinc-700 text-slate-900 dark:text-white shadow-sm"
-                >
-                    <option value="">Select Role...</option>
-                    {roles.map((r: any) => <option key={r.id} value={r.id}>{r.name}</option>)}
-                </select>
-                <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Link Employee Record</label>
-                    <select
-                        name="employeeId"
-                        defaultValue={editingUser?.linkedEmployeeId || ''}
-                        className="w-full p-4 bg-slate-50 dark:bg-zinc-800 rounded-2xl border border-slate-200 dark:border-zinc-700 text-slate-900 dark:text-white shadow-sm"
-                    >
-                        <option value="">— No Employee Linked —</option>
-                        {(allEmployees || []).map((emp: any) => (
-                            <option key={emp.id} value={emp.id}>
-                                {emp.name} {emp.employee_code ? `(${emp.employee_code})` : ''} — {emp.email || 'No email'}
-                            </option>
-                        ))}
+    const GenericUserModal = ({ setShowAddUser, handleSaveUser, roles, editingUser, allEmployees }: any) => {
+        const MODULE_PERMISSIONS = [
+            { label: 'HRMS', perms: ['hrms.employees.view', 'hrms.attendance.view', 'hrms.leave.view', 'hrms.payroll.view'] },
+            { label: 'Self Service (ESSP)', perms: ['essp.view'] },
+            { label: 'CRM', perms: ['crm.dashboard.view', 'crm.deals.view', 'crm.customers.view'] },
+            { label: 'Organisation', perms: ['org.structure.view', 'org.company.manage', 'org.roles.manage', 'org.users.manage', 'org.masters.manage'] },
+            { label: 'Inventory', perms: ['inventory.view'] },
+            { label: 'Accounting / Finance', perms: ['finance.dashboard.view', 'finance.payroll.manage'] },
+            { label: 'Manufacturing', perms: ['manufacturing.view'] },
+            { label: 'Procurement', perms: ['procurement.view'] },
+        ];
+        const [grantedPerms, setGrantedPerms] = React.useState<string[]>([]);
+        const [showPerms, setShowPerms] = React.useState(false);
+
+        React.useEffect(() => {
+            if (editingUser?.id) {
+                supabase.from('user_permissions')
+                    .select('permission')
+                    .eq('user_id', editingUser.id)
+                    .eq('granted', true)
+                    .then(({ data }) => setGrantedPerms(data?.map((d: any) => d.permission) || []));
+            }
+        }, [editingUser?.id]);
+
+        const togglePerm = (perm: string) =>
+            setGrantedPerms(prev => prev.includes(perm) ? prev.filter(p => p !== perm) : [...prev, perm]);
+
+        const handleSubmit = async (e: React.FormEvent) => {
+            await handleSaveUser(e);
+            if (editingUser?.id && currentCompanyId) {
+                const allPerms = MODULE_PERMISSIONS.flatMap(m => m.perms);
+                const upsertPayload = allPerms.map(p => ({
+                    user_id: editingUser.id, company_id: currentCompanyId,
+                    permission: p, granted: grantedPerms.includes(p)
+                }));
+                await supabase.from('user_permissions').upsert(upsertPayload, { onConflict: 'user_id,company_id,permission' });
+            }
+        };
+
+        return (
+            <Modal title={editingUser ? "Edit User" : "Add New User"} onClose={() => { setShowAddUser(false); setEditingUser(null); }} maxWidth="max-w-xl">
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <input name="name" defaultValue={editingUser?.name || ''} required placeholder="Full Name"
+                        className="w-full p-4 bg-slate-50 dark:bg-zinc-800 rounded-2xl border border-slate-200 dark:border-zinc-700 text-slate-900 dark:text-white shadow-sm" />
+                    <input name="email" defaultValue={editingUser?.email || ''} required type="email" placeholder="Email"
+                        disabled={!!editingUser}
+                        className={`w-full p-4 bg-slate-50 dark:bg-zinc-800 rounded-2xl border border-slate-200 dark:border-zinc-700 text-slate-900 dark:text-white shadow-sm ${editingUser ? 'opacity-60 cursor-not-allowed' : ''}`} />
+                    <select name="roleId" defaultValue={editingUser?.roleId || ''} required
+                        className="w-full p-4 bg-slate-50 dark:bg-zinc-800 rounded-2xl border border-slate-200 dark:border-zinc-700 text-slate-900 dark:text-white shadow-sm">
+                        <option value="">Select Role...</option>
+                        {roles.map((r: any) => <option key={r.id} value={r.id}>{r.name}</option>)}
                     </select>
-                    <p className="text-xs text-slate-400 mt-1">Linking enables the employee to see their profile data in ESSP.</p>
-                </div>
-                <div className="p-4 bg-blue-50 text-blue-700 rounded-xl text-xs">
-                    Note: Changing role here updates the profile access level.
-                </div>
-                <button className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold">
-                    {editingUser ? 'Update User' : 'Send Invitation'}
-                </button>
-            </form>
-        </Modal>
-    );
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Link Employee Record</label>
+                        <select name="employeeId" defaultValue={editingUser?.linkedEmployeeId || ''}
+                            className="w-full p-4 bg-slate-50 dark:bg-zinc-800 rounded-2xl border border-slate-200 dark:border-zinc-700 text-slate-900 dark:text-white shadow-sm">
+                            <option value="">— No Employee Linked —</option>
+                            {(allEmployees || []).map((emp: any) => (
+                                <option key={emp.id} value={emp.id}>
+                                    {emp.name} {emp.employee_code ? `(${emp.employee_code})` : ''} — {emp.email || 'No email'}
+                                </option>
+                            ))}
+                        </select>
+                        <p className="text-xs text-slate-400 mt-1">Linking enables the employee to see their profile data in ESSP.</p>
+                    </div>
+
+                    {/* Permission Matrix — only for existing users */}
+                    {editingUser && (
+                        <div className="border border-slate-200 dark:border-zinc-700 rounded-2xl overflow-hidden">
+                            <button type="button" onClick={() => setShowPerms(v => !v)}
+                                className="w-full flex items-center justify-between p-4 bg-slate-50 dark:bg-zinc-800 text-sm font-bold text-slate-700 dark:text-white hover:bg-slate-100 dark:hover:bg-zinc-700 transition-colors">
+                                <span>🔐 Module Permissions (Per-User Override)</span>
+                                <span className="text-xs text-slate-400">{showPerms ? '▲ Hide' : '▼ Expand'}</span>
+                            </button>
+                            {showPerms && (
+                                <div className="p-4 space-y-4 bg-white dark:bg-zinc-900 max-h-64 overflow-y-auto">
+                                    <p className="text-xs text-slate-500 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 p-2 rounded-lg">These override role-based permissions for this user only.</p>
+                                    {MODULE_PERMISSIONS.map(module => (
+                                        <div key={module.label}>
+                                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">{module.label}</p>
+                                            <div className="grid grid-cols-1 gap-1 pl-2">
+                                                {module.perms.map(perm => (
+                                                    <label key={perm} className="flex items-center gap-2 cursor-pointer group">
+                                                        <input type="checkbox" checked={grantedPerms.includes(perm)}
+                                                            onChange={() => togglePerm(perm)} className="w-4 h-4 rounded accent-blue-600" />
+                                                        <span className="text-xs text-slate-600 dark:text-slate-300 group-hover:text-blue-500 transition-colors font-mono">{perm}</span>
+                                                    </label>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    <div className="p-3 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-xl text-xs">
+                        Note: Changing role updates the profile access level.{!editingUser && ' After creating, edit the user to set specific module permissions.'}
+                    </div>
+                    <button className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-bold transition-colors">
+                        {editingUser ? 'Update User' : 'Send Invitation'}
+                    </button>
+                </form>
+            </Modal>
+        );
+    };
+
 
     const GenericAddWorkflowModal = ({ setShowAddWorkflow, handleAddWorkflow }: any) => (
         <Modal title="Create New Workflow" onClose={() => setShowAddWorkflow(false)}>
@@ -2895,7 +3133,7 @@ export const Organisation: React.FC = () => {
                         />
                     )}
                     {subTab === 'POLLS' && (
-                        <PollsView polls={polls} onAdd={onAddPoll} onDelete={async (id: string) => {
+                        <InternalPollsView polls={polls} onAdd={() => setShowAddPoll(true)} onDelete={async (id: string) => {
                             if (confirm('Delete Poll?')) {
                                 await supabase.from('polls').delete().eq('id', id);
                                 refreshData();
@@ -2907,7 +3145,7 @@ export const Organisation: React.FC = () => {
         );
     };
 
-    const PollsView = ({ polls, onAdd, onDelete }: any) => (
+    const InternalPollsView = ({ polls, onAdd, onDelete }: any) => (
         <div className="h-full flex flex-col">
             <div className="flex justify-end mb-6">
                 <button
@@ -3014,9 +3252,17 @@ export const Organisation: React.FC = () => {
     }
 
     // --- Handlers for Master Data Action ---
+    const handleDelete = async (id: string | number) => {
+        if (confirm('Are you sure you want to delete this item?')) {
+            const { error } = await (supabase as any).from(currentMasterConfig!.tableName).delete().eq('id', id);
+            if (error) alert(error.message);
+            else refreshData();
+        }
+    };
+
     const handleDeleteMasterItem = async (config: MasterTableConfig, item: any) => {
         if (confirm('Delete this item?')) {
-            const { error } = await supabase.from(config.tableName).delete().eq('id', item.id);
+            const { error } = await (supabase as any).from(config.tableName).delete().eq('id', item.id);
             if (error) {
                 alert('Error deleting: ' + error.message);
             } else {
@@ -3035,7 +3281,9 @@ export const Organisation: React.FC = () => {
                 <div className="flex flex-col gap-3">
                     <div className="mb-8 px-2 hidden md:block">
                         <div className="flex items-center gap-2 mb-1">
-                            <img src={KAA_LOGO_URL} alt="Logo" className="h-8 w-auto object-contain brightness-100 dark:brightness-[1.15]" />
+                            <div className="bg-white border border-slate-100 shadow-sm rounded-xl p-1.5 flex items-center justify-center h-10 w-10 shrink-0">
+                                <img src={KAA_LOGO_URL} alt="Logo" className="h-full w-full object-contain" />
+                            </div>
                             <span className="text-lg font-extrabold text-slate-800 dark:text-white tracking-tight">ORG</span>
                         </div>
                         <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest bg-white/50 dark:bg-zinc-800/50 px-2 py-1 rounded-md">Administration</span>
@@ -3095,6 +3343,7 @@ export const Organisation: React.FC = () => {
                                 case 'SURVEYS': return surveys;
                                 case 'KUDOS_CATEGORIES': return kudosCategories;
                                 case 'CRM_STAGES': return crmStages;
+                                case 'ATTENDANCE_PERIODS': return attendancePeriods;
                                 default: return [];
                             }
                         })()}
@@ -3224,6 +3473,9 @@ export const Organisation: React.FC = () => {
                         reminders={reminders}
                         handleSaveReminder={handleSaveReminder}
                     />
+                )}
+                {activeTab === 'ATT_SETTINGS' && (
+                    <AttendanceSettingsView />
                 )}
                 {activeTab === 'SETTINGS' && (
                     <PayrollSettingsView />

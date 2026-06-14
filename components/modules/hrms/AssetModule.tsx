@@ -48,14 +48,14 @@ export const AssetModule: React.FC<AssetModuleProps> = ({
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
             const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', user.id).single();
-            const { error } = await supabase.from('assets').insert([{
+            const { error } = await (supabase as any).from('assets').insert([{
                 company_id: profile?.company_id,
-                name: formData.get('name'),
-                serial_number: formData.get('serial_number'),
-                type: formData.get('type'),
+                name: formData.get('name') as string,
+                serial_number: formData.get('serial_number') as string,
+                type: formData.get('type') as string,
                 status: 'Available', // Default
                 created_at: new Date().toISOString()
-            }]);
+            } as any]);
 
             if (error) alert('Error: ' + error.message);
             else {
@@ -73,8 +73,8 @@ export const AssetModule: React.FC<AssetModuleProps> = ({
         const formData = new FormData(e.target as HTMLFormElement);
         const employeeId = formData.get('employee_id');
 
-        const { error } = await supabase.from('assets').update({
-            assigned_to: employeeId,
+        const { error } = await (supabase as any).from('assets').update({
+            assigned_to: employeeId as string,
             status: 'In Use'
         }).eq('id', selectedAsset.id);
 

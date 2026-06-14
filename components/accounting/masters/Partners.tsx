@@ -17,6 +17,7 @@ interface Partner {
     state: string;
     country: string;
     postal_code: string;
+    credit_limit: number;
 }
 
 interface Account {
@@ -54,7 +55,7 @@ export const Partners: React.FC<{ type?: 'Customer' | 'Vendor' }> = ({ type }) =
 
         const { data, error } = await query;
         if (error) console.error('Error fetching partners:', error);
-        else setPartners(data || []);
+        else setPartners((data || []) as Partner[]);
         setLoading(false);
     };
 
@@ -83,13 +84,13 @@ export const Partners: React.FC<{ type?: 'Customer' | 'Vendor' }> = ({ type }) =
             if (editingPartner) {
                 const { error } = await supabase
                     .from('accounting_partners')
-                    .update(data)
+                    .update(data as any)
                     .eq('id', editingPartner.id);
                 if (error) throw error;
             } else {
                 const { error } = await supabase
                     .from('accounting_partners')
-                    .insert([data]);
+                    .insert([data as any]);
                 if (error) throw error;
             }
             setIsModalOpen(false);
@@ -173,6 +174,11 @@ export const Partners: React.FC<{ type?: 'Customer' | 'Vendor' }> = ({ type }) =
                                 </div>
                             )}
 
+                            <div className="flex items-center gap-2 text-xs text-rose-500 font-bold mb-4 bg-rose-50 dark:bg-rose-900/20 px-2 py-1 rounded w-fit">
+                                <span className="uppercase tracking-widest text-[10px]">Credit Limit:</span>
+                                <span>${Number(partner.credit_limit || 0).toLocaleString()}</span>
+                            </div>
+
                             <div className="space-y-2 mt-4 pt-4 border-t border-slate-100 dark:border-zinc-800">
                                 {partner.email && (
                                     <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
@@ -230,6 +236,11 @@ export const Partners: React.FC<{ type?: 'Customer' | 'Vendor' }> = ({ type }) =
                         <div>
                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Tax ID / VAT</label>
                             <input name="tax_id" defaultValue={editingPartner?.tax_id} className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm" placeholder="e.g. GSTIN, VAT Number" />
+                        </div>
+
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Credit Limit ($)</label>
+                            <input name="credit_limit" type="number" step="0.01" defaultValue={editingPartner?.credit_limit || 0} className="w-full p-2.5 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-900/50 rounded-lg text-sm font-bold text-rose-600" placeholder="0.00" />
                         </div>
 
                         <div className="pt-4 border-t border-slate-200 dark:border-zinc-700">

@@ -10,10 +10,16 @@ import { PutawayRules } from './config/PutawayRules';
 import { InventoryAdjustments } from './ops/InventoryAdjustments';
 import { ScrapInventory } from './ops/ScrapInventory';
 import { InventoryOverview } from './InventoryOverview';
-import { Package, Boxes, ClipboardList, Warehouse, ArrowDownLeft, ArrowUpRight, Settings, Trash2, RefreshCw, LayoutDashboard } from 'lucide-react';
+import { StockAlerts } from './StockAlerts';
+import { DocumentGenerator } from './DocumentGenerator';
+import { BarcodeManager } from './BarcodeManager';
+import { ReportsListView } from '../modules/reports/ReportsListView';
+import { useAuth } from '../../contexts/AuthContext';
+import { Package, Boxes, ClipboardList, Warehouse, ArrowDownLeft, ArrowUpRight, Settings, Trash2, RefreshCw, LayoutDashboard, Bell, FileText, QrCode, BarChart3 } from 'lucide-react';
 
 export const InventoryDashboard: React.FC = () => {
-    const [activeTab, setActiveTab] = useState<'overview' | 'items' | 'stock' | 'movements' | 'warehouse' | 'inbound' | 'outbound' | 'adjustments' | 'scrap' | 'config'>('overview');
+    const { currentCompanyId } = useAuth();
+    const [activeTab, setActiveTab] = useState<'overview' | 'items' | 'stock' | 'movements' | 'warehouse' | 'inbound' | 'outbound' | 'adjustments' | 'scrap' | 'alerts' | 'documents' | 'barcodes' | 'reports' | 'config'>('overview');
     const [configSubTab, setConfigSubTab] = useState<'categories' | 'rules'>('categories');
 
     return (
@@ -96,6 +102,33 @@ export const InventoryDashboard: React.FC = () => {
                     >
                         <Settings className="w-4 h-4" /> Config
                     </button>
+
+                    <div className="w-px h-6 bg-slate-300 dark:bg-zinc-700 mx-1 self-center"></div>
+
+                    <button
+                        onClick={() => setActiveTab('alerts')}
+                        className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'alerts' ? 'bg-white dark:bg-zinc-700 text-amber-600 dark:text-amber-400 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                        <Bell className="w-4 h-4" /> Alerts
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('documents')}
+                        className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'documents' ? 'bg-white dark:bg-zinc-700 text-teal-600 dark:text-teal-400 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                        <FileText className="w-4 h-4" /> Documents
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('barcodes')}
+                        className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'barcodes' ? 'bg-white dark:bg-zinc-700 text-purple-600 dark:text-purple-400 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                        <QrCode className="w-4 h-4" /> Barcodes
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('reports')}
+                        className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'reports' ? 'bg-white dark:bg-zinc-700 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                        <BarChart3 className="w-4 h-4" /> Reports
+                    </button>
                 </div>
             </div>
 
@@ -118,6 +151,14 @@ export const InventoryDashboard: React.FC = () => {
                 {activeTab === 'adjustments' && <InventoryAdjustments />}
 
                 {activeTab === 'scrap' && <ScrapInventory />}
+
+                {activeTab === 'alerts' && <StockAlerts />}
+
+                {activeTab === 'documents' && <DocumentGenerator />}
+
+                {activeTab === 'barcodes' && <BarcodeManager />}
+
+                {activeTab === 'reports' && <ReportsListView moduleFilter="INVENTORY" companyId={currentCompanyId || undefined} />}
 
                 {activeTab === 'config' && (
                     <div className="space-y-6">

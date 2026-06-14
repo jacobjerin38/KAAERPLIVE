@@ -53,7 +53,7 @@ export const StockMovements: React.FC = () => {
                 .limit(50);
 
             if (error) throw error;
-            setMovements(data || []);
+            setMovements((data || []) as any);
         } catch (error) {
             console.error('Error fetching stock movements:', error);
         } finally {

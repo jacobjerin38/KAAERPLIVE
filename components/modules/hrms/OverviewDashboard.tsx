@@ -12,9 +12,41 @@ interface OverviewDashboardProps {
         departments: number;
     };
     announcements: Announcement[];
+    employees: any[]; // Or Employee[] if imported
 }
 
-export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({ stats, announcements }) => {
+import { Cake } from 'lucide-react';
+
+export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({ stats, announcements, employees = [] }) => {
+    // Upcoming Birthdays logic
+    const upcomingBirthdays = React.useMemo(() => {
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        
+        return employees
+            .filter(emp => emp.date_of_birth)
+            .map(emp => {
+                const dob = new Date(emp.date_of_birth);
+                const thisYearBday = new Date(today.getFullYear(), dob.getMonth(), dob.getDate());
+                
+                // If birthday has passed this year, look at next year
+                if (thisYearBday < today) {
+                    thisYearBday.setFullYear(today.getFullYear() + 1);
+                }
+                
+                const daysUntil = Math.ceil((thisYearBday.getTime() - today.getTime()) / (1000 * 3600 * 24));
+                const ageToTurn = thisYearBday.getFullYear() - dob.getFullYear();
+                
+                return {
+                    ...emp,
+                    daysUntil,
+                    ageToTurn
+                };
+            })
+            .sort((a, b) => a.daysUntil - b.daysUntil)
+            .slice(0, 5); // Top 5 upcoming
+    }, [employees]);
+
     return (
         <div className="p-8 h-full flex flex-col animate-page-enter overflow-y-auto">
             <header className="flex justify-between items-center mb-10 shrink-0">
@@ -100,6 +132,45 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({ stats, ann
                                 <div key={ann.id} className="p-4 rounded-2xl bg-white dark:bg-zinc-800 border border-slate-100 dark:border-zinc-700 shadow-sm">
                                     <h4 className="font-bold text-slate-800 dark:text-slate-200 text-sm mb-1">{ann.title}</h4>
                                     <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2">{ann.content}</p>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                {/* Upcoming Birthdays */}
+                <div className="bg-white/70 dark:bg-zinc-900/70 backdrop-blur-xl p-8 rounded-[2rem] border border-white/60 dark:border-zinc-800 shadow-xl shadow-slate-200/50 dark:shadow-black/30 overflow-hidden flex flex-col xl:col-span-1 lg:col-span-3">
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2">
+                        <Cake className="w-5 h-5 text-fuchsia-500" />
+                        Upcoming Birthdays
+                    </h3>
+
+                    {upcomingBirthdays.length === 0 ? (
+                        <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
+                            <p className="text-sm italic">No upcoming birthdays.</p>
+                        </div>
+                    ) : (
+                        <div className="flex-1 overflow-y-auto space-y-3 pr-2">
+                            {upcomingBirthdays.map((emp: any) => (
+                                <div key={emp.id} className="flex items-center gap-3 p-3 rounded-2xl bg-white dark:bg-zinc-800 border border-slate-100 dark:border-zinc-700 shadow-sm">
+                                    <img 
+                                        src={emp.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(emp.name)}&background=random`} 
+                                        alt={emp.name} 
+                                        className="w-10 h-10 rounded-full border border-slate-200 dark:border-zinc-700 object-cover" 
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                        <p className="font-bold text-sm text-slate-800 dark:text-slate-200 truncate">{emp.name}</p>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400 truncate w-full flex items-center gap-1.5">
+                                            <span>{new Date(emp.date_of_birth).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                                            <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-zinc-600"></span>
+                                            <span>Turning <span className="font-bold text-fuchsia-600 dark:text-fuchsia-400">{emp.ageToTurn}</span></span>
+                                        </p>
+                                    </div>
+                                    <div className="text-right flex-shrink-0">
+                                        <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${emp.daysUntil === 0 ? 'bg-fuchsia-100 text-fuchsia-600 dark:bg-fuchsia-900/30' : 'bg-slate-100 text-slate-600 dark:bg-zinc-700 dark:text-slate-300'}`}>
+                                            {emp.daysUntil === 0 ? 'Today!' : `In ${emp.daysUntil}d`}
+                                        </span>
+                                    </div>
                                 </div>
                             ))}
                         </div>

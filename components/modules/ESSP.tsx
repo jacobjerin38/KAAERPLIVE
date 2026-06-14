@@ -24,7 +24,8 @@ import {
     Sparkles, // [NEW] For Assistant
     TrendingUp, // [NEW] For Skills
     Zap, // [NEW] For Insights
-    Landmark
+    Landmark,
+    X
 } from 'lucide-react';
 import { Employee, AttendanceRecord, LeaveRequest } from '../hrms/types';
 import { KAA_LOGO_URL } from '../../constants';
@@ -131,24 +132,43 @@ export const ESSP: React.FC = () => {
         // Reverting to 'announcements' for safety unless I know otherwise.
     };
 
+    const getCurrentLocation = (): Promise<string | null> => {
+        return new Promise((resolve) => {
+            if (!navigator.geolocation) {
+                resolve(null);
+                return;
+            }
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    resolve(`${position.coords.latitude},${position.coords.longitude}`);
+                },
+                () => resolve(null),
+                { timeout: 5000 }
+            );
+        });
+    };
+
     const handlePunch = async () => {
         if (!currentEmployee) return;
         setPunchLoading(true);
 
         const now = new Date();
         const today = now.toISOString().split('T')[0];
-        const timeString = now.toLocaleTimeString('en-GB', { hour12: false }); // HH:mm:ss
+        const isoNow = now.toISOString(); // Full ISO timestamp for DB
+        const locStr = await getCurrentLocation();
 
         if (punchStatus === 'Out') {
             // PUNCH IN
-            const { data, error } = await supabase.from('attendance').insert({
+            const { data, error } = await (supabase as any).from('attendance').insert([{
                 employee_id: currentEmployee.id,
                 company_id: currentEmployee.company_id,
                 date: today,
-                check_in: timeString,
+                check_in: isoNow,
+                check_in_location: locStr,
                 status: 'Present',
-                duration: 0
-            }).select().single();
+                total_hours: 0,
+                source: 'punch'
+            }]).select().single();
 
             if (error) {
                 console.error("Punch In Error:", error);
@@ -177,12 +197,12 @@ export const ESSP: React.FC = () => {
                 }
 
                 // Use found ID
-                await performPunchOut(activePunch.id, activePunch.check_in, timeString);
+                await performPunchOut(activePunch.id, activePunch.check_in, isoNow, locStr);
             } else {
                 // Fetch check_in time to calculate duration
                 const { data: currentRecord } = await supabase.from('attendance').select('check_in').eq('id', lastAttendanceId).single();
                 if (currentRecord) {
-                    await performPunchOut(lastAttendanceId, currentRecord.check_in, timeString);
+                    await performPunchOut(lastAttendanceId, currentRecord.check_in, isoNow, locStr);
                 }
             }
         }
@@ -192,17 +212,22 @@ export const ESSP: React.FC = () => {
         setPunchLoading(false);
     };
 
-    const performPunchOut = async (recordId: string, checkInTime: string, checkOutTime: string) => {
-        // Calculate Duration
-        const d1 = new Date(`2000-01-01T${checkInTime}`);
-        const d2 = new Date(`2000-01-01T${checkOutTime}`);
+    const performPunchOut = async (recordId: string, checkInTime: string, checkOutTime: string, locationStr: string | null = null) => {
+        // Calculate Duration from full ISO timestamps
+        const d1 = new Date(checkInTime);
+        const d2 = new Date(checkOutTime);
         const diffMs = d2.getTime() - d1.getTime();
         const durationHours = Math.max(0, parseFloat((diffMs / (1000 * 60 * 60)).toFixed(2)));
 
-        const { error } = await supabase.from('attendance').update({
+        const updateData: any = {
             check_out: checkOutTime,
-            duration: durationHours
-        }).eq('id', recordId);
+            total_hours: durationHours
+        };
+        if (locationStr) {
+            updateData.check_out_location = locationStr;
+        }
+
+        const { error } = await supabase.from('attendance').update(updateData).eq('id', recordId);
 
         if (error) {
             console.error("Punch Out Error:", error);
@@ -875,14 +900,28 @@ export const ESSP: React.FC = () => {
         const [filterDate, setFilterDate] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
         const [stats, setStats] = useState({ present: 0, absent: 0, late: 0, halfDay: 0 });
 
+        // Missed Punch Request
+        const [showMissedPunch, setShowMissedPunch] = useState(false);
+        const [missedPunchForm, setMissedPunchForm] = useState({
+            request_date: new Date().toISOString().split('T')[0],
+            punch_type: 'check_in' as 'check_in' | 'check_out',
+            requested_time: '',
+            reason: ''
+        });
+        const [submittingMissed, setSubmittingMissed] = useState(false);
+        const [missedRequests, setMissedRequests] = useState<any[]>([]);
+
         useEffect(() => {
-            if (currentEmployee) fetchAttendance();
+            if (currentEmployee) {
+                fetchAttendance();
+                fetchMissedRequests();
+            }
         }, [currentEmployee, filterDate]);
 
         const fetchAttendance = async () => {
             setLoading(true);
             const startOfMonth = `${filterDate}-01`;
-            const endOfMonth = `${filterDate}-31`; // Loose end date, DB handles valid dates
+            const endOfMonth = `${filterDate}-31`;
 
             const { data } = await supabase.from('attendance')
                 .select('*')
@@ -893,12 +932,10 @@ export const ESSP: React.FC = () => {
 
             if (data) {
                 setRecords(data);
-                // Calculate Stats
                 const stats = data.reduce((acc, curr) => {
                     if (curr.status === 'Present') acc.present++;
                     else if (curr.status === 'Absent') acc.absent++;
                     else if (curr.status === 'Half Day') acc.halfDay++;
-                    // Late logic could be added if 'check_in' vs shift start is compared
                     return acc;
                 }, { present: 0, absent: 0, late: 0, halfDay: 0 });
                 setStats(stats);
@@ -906,19 +943,83 @@ export const ESSP: React.FC = () => {
             setLoading(false);
         };
 
+        const fetchMissedRequests = async () => {
+            const { data } = await (supabase as any).from('missed_punch_requests')
+                .select('*')
+                .eq('employee_id', currentEmployee.id)
+                .order('created_at', { ascending: false })
+                .limit(10);
+            if (data) setMissedRequests(data);
+        };
+
+        const handleSubmitMissedPunch = async () => {
+            if (!missedPunchForm.requested_time || !missedPunchForm.reason.trim()) {
+                alert('Please fill in all fields including the reason.');
+                return;
+            }
+            setSubmittingMissed(true);
+
+            const requestedTimestamp = new Date(`${missedPunchForm.request_date}T${missedPunchForm.requested_time}:00`).toISOString();
+
+            const { error } = await (supabase as any).from('missed_punch_requests').insert([{
+                company_id: currentEmployee.company_id,
+                employee_id: currentEmployee.id,
+                request_date: missedPunchForm.request_date,
+                punch_type: missedPunchForm.punch_type,
+                requested_time: requestedTimestamp,
+                reason: missedPunchForm.reason,
+                status: 'Pending'
+            }]);
+
+            if (error) {
+                alert('Failed to submit request: ' + error.message);
+            } else {
+                setShowMissedPunch(false);
+                setMissedPunchForm({ request_date: new Date().toISOString().split('T')[0], punch_type: 'check_in', requested_time: '', reason: '' });
+                fetchMissedRequests();
+            }
+            setSubmittingMissed(false);
+        };
+
+        const fmtTime = (val: string | null) => {
+            if (!val) return '--:--';
+            try {
+                return new Date(val).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+            } catch {
+                if (val.includes(':')) {
+                    const [h, m] = val.split(':');
+                    const hour = parseInt(h);
+                    return `${hour % 12 || 12}:${m} ${hour >= 12 ? 'PM' : 'AM'}`;
+                }
+                return val;
+            }
+        };
+
+        const pendingCount = missedRequests.filter(r => r.status === 'Pending').length;
+
         return (
             <div className="p-8 h-full overflow-y-auto animate-page-enter">
                 <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4">
                     <div>
                         <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight mb-2">My Attendance</h1>
-                        <p className="text-slate-500">Track your working hours and history.</p>
+                        <p className="text-slate-500">Track your working hours and request corrections.</p>
                     </div>
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={() => setShowMissedPunch(true)}
+                            className="px-4 py-2.5 bg-amber-500 text-white rounded-2xl text-sm font-bold shadow-lg shadow-amber-500/20 hover:bg-amber-600 transition-all flex items-center gap-2"
+                        >
+                            <Clock className="w-4 h-4" />
+                            Request Missed Punch
+                            {pendingCount > 0 && (
+                                <span className="ml-1 bg-white text-amber-600 text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center">{pendingCount}</span>
+                            )}
+                        </button>
                         <input
                             type="month"
                             value={filterDate}
                             onChange={(e) => setFilterDate(e.target.value)}
-                            className="bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-4 py-2 text-slate-700 dark:text-white font-bold outline-none ring-indigo-500/20 focus:ring-2"
+                            className="bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-4 py-2.5 text-slate-700 dark:text-white font-bold outline-none ring-indigo-500/20 focus:ring-2"
                         />
                     </div>
                 </div>
@@ -937,6 +1038,37 @@ export const ESSP: React.FC = () => {
                         </div>
                     ))}
                 </div>
+
+                {/* Pending Missed Punch Requests */}
+                {missedRequests.length > 0 && (
+                    <div className="mb-8 bg-amber-50 dark:bg-amber-900/10 rounded-2xl border border-amber-100 dark:border-amber-900/30 overflow-hidden">
+                        <div className="px-6 py-3 border-b border-amber-100 dark:border-amber-800/30 flex items-center gap-2">
+                            <Clock className="w-4 h-4 text-amber-600" />
+                            <h3 className="text-sm font-bold text-amber-800 dark:text-amber-400">Missed Punch Requests</h3>
+                        </div>
+                        <div className="divide-y divide-amber-100 dark:divide-amber-800/20">
+                            {missedRequests.slice(0, 5).map(req => (
+                                <div key={req.id} className="px-6 py-3 flex items-center justify-between">
+                                    <div className="flex items-center gap-4">
+                                        <div>
+                                            <p className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                                                {req.punch_type === 'check_in' ? 'Check In' : 'Check Out'} — {new Date(req.request_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                            </p>
+                                            <p className="text-xs text-slate-500">
+                                                Requested: {fmtTime(req.requested_time)} · "{req.reason}"
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <span className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide ${
+                                        req.status === 'Pending' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+                                        req.status === 'Approved' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                                        'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400'
+                                    }`}>{req.status}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
                 {/* Attendance Table */}
                 <div className="bg-white dark:bg-zinc-900/50 rounded-[2rem] border border-slate-200 dark:border-zinc-800 shadow-sm overflow-hidden">
@@ -969,15 +1101,90 @@ export const ESSP: React.FC = () => {
                                                 {record.status}
                                             </span>
                                         </td>
-                                        <td className="p-6 font-mono text-sm text-slate-600 dark:text-slate-400">{record.check_in || '--:--'}</td>
-                                        <td className="p-6 font-mono text-sm text-slate-600 dark:text-slate-400">{record.check_out || '--:--'}</td>
-                                        <td className="p-6 font-mono text-sm text-slate-600 dark:text-slate-400">{record.duration ? `${record.duration}h` : '-'}</td>
+                                        <td className="p-6 font-mono text-sm text-slate-600 dark:text-slate-400">{fmtTime(record.check_in)}</td>
+                                        <td className="p-6 font-mono text-sm text-slate-600 dark:text-slate-400">{fmtTime(record.check_out)}</td>
+                                        <td className="p-6 font-mono text-sm font-bold text-slate-700 dark:text-slate-300">{record.total_hours ? `${record.total_hours}h` : '-'}</td>
                                     </tr>
                                 ))
                             )}
                         </tbody>
                     </table>
                 </div>
+
+                {/* Missed Punch Request Modal */}
+                {showMissedPunch && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/30 backdrop-blur-md animate-fade-in" onClick={() => setShowMissedPunch(false)}>
+                        <div className="bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl w-full max-w-md rounded-[2rem] shadow-2xl overflow-hidden border border-white/50 dark:border-zinc-800 animate-slide-up" onClick={e => e.stopPropagation()}>
+                            <div className="p-6 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center">
+                                <div>
+                                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">Request Missed Punch</h3>
+                                    <p className="text-xs text-slate-500 mt-1">Submit a correction for a missed check-in or check-out</p>
+                                </div>
+                                <button onClick={() => setShowMissedPunch(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-xl">
+                                    <X className="w-5 h-5 text-slate-500" />
+                                </button>
+                            </div>
+                            <div className="p-6 space-y-5">
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Date</label>
+                                    <input
+                                        type="date"
+                                        value={missedPunchForm.request_date}
+                                        onChange={e => setMissedPunchForm({ ...missedPunchForm, request_date: e.target.value })}
+                                        max={new Date().toISOString().split('T')[0]}
+                                        className="w-full p-3 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm outline-none text-slate-900 dark:text-white"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Punch Type</label>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        {(['check_in', 'check_out'] as const).map(type => (
+                                            <button
+                                                key={type}
+                                                onClick={() => setMissedPunchForm({ ...missedPunchForm, punch_type: type })}
+                                                className={`p-3 rounded-xl text-sm font-bold border-2 transition-all ${
+                                                    missedPunchForm.punch_type === type
+                                                        ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400'
+                                                        : 'border-slate-200 dark:border-zinc-700 text-slate-500 hover:border-slate-300'
+                                                }`}
+                                            >
+                                                {type === 'check_in' ? '🟢 Check In' : '🔴 Check Out'}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Time</label>
+                                    <input
+                                        type="time"
+                                        value={missedPunchForm.requested_time}
+                                        onChange={e => setMissedPunchForm({ ...missedPunchForm, requested_time: e.target.value })}
+                                        className="w-full p-3 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl font-mono text-sm outline-none text-slate-900 dark:text-white"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                                        Reason <span className="text-rose-500">*</span>
+                                    </label>
+                                    <textarea
+                                        required
+                                        value={missedPunchForm.reason}
+                                        onChange={e => setMissedPunchForm({ ...missedPunchForm, reason: e.target.value })}
+                                        placeholder="e.g., Forgot to punch in, system was down..."
+                                        className="w-full p-3 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm outline-none h-24 resize-none text-slate-900 dark:text-white"
+                                    />
+                                </div>
+                                <button
+                                    onClick={handleSubmitMissedPunch}
+                                    disabled={submittingMissed}
+                                    className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-500/30 hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-70"
+                                >
+                                    {submittingMissed ? 'Submitting...' : <><Calendar className="w-5 h-5" /> Submit Request</>}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     };
@@ -996,7 +1203,7 @@ export const ESSP: React.FC = () => {
             // Fetch direct reportees first
             const { data: reportees } = await supabase.from('employees')
                 .select('id, name, department, role, profile_photo_url')
-                .eq('reporting_manager_id', currentEmployee.id);
+                .eq('manager_id', currentEmployee.id);
 
             if (!reportees || reportees.length === 0) {
                 setRecords([]);
@@ -1091,11 +1298,19 @@ export const ESSP: React.FC = () => {
     const MyLeaves = () => {
         const [leaves, setLeaves] = useState<any[]>([]);
         const [showForm, setShowForm] = useState(false);
-        const [formData, setFormData] = useState({ type: 'Annual', from: '', to: '', reason: '' });
+        const [formData, setFormData] = useState({ leave_type_id: '', type: 'Annual', from: '', to: '', reason: '' });
+        const [submitting, setSubmitting] = useState(false);
 
         useEffect(() => {
             if (currentEmployee) refreshLeaves();
         }, [currentEmployee]);
+
+        // Set initial leave type when leaveTypes load
+        useEffect(() => {
+            if (leaveTypes.length > 0 && !formData.leave_type_id) {
+                setFormData(prev => ({ ...prev, leave_type_id: leaveTypes[0].id, type: leaveTypes[0].name }));
+            }
+        }, [leaveTypes]);
 
         const refreshLeaves = async () => {
             const { data } = await supabase.from('leaves').select('*').eq('employee_id', currentEmployee.id).order('created_at', { ascending: false });
@@ -1104,18 +1319,22 @@ export const ESSP: React.FC = () => {
 
         const handleSubmit = async (e: React.FormEvent) => {
             e.preventDefault();
-            const { data, error } = await supabase.from('leaves').insert([{
-                company_id: currentEmployee.company_id,
+            if (submitting) return;
+            setSubmitting(true);
+
+            const { data, error } = await (supabase as any).from('leaves').insert([{
                 employee_id: currentEmployee.id,
-                type: formData.type,
+                leave_type_id: parseInt(formData.leave_type_id),
                 start_date: formData.from,
                 end_date: formData.to,
                 reason: formData.reason,
-                status: 'Pending'
+                status: 'Pending',
+                company_id: currentEmployee.company_id
             }]).select();
 
             if (error) {
                 alert('Failed to submit leave application: ' + error.message);
+                setSubmitting(false);
                 return;
             }
 
@@ -1136,8 +1355,9 @@ export const ESSP: React.FC = () => {
 
             alert('Leave application submitted successfully!');
             setShowForm(false);
+            setSubmitting(false);
             refreshLeaves();
-            setFormData({ type: 'Annual', from: '', to: '', reason: '' });
+            setFormData({ leave_type_id: leaveTypes[0]?.id || '', type: leaveTypes[0]?.name || 'Annual', from: '', to: '', reason: '' });
         };
 
         return (
@@ -1157,9 +1377,9 @@ export const ESSP: React.FC = () => {
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Type</label>
-                                <select className="w-full p-3 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 outline-none text-slate-900 dark:text-white" value={formData.type} onChange={e => setFormData({ ...formData, type: e.target.value })}>
+                                <select className="w-full p-3 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 outline-none text-slate-900 dark:text-white" value={formData.leave_type_id} onChange={e => { const lt = leaveTypes.find((t: any) => t.id === e.target.value); setFormData({ ...formData, leave_type_id: e.target.value, type: lt?.name || e.target.value }); }}>
                                     {leaveTypes.length > 0 ? leaveTypes.map((lt: any) => (
-                                        <option key={lt.id} value={lt.name}>{lt.name}</option>
+                                        <option key={lt.id} value={lt.id}>{lt.name}</option>
                                     )) : (
                                         <>
                                             <option>Annual</option>
@@ -1184,7 +1404,7 @@ export const ESSP: React.FC = () => {
                             <input type="text" required className="w-full p-3 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 outline-none text-slate-900 dark:text-white" placeholder="Going to Hawaii..." value={formData.reason} onChange={e => setFormData({ ...formData, reason: e.target.value })} />
                         </div>
                         <div className="text-right">
-                            <button type="submit" className="px-8 py-3 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800">Submit Application</button>
+                            <button type="submit" disabled={submitting} className="px-8 py-3 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed">{submitting ? 'Submitting...' : 'Submit Application'}</button>
                         </div>
                     </form>
                 )}
@@ -1442,11 +1662,11 @@ export const ESSP: React.FC = () => {
 
         const handleGiveKudos = async (e: React.FormEvent) => {
             e.preventDefault();
-            const { error } = await supabase.from('kudos_rewards').insert([{
+            const { error } = await (supabase as any).from('kudos_rewards').insert([{
                 company_id: currentEmployee.company_id,
                 sender_id: currentEmployee.id,
                 receiver_id: giveForm.receiverId,
-                category_id: giveForm.categoryId,
+                category_id: parseInt(giveForm.categoryId),
                 message: giveForm.message
             }]);
 
@@ -1468,7 +1688,7 @@ export const ESSP: React.FC = () => {
                     </div>
                     <button
                         onClick={() => setShowGiveModal(true)}
-                        className="px-6 py-3 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white font-bold rounded-2xl shadow-lg shadow-rose-500/30 transition-all active:scale-95 flex items-center gap-2"
+                        className="px-6 py-3 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-500 text-white font-bold rounded-2xl shadow-lg shadow-rose-500/30 transition-all active:scale-95 flex items-center gap-2"
                     >
                         <Star className="w-5 h-5 fill-current" /> Give Kudos
                     </button>
@@ -1594,7 +1814,7 @@ export const ESSP: React.FC = () => {
     const Support = () => {
         const [tickets, setTickets] = useState<any[]>([]);
         const [showForm, setShowForm] = useState(false);
-        const [formData, setFormData] = useState({ category: 'IT Support', priority: 'Medium', subject: '', description: '' });
+        const [formData, setFormData] = useState({ subject: '', category: 'IT Support', priority: 'Medium', description: '' });
 
         useEffect(() => {
             if (currentEmployee) refreshTickets();
@@ -1607,14 +1827,23 @@ export const ESSP: React.FC = () => {
 
         const handleSubmit = async (e: React.FormEvent) => {
             e.preventDefault();
-            await supabase.from('tickets').insert([{
+            const { error } = await ((supabase as any).from('tickets').insert as any)([{
                 company_id: currentEmployee.company_id,
                 employee_id: currentEmployee.id,
-                ...formData
+                subject: formData.subject,
+                category: formData.category,
+                priority: formData.priority,
+                description: formData.description,
+                status: 'Open',
+                created_at: new Date().toISOString()
             }]);
-            setShowForm(false);
-            refreshTickets();
-            setFormData({ category: 'IT Support', priority: 'Medium', subject: '', description: '' });
+            if (!error) {
+                setShowForm(false);
+                setFormData({ subject: '', category: 'IT Support', priority: 'Medium', description: '' });
+                refreshTickets();
+            } else {
+                alert("Failed to submit ticket: " + error.message);
+            }
         };
 
         return (
@@ -1784,19 +2013,19 @@ export const ESSP: React.FC = () => {
 
         const fetchPolls = async () => {
             if (!currentEmployee) return;
-            const { data: pl } = await supabase.from('polls')
+            const { data: pl } = await (supabase as any).from('polls')
                 .select('*, poll_options(*)')
                 .eq('company_id', currentEmployee.company_id)
                 .eq('is_active', true)
                 .order('created_at', { ascending: false });
 
             if (pl) {
-                const { data: votes } = await supabase.from('poll_votes').select('poll_id, option_id').eq('employee_id', currentEmployee.id);
+                const { data: votes } = await (supabase as any).from('poll_votes').select('poll_id, option_id').eq('employee_id', currentEmployee.id);
 
-                const merged = pl.map(p => ({
+                const merged = (pl as any[]).map(p => ({
                     ...p,
                     poll_options: p.poll_options.sort((a: any, b: any) => b.vote_count - a.vote_count), // Show popular first
-                    my_vote: votes?.find(v => v.poll_id === p.id)?.option_id,
+                    my_vote: (votes as any[])?.find(v => v.poll_id === p.id)?.option_id,
                     total_votes: p.poll_options.reduce((sum: number, o: any) => sum + o.vote_count, 0)
                 }));
                 setPolls(merged);
@@ -1804,10 +2033,10 @@ export const ESSP: React.FC = () => {
         };
 
         const handleVote = async (pollId: string, optionId: string) => {
-            const { error } = await supabase.rpc('rpc_vote_poll', {
+            const { error } = await (supabase as any).rpc('rpc_vote_poll', {
                 p_poll_id: pollId,
                 p_option_id: optionId,
-                p_employee_id: currentEmployee.id
+                p_employee_id: (currentEmployee as any).id
             });
 
             if (error) alert(error.message);
@@ -2046,7 +2275,9 @@ export const ESSP: React.FC = () => {
             <div className="w-20 lg:w-72 flex-shrink-0 bg-white/80 dark:bg-zinc-900/80 border-r border-slate-200 dark:border-zinc-800 flex flex-col overflow-hidden backdrop-blur-xl">
                 <div className="p-6">
                     <div className="flex items-center gap-3 mb-8">
-                        <img src={KAA_LOGO_URL} alt="Logo" className="h-8 w-auto" />
+                        <div className="bg-white border border-slate-100 shadow-sm rounded-xl p-1.5 flex items-center justify-center h-10 w-10 shrink-0">
+                            <img src={KAA_LOGO_URL} alt="Logo" className="h-full w-full object-contain" />
+                        </div>
                         <span className="text-xl font-black text-slate-800 dark:text-white tracking-tighter hidden lg:block">ESSP</span>
                     </div>
                     <div className="flex flex-col gap-1 overflow-y-auto h-[calc(100vh-140px)] pr-2 scrollbar-hide">

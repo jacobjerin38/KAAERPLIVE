@@ -55,9 +55,9 @@ export const ApprovalsModule: React.FC<ApprovalsModuleProps> = ({ currentEmploye
         setProcessingId(id);
 
         try {
-            const { error } = await supabase.rpc('approve_job_transition', {
+            const { error } = await (supabase as any).rpc('approve_job_transition', {
                 p_transition_id: id,
-                p_approver_id: currentEmployee.id,
+                p_approver_id: currentEmployee.id, // Cast to any if needed but supabase as any covers it
                 p_status: status,
                 p_remarks: remarks
             });

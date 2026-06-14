@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Clock, AlertCircle } from 'lucide-react';
+import { X, Save, Clock, AlertCircle, Lock } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { AttendanceRecord, Employee } from '../../hrms/types';
 
@@ -12,6 +12,7 @@ interface EditAttendanceModalProps {
 export const EditAttendanceModal: React.FC<EditAttendanceModalProps> = ({ recordId, onClose, onSuccess }) => {
     const [loading, setLoading] = useState(false);
     const [fetching, setFetching] = useState(true);
+    const [isProcessed, setIsProcessed] = useState(false);
     const [formData, setFormData] = useState({
         checkIn: '',
         checkOut: '',
@@ -32,6 +33,7 @@ export const EditAttendanceModal: React.FC<EditAttendanceModalProps> = ({ record
                 status: data.status || 'Present',
                 reason: ''
             });
+            setIsProcessed(data.is_processed === true);
         }
         setFetching(false);
     };
@@ -87,6 +89,15 @@ export const EditAttendanceModal: React.FC<EditAttendanceModalProps> = ({ record
                 </div>
 
                 <form onSubmit={handleSave} className="p-6 space-y-5">
+                    {isProcessed && (
+                        <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl flex items-start gap-3">
+                            <Lock className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                            <div>
+                                <p className="text-sm font-bold text-amber-700 dark:text-amber-400">This record is processed & locked</p>
+                                <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">To edit, unprocess the day first from the Daily Attendance tab.</p>
+                            </div>
+                        </div>
+                    )}
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
                             <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Check In</label>
@@ -140,7 +151,7 @@ export const EditAttendanceModal: React.FC<EditAttendanceModalProps> = ({ record
 
                     <div className="pt-2">
                         <button
-                            disabled={loading}
+                            disabled={loading || isProcessed}
                             type="submit"
                             className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-500/30 hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
                         >

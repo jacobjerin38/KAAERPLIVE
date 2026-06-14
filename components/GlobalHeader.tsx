@@ -20,16 +20,22 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({ currentView }) => {
     const [showMenu, setShowMenu] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
     const [companyName, setCompanyName] = useState<string>('');
+    const [companyLogo, setCompanyLogo] = useState<string | null>(null);
     const [companyLoaded, setCompanyLoaded] = useState(false);
 
     // Fetch company name on mount
     useEffect(() => {
         if (currentCompanyId) {
             setCompanyLoaded(false);
-            supabase.from('companies').select('display_name').eq('id', currentCompanyId).maybeSingle()
-                .then(({ data, error }) => {
-                    if (data) setCompanyName(data.display_name);
-                    else setCompanyName('');
+            supabase.from('companies').select('display_name, name, logo_url').eq('id', currentCompanyId).maybeSingle()
+                .then(({ data }) => {
+                    if (data) {
+                        setCompanyName(data.display_name || data.name || '');
+                        setCompanyLogo(data.logo_url);
+                    } else {
+                        setCompanyName('');
+                        setCompanyLogo(null);
+                    }
                     setCompanyLoaded(true);
                 });
         } else {
@@ -71,18 +77,23 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({ currentView }) => {
     return (
         <header className="h-16 flex items-center justify-between px-6 bg-white dark:bg-zinc-900 border-b border-zinc-100 dark:border-zinc-800 z-50">
             {/* Left: Logo and Company Name */}
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
+                {/* KAA Brand Logo - Always Permanent in Header */}
                 <div
-                    className="flex items-center cursor-pointer active:scale-95 transition-transform"
+                    className="flex items-center justify-center cursor-pointer bg-white rounded-xl p-1.5 shadow-md shadow-black/5 border border-slate-100 h-10 w-10 md:h-12 md:w-12 active:scale-95 transition-all duration-200"
                     onClick={() => navigate('/')}
                 >
-                    <img src={KAA_LOGO_URL} alt="Kaa" className="h-10 w-auto object-contain brightness-100 dark:brightness-110" />
+                    <img src={KAA_LOGO_URL} alt="Kaa" className="h-full w-full object-contain" />
                 </div>
 
-                {/* Company Badge */}
+                {/* Company Badge / Logo */}
                 {companyName && (
                     <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-slate-50 dark:bg-zinc-800 rounded-full border border-slate-200 dark:border-zinc-700">
-                        <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                        {companyLogo ? (
+                            <img src={companyLogo} alt="Logo" className="w-5 h-5 rounded-sm object-contain" />
+                        ) : (
+                            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                        )}
                         <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 max-w-[150px] truncate">
                             {companyName}
                         </span>

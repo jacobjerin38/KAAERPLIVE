@@ -40,12 +40,12 @@ export class WorkflowEngine {
         let assignedRole = null;
 
         if (firstStep.name.toLowerCase().includes('manager')) {
-            const { data: emp } = await supabase.from('employees').select('reporting_manager_id').eq('id', requesterId).single();
-            assignedUser = emp?.reporting_manager_id;
+            const { data: emp } = await supabase.from('employees').select('manager_id').eq('id', requesterId).single();
+            assignedUser = emp?.manager_id;
         } else {
             // Assign to role (e.g. HR Admin)
             // This requires mapping Step Role to DB Role ID. For now, we might leave it open to role.
-            assignedRole = firstStep.role_id; // Assuming step has role_id, or we infer it.
+            assignedRole = firstStep.approver_role_id; // Using approver_role_id
         }
 
         // 4. Create Instance
@@ -170,6 +170,6 @@ export class WorkflowEngine {
         // Map 'APPROVED'/'REJECTED' to title case if needed, but DB usually uses Capitalized
         const dbStatus = status.charAt(0) + status.slice(1).toLowerCase(); // 'Approved'
 
-        await supabase.from(tableName).update({ status: dbStatus }).eq('id', entityId);
+        await supabase.from(tableName as any).update({ status: dbStatus }).eq('id', entityId);
     }
 }

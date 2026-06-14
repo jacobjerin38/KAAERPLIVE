@@ -33,8 +33,11 @@ interface LowStockItem {
     name: string;
     uom: string;
     net_qty: number;
-    reorder_level?: number;
+    reorder_level: number;
     warehouse?: string;
+    weight?: number;
+    expiry_date?: string;
+    barcode?: string;
 }
 
 interface BinStockRow {
@@ -43,18 +46,22 @@ interface BinStockRow {
     item_code: string;
     net_qty: number;
     uom: string;
+    weight?: number;
+    expiry_date?: string;
+    barcode?: string;
+    reorder_level: number;
+    available_qty: number;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const fmt = (n: number) =>
-    new Intl.NumberFormat('en-IN', {
-        style: 'currency', currency: 'INR',
+    'QAR ' + new Intl.NumberFormat('en-US', {
         maximumFractionDigits: 0, notation: 'compact'
     }).format(n);
 
 const fmtQty = (n: number, uom = '') =>
-    `${new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(n)}${uom ? ' ' + uom : ''}`;
+    `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(n)}${uom ? ' ' + uom : ''}`;
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -123,86 +130,68 @@ export const InventoryOverview: React.FC = () => {
         if (!currentCompanyId) return;
         setLoading(true);
         try {
-            const [summaryRes, movementRes, lowStockRes, binRes] = await Promise.allSettled([
+            const [summaryRes, movementRes, stockLevelRes] = await Promise.allSettled([
                 supabase.rpc('rpc_inventory_dashboard_summary', { p_company_id: currentCompanyId }),
                 supabase.rpc('rpc_stock_movement_trend', { p_company_id: currentCompanyId }),
-                // Low stock: items with net_qty <= reorder_level or very low
-                supabase
-                    .from('inventory_transactions')
-                    .select('item_id, item_master!inner(id, item_code, name, uom, reorder_level)')
-                    .eq('company_id', currentCompanyId),
-                // Bin-wise: aggregate by warehouse + item
-                supabase
-                    .from('inventory_transactions')
-                    .select(`
-                        item_id,
-                        warehouse_id,
-                        quantity,
-                        item_master!inner(id, item_code, name, uom),
-                        warehouses!inner(id, name)
-                    `)
-                    .eq('company_id', currentCompanyId)
+                // Multi-warehouse stock levels via RPC
+                supabase.rpc('rpc_get_stock_level', { p_company_id: currentCompanyId }),
             ]);
 
             if (summaryRes.status === 'fulfilled' && summaryRes.value.data) {
-                setSummary(summaryRes.value.data);
+                setSummary(summaryRes.value.data as any);
             }
             if (movementRes.status === 'fulfilled' && movementRes.value.data) {
-                setMovement(movementRes.value.data as MovementPoint[]);
+                setMovement(movementRes.value.data as any);
             }
 
-            // Process low stock
-            if (lowStockRes.status === 'fulfilled' && lowStockRes.value.data) {
-                const raw = lowStockRes.value.data as any[];
-                // Aggregate net qty per item
-                const aggregated: Record<string, { item: any; qty: number }> = {};
+            // Process stock levels from RPC
+            if (stockLevelRes.status === 'fulfilled' && stockLevelRes.value.data) {
+                const raw = stockLevelRes.value.data as any[];
+
+                // Low stock: aggregate across warehouses, then filter
+                const itemAgg: Record<string, { totalQty: number; row: any }> = {};
                 for (const row of raw) {
-                    const id = row.item_id;
-                    if (!aggregated[id]) {
-                        aggregated[id] = { item: row.item_master, qty: 0 };
+                    if (!itemAgg[row.item_id]) {
+                        itemAgg[row.item_id] = { totalQty: 0, row };
                     }
-                    aggregated[id].qty += row.quantity ?? 0;
+                    itemAgg[row.item_id].totalQty += Number(row.current_qty) || 0;
                 }
-                const lowItems = Object.values(aggregated)
-                    .filter(({ item, qty }) => {
-                        const reorder = item?.reorder_level ?? 10;
-                        return qty <= reorder && qty > 0;
+                const lowItems = Object.values(itemAgg)
+                    .filter(({ totalQty, row }) => {
+                        const reorder = Number(row.reorder_level) || 0;
+                        return reorder > 0 && totalQty <= reorder;
                     })
-                    .sort((a, b) => a.qty - b.qty)
+                    .sort((a, b) => a.totalQty - b.totalQty)
                     .slice(0, 10)
-                    .map(({ item, qty }) => ({
-                        id: item.id,
-                        item_code: item.item_code,
-                        name: item.name,
-                        uom: item.uom,
-                        net_qty: qty,
-                        reorder_level: item.reorder_level ?? 10,
+                    .map(({ totalQty, row }) => ({
+                        id: row.item_id,
+                        item_code: row.item_code,
+                        name: row.item_name,
+                        uom: row.uom,
+                        net_qty: totalQty,
+                        weight: row.weight,
+                        expiry_date: row.expiry_date,
+                        barcode: row.barcode,
+                        reorder_level: Number(row.reorder_level) || 0,
                     }));
                 setLowStock(lowItems);
-            }
 
-            // Process bin-wise stock
-            if (binRes.status === 'fulfilled' && binRes.value.data) {
-                const raw = binRes.value.data as any[];
-                const binMap: Record<string, BinStockRow & { _qty: number }> = {};
-                for (const row of raw) {
-                    const key = `${row.warehouse_id}_${row.item_id}`;
-                    if (!binMap[key]) {
-                        binMap[key] = {
-                            warehouse_name: row.warehouses?.name ?? '—',
-                            item_name: row.item_master?.name ?? '—',
-                            item_code: row.item_master?.item_code ?? '—',
-                            uom: row.item_master?.uom ?? '',
-                            net_qty: 0,
-                            _qty: 0,
-                        };
-                    }
-                    binMap[key]._qty += row.quantity ?? 0;
-                    binMap[key].net_qty = binMap[key]._qty;
-                }
-                const bins = Object.values(binMap)
-                    .filter(b => b.net_qty > 0)
-                    .sort((a, b) => b.net_qty - a.net_qty);
+                // Bin-wise stock: per warehouse per item
+                const bins: BinStockRow[] = raw
+                    .filter((r: any) => Number(r.current_qty) !== 0)
+                    .map((r: any) => ({
+                        warehouse_name: r.warehouse_name,
+                        item_name: r.item_name,
+                        item_code: r.item_code,
+                        uom: r.uom,
+                        net_qty: Number(r.current_qty),
+                        weight: r.weight,
+                        expiry_date: r.expiry_date,
+                        barcode: r.barcode,
+                        reorder_level: Number(r.reorder_level) || 0,
+                        available_qty: Number(r.available_qty) || 0,
+                    }))
+                    .sort((a: BinStockRow, b: BinStockRow) => b.net_qty - a.net_qty);
                 setBinStock(bins);
             }
         } catch (e) {
@@ -332,6 +321,15 @@ export const InventoryOverview: React.FC = () => {
                                                     {fmtQty(item.net_qty, item.uom)}
                                                 </span>
                                             </div>
+                                            {item.expiry_date && (
+                                                <p className={`text-[10px] mt-1 font-medium ${
+                                                    new Date(item.expiry_date).getTime() < Date.now() + 30 * 24 * 60 * 60 * 1000 
+                                                        ? 'text-rose-500' 
+                                                        : 'text-slate-400'
+                                                }`}>
+                                                    Expires: {new Date(item.expiry_date).toLocaleDateString()}
+                                                </p>
+                                            )}
                                         </div>
                                     </div>
                                 );
@@ -377,9 +375,12 @@ export const InventoryOverview: React.FC = () => {
                             <thead className="sticky top-0">
                                 <tr className="text-left text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider bg-slate-50 dark:bg-zinc-800/50">
                                     <th className="px-5 py-3">Warehouse</th>
-                                    <th className="px-5 py-3">Item Code</th>
+                                    <th className="px-5 py-3">LAT Code</th>
                                     <th className="px-5 py-3">Item Name</th>
+                                    <th className="px-5 py-3 text-right">Weight</th>
+                                    <th className="px-5 py-3 text-center">Expiry</th>
                                     <th className="px-5 py-3 text-right">Net Qty</th>
+                                    <th className="px-5 py-3 text-right">Available</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
@@ -393,8 +394,29 @@ export const InventoryOverview: React.FC = () => {
                                         </td>
                                         <td className="px-5 py-3 font-mono text-xs text-slate-500 dark:text-slate-400">{row.item_code}</td>
                                         <td className="px-5 py-3 text-slate-700 dark:text-slate-200">{row.item_name}</td>
+                                        <td className="px-5 py-3 text-right text-xs text-slate-500">
+                                            {row.weight ? `${row.weight} kg` : '-'}
+                                        </td>
+                                        <td className="px-5 py-3 text-center">
+                                            {row.expiry_date ? (
+                                                <span className={`text-xs font-medium ${
+                                                    new Date(row.expiry_date).getTime() < Date.now()
+                                                        ? 'text-rose-600 dark:text-rose-400'
+                                                        : new Date(row.expiry_date).getTime() < Date.now() + 90 * 24 * 60 * 60 * 1000
+                                                        ? 'text-amber-600 dark:text-amber-400'
+                                                        : 'text-slate-400'
+                                                }`}>
+                                                    {new Date(row.expiry_date).toLocaleDateString()}
+                                                </span>
+                                            ) : <span className="text-xs text-slate-300">—</span>}
+                                        </td>
                                         <td className="px-5 py-3 text-right font-semibold text-slate-800 dark:text-white">
                                             {fmtQty(row.net_qty, row.uom)}
+                                        </td>
+                                        <td className="px-5 py-3 text-right text-xs">
+                                            <span className={row.available_qty <= 0 ? 'text-rose-500 font-medium' : 'text-emerald-600 dark:text-emerald-400'}>
+                                                {fmtQty(row.available_qty, row.uom)}
+                                            </span>
                                         </td>
                                     </tr>
                                 ))}

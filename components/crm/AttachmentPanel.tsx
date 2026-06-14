@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Paperclip, Upload, X, FileText, Image, File, Trash2, Loader2, ExternalLink } from 'lucide-react';
+import { Paperclip, Upload, X, FileText, Image, File, Trash2, Loader2, ExternalLink, Download, Eye } from 'lucide-react';
 import { CRMAttachment } from './types';
 import { getAttachments, uploadAttachment, deleteAttachment } from './services';
+import { supabase } from '../../lib/supabase';
 
 interface AttachmentPanelProps {
     companyId: string;
@@ -53,7 +54,53 @@ export const AttachmentPanel: React.FC<AttachmentPanelProps> = ({ companyId, mod
         const ok = await deleteAttachment(att.id, att.file_url);
         if (ok) setAttachments(prev => prev.filter(a => a.id !== att.id));
     };
+    const getFilePath = (fileUrl: string) => {
+        return fileUrl.split('/storage/v1/object/public/attachments/')[1];
+    };
 
+    const handleView = async (att: CRMAttachment) => {
+        const path = getFilePath(att.file_url);
+        if (!path) return window.open(att.file_url, '_blank');
+        
+        try {
+            const { data, error } = await supabase.storage
+                .from('attachments')
+                .createSignedUrl(path, 60);
+            if (error) throw error;
+            window.open(data.signedUrl, '_blank');
+        } catch (err: any) {
+            console.error('View error:', err);
+            alert('Could not view document: ' + err.message);
+        }
+    };
+
+    const handleDownloadDocument = async (att: CRMAttachment) => {
+        const path = getFilePath(att.file_url);
+        if (!path) {
+            const a = document.createElement('a');
+            a.href = att.file_url;
+            a.download = att.file_name || 'download';
+            a.click();
+            return;
+        }
+
+        try {
+            const { data, error } = await supabase.storage
+                .from('attachments')
+                .download(path);
+            if (error) throw error;
+
+            const url = URL.createObjectURL(data);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = att.file_name;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (err: any) {
+            console.error('Download error:', err);
+            alert('Could not download document: ' + err.message);
+        }
+    };
     return (
         <div className="mt-4 border-t border-slate-100 dark:border-zinc-800 pt-4">
             <div className="flex items-center justify-between mb-3">
@@ -79,11 +126,14 @@ export const AttachmentPanel: React.FC<AttachmentPanelProps> = ({ companyId, mod
                                     <p className="font-medium text-slate-700 dark:text-zinc-300 truncate">{att.file_name}</p>
                                     <p className="text-slate-400 text-[10px]">{formatSize(att.file_size)}</p>
                                 </div>
-                                <a href={att.file_url} target="_blank" rel="noopener noreferrer" className="p-1 hover:bg-slate-200 dark:hover:bg-zinc-700 rounded transition-colors">
-                                    <ExternalLink size={12} className="text-slate-400" />
-                                </a>
-                                <button onClick={() => handleDelete(att)} className="p-1 hover:bg-red-100 dark:hover:bg-red-900/20 rounded transition-colors opacity-0 group-hover:opacity-100">
-                                    <Trash2 size={12} className="text-red-400" />
+                                <button onClick={() => handleView(att)} className="p-1 hover:bg-blue-100 dark:hover:bg-blue-900/20 rounded transition-colors group-hover:opacity-100" title="View">
+                                    <Eye size={14} className="text-blue-500" />
+                                </button>
+                                <button onClick={() => handleDownloadDocument(att)} className="p-1 hover:bg-green-100 dark:hover:bg-green-900/20 rounded transition-colors opacity-0 group-hover:opacity-100" title="Download">
+                                    <Download size={14} className="text-green-500" />
+                                </button>
+                                <button onClick={() => handleDelete(att)} className="p-1 hover:bg-red-100 dark:hover:bg-red-900/20 rounded transition-colors opacity-0 group-hover:opacity-100" title="Delete">
+                                    <Trash2 size={14} className="text-red-400" />
                                 </button>
                             </div>
                         );

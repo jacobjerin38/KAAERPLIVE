@@ -41,14 +41,14 @@ export const ExitModule: React.FC<ExitModuleProps> = ({ employees, currentEmploy
         if (!user) return;
         const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', user.id).single();
 
-        const { error } = await supabase.from('resignations').insert([{
+        const { error } = await (supabase as any).from('resignations').insert([{
             company_id: profile?.company_id,
             employee_id: currentEmployee.id,
             reason_category: formData.get('category'),
             reason_text: formData.get('reason'),
             proposed_last_working_date: formData.get('lastWorkingDate'),
             status: 'Pending'
-        }]);
+        } as any]);
 
         if (error) alert("Error submitting resignation: " + error.message);
         else {

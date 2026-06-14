@@ -4,12 +4,12 @@ import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
 
 interface KudosCategory {
-    id: string;
+    id: number;
     name: string;
     description: string;
     icon: string;
     points: number;
-    is_active: boolean;
+    status: string;
     created_at: string;
 }
 
@@ -45,13 +45,13 @@ export const KudosCategoriesView: React.FC = () => {
     const toggleStatus = async (cat: KudosCategory) => {
         const { error } = await supabase
             .from('master_kudos_categories')
-            .update({ is_active: !cat.is_active })
+            .update({ status: cat.status === 'Active' ? 'Inactive' : 'Active' })
             .eq('id', cat.id);
 
         if (!error) fetchCategories();
     };
 
-    const deleteCategory = async (id: string) => {
+    const deleteCategory = async (id: number) => {
         if (!confirm('Are you sure you want to delete this category? This cannot be undone.')) return;
 
         const { error } = await supabase
@@ -106,8 +106,8 @@ export const KudosCategoriesView: React.FC = () => {
                                         <p className="text-xs font-bold text-amber-600">{cat.points} Points</p>
                                     </div>
                                 </div>
-                                <div className={`px-2 py-1 rounded-lg text-xs font-bold ${cat.is_active ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'}`}>
-                                    {cat.is_active ? 'Active' : 'Disabled'}
+                                <div className={`px-2 py-1 rounded-lg text-xs font-bold ${cat.status === 'Active' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'}`}>
+                                    {cat.status === 'Active' ? 'Active' : 'Disabled'}
                                 </div>
                             </div>
 
@@ -127,9 +127,9 @@ export const KudosCategoriesView: React.FC = () => {
                                     <button
                                         onClick={() => toggleStatus(cat)}
                                         className="p-2 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
-                                        title={cat.is_active ? "Disable Category" : "Enable Category"}
+                                        title={cat.status === 'Active' ? "Disable Category" : "Enable Category"}
                                     >
-                                        {cat.is_active ? <XCircle className="w-4 h-4 text-amber-500" /> : <CheckCircle className="w-4 h-4 text-emerald-500" />}
+                                        {cat.status === 'Active' ? <XCircle className="w-4 h-4 text-amber-500" /> : <CheckCircle className="w-4 h-4 text-emerald-500" />}
                                     </button>
                                     <button
                                         onClick={() => deleteCategory(cat.id)}
@@ -164,7 +164,7 @@ const AddCategoryModal = ({ category, onClose, onSuccess }: { category: KudosCat
         description: category?.description || '',
         icon: category?.icon || '🏅',
         points: category?.points || 10,
-        is_active: category ? category.is_active : true
+        status: category ? category.status : 'Active'
     });
     const [saving, setSaving] = useState(false);
 

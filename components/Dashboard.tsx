@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { KAA_LOGO_URL, MODULES } from '../constants';
 import { AppView } from '../types';
-import { Search, Command, Bell, Settings } from 'lucide-react';
+import { Search, Command, Bell, Settings, Building2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
-  HRMSWidget, CRMWidget, OrganisationWidget, ESSPWidget, UpcomingWidget,
-  AccountingWidget, InventoryWidget, ManufacturingWidget, ProcurementWidget
+  EmployeesWidget, AttendanceWidget, LeaveWidget, PayrollWidget, CRMWidget, OrganisationWidget, ESSPWidget, UpcomingWidget,
+  AccountingWidget, InventoryWidget, ManufacturingWidget, ProcurementWidget,
+  ProjectsWidget, DocumentsWidget, SalesWidget, HelpDeskWidget, MarketingWidget,
+  RecruitmentWidget, PerformanceWidget, LoansWidget, TravelWidget
 } from './DashboardWidgets';
 import { useUI } from '../contexts/UIContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -31,6 +33,12 @@ interface GlobalStats {
   // CRM
   pipelineValue: string;
   dealCount: number;
+  projectCount: number;
+  documentCount: number;
+  // Sales & Help Desk
+  totalSales: string;
+  pendingSalesOrders: number;
+  openTickets: number;
 }
 
 const INITIAL_STATS: GlobalStats = {
@@ -43,8 +51,13 @@ const INITIAL_STATS: GlobalStats = {
   stockValue: 0,
   lowStockItems: 0,
   pendingTransitions: 0,
-  pipelineValue: '₹0',
+  pipelineValue: 'QAR 0',
   dealCount: 0,
+  projectCount: 0,
+  documentCount: 0,
+  totalSales: 'QAR 0',
+  pendingSalesOrders: 0,
+  openTickets: 0,
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -56,7 +69,7 @@ export const Dashboard: React.FC = () => {
   const [greeting, setGreeting] = useState('');
   const [stats, setStats] = useState<GlobalStats>(INITIAL_STATS);
 
-  const [companyLogo, setCompanyLogo] = useState(KAA_LOGO_URL);
+  const [companyLogo, setCompanyLogo] = useState<string | null>(null);
 
   // ── Greet ──
   useEffect(() => {
@@ -76,25 +89,29 @@ export const Dashboard: React.FC = () => {
             .rpc('rpc_global_dashboard', { p_company_id: currentCompanyId });
 
           if (!rpcError && globalData) {
+            const gd = globalData as any;
             setStats(prev => ({
               ...prev,
-              activeEmployees: globalData.hr?.active_employees ?? 0,
-              attendancePercentage: globalData.hr?.attendance_pct ?? 0,
-              pendingLeaves: globalData.hr?.pending_leaves ?? 0,
-              receivables: globalData.finance?.receivables ?? 0,
-              overdueInvoices: globalData.finance?.overdue_invoices ?? 0,
-              stockValue: globalData.inventory?.stock_value ?? 0,
-              lowStockItems: globalData.inventory?.low_stock_items ?? 0,
-              pendingTransitions: globalData.approvals?.pending_transitions ?? 0,
+              activeEmployees: gd.hr?.active_employees ?? 0,
+              attendancePercentage: gd.hr?.attendance_pct ?? 0,
+              pendingLeaves: gd.hr?.pending_leaves ?? 0,
+              receivables: gd.finance?.receivables ?? 0,
+              overdueInvoices: gd.finance?.overdue_invoices ?? 0,
+              stockValue: gd.inventory?.stock_value ?? 0,
+              lowStockItems: gd.inventory?.low_stock_items ?? 0,
+              pendingTransitions: gd.approvals?.pending_transitions ?? 0,
             }));
 
+            // Fetch Company Logo
+            const { data: comp } = await supabase.from('companies').select('logo_url').eq('id', currentCompanyId).maybeSingle();
+            if (comp) setCompanyLogo(comp.logo_url);
 
           } else {
             // Fallback: fetch HR stats directly if RPC not yet deployed
             const today = new Date().toISOString().split('T')[0];
             const [empRes, attRes] = await Promise.allSettled([
-              supabase.from('employees').select('*', { count: 'exact', head: true }).eq('status', 'Active'),
-              supabase.from('attendance').select('*', { count: 'exact', head: true }).eq('date', today).eq('status', 'Present'),
+              supabase.from('employees').select('*', { count: 'exact', head: true }).eq('status', 'Active').eq('company_id', currentCompanyId),
+              supabase.from('attendance').select('*', { count: 'exact', head: true }).eq('date', today).eq('status', 'Present').eq('company_id', currentCompanyId),
             ]);
             const empCount = empRes.status === 'fulfilled' ? (empRes.value.count ?? 0) : 0;
             const attCount = attRes.status === 'fulfilled' ? (attRes.value.count ?? 0) : 0;
@@ -108,13 +125,74 @@ export const Dashboard: React.FC = () => {
           const allDeals = await getDeals();
           const dealCount = allDeals.length;
           const totalValue = allDeals.reduce((sum, deal) => sum + (deal.value || 0), 0);
-          const pipelineValue = new Intl.NumberFormat('en-IN', {
-            style: 'currency', currency: 'INR',
+          const pipelineValue = 'QAR ' + new Intl.NumberFormat('en-US', {
             maximumFractionDigits: 0, notation: 'compact'
           }).format(totalValue);
           setStats(prev => ({ ...prev, pipelineValue, dealCount }));
         } catch (e) {
           console.warn('[Dashboard] CRM data unavailable:', e);
+        }
+
+        // Projects & Documents counts
+        try {
+          if (currentCompanyId) {
+            const [projRes, docRes] = await Promise.all([
+              supabase.from('pm_projects').select('*', { count: 'exact', head: true }).eq('company_id', currentCompanyId).neq('status', 'Completed'),
+              supabase.from('doc_documents').select('*', { count: 'exact', head: true }).eq('company_id', currentCompanyId)
+            ]);
+            setStats(prev => ({
+              ...prev,
+              projectCount: projRes.count ?? 0,
+              documentCount: docRes.count ?? 0
+            }));
+          }
+        } catch (e) {
+          console.warn('[Dashboard] Projects/Docs counts unavailable:', e);
+        }
+
+        // Sales Orders Stats
+        try {
+          if (currentCompanyId) {
+            const { data: salesData } = await supabase
+              .from('sales_orders' as any)
+              .select('total_amount, status')
+              .eq('company_id', currentCompanyId);
+            
+            const salesArray = salesData as any[] | null;
+            if (salesArray) {
+              const totalVal = salesArray.reduce((sum, order) => sum + (order.total_amount || 0), 0);
+              const pendingCount = salesArray.filter(order => order.status === 'Draft' || order.status === 'Confirmed').length;
+              const totalSales = 'QAR ' + new Intl.NumberFormat('en-US', {
+                maximumFractionDigits: 0, notation: 'compact'
+              }).format(totalVal);
+              
+              setStats(prev => ({
+                ...prev,
+                totalSales,
+                pendingSalesOrders: pendingCount
+              }));
+            }
+          }
+        } catch (e) {
+          console.warn('[Dashboard] Sales data unavailable:', e);
+        }
+
+        // Help Desk Tickets Stats
+        try {
+          if (currentCompanyId) {
+            const { count: openTicketsCount } = await supabase
+              .from('tickets')
+              .select('*', { count: 'exact', head: true })
+              .eq('company_id', currentCompanyId)
+              .eq('status', 'Open');
+            
+            setStats(prev => ({
+              ...prev,
+              openTickets: openTicketsCount ?? 0
+            }));
+          }
+        } catch (e) {
+          console.warn('[Dashboard] Help Desk stats unavailable:', e);
         }
 
       } catch (error) {
@@ -123,17 +201,12 @@ export const Dashboard: React.FC = () => {
     };
 
     const fetchCompanyLogo = async () => {
+      if (!currentCompanyId) return;
       try {
-        const { data: { user: authUser } } = await supabase.auth.getUser();
-        if (authUser) {
-          const { data: profile } = await supabase
-            .from('profiles').select('company_id').eq('id', authUser.id).maybeSingle();
-          if (profile?.company_id) {
-            const { data } = await supabase
-              .from('companies').select('logo_url').eq('id', profile.company_id).maybeSingle();
-            if (data?.logo_url) setCompanyLogo(data.logo_url);
-          }
-        }
+        const { data } = await supabase
+          .from('companies').select('logo_url').eq('id', currentCompanyId).maybeSingle();
+        if (data?.logo_url) setCompanyLogo(data.logo_url);
+        else setCompanyLogo(null);
       } catch (e) {
         console.error('[Dashboard] Error fetching logo:', e);
       }
@@ -152,15 +225,42 @@ export const Dashboard: React.FC = () => {
   // ── Widget Renderer (permission-gated) ──
   const renderModuleWidget = (moduleId: AppView) => {
     switch (moduleId) {
-      case AppView.HRMS:
-        if (!hasPermission('hrms.employees.view') && !hasPermission('hrms.attendance.view') && !hasPermission('hrms.leave.view')) return null;
+      case AppView.EMPLOYEES:
+        if (!hasPermission('hrms.employees.view') && !hasPermission('*')) return null;
         return (
-          <HRMSWidget
-            onClick={() => handleNavigate(AppView.HRMS)}
+          <EmployeesWidget
+            onClick={() => handleNavigate(AppView.EMPLOYEES)}
             count={stats.activeEmployees}
-            attendancePercentage={stats.attendancePercentage}
+            className="md:col-span-1 min-h-[160px]"
+          />
+        );
+
+      case AppView.ATTENDANCE:
+        if (!hasPermission('hrms.attendance.view') && !hasPermission('*')) return null;
+        return (
+          <AttendanceWidget
+            onClick={() => handleNavigate(AppView.ATTENDANCE)}
+            percentage={stats.attendancePercentage}
+            className="md:col-span-1 min-h-[160px]"
+          />
+        );
+
+      case AppView.LEAVE:
+        if (!hasPermission('hrms.leave.view') && !hasPermission('*')) return null;
+        return (
+          <LeaveWidget
+            onClick={() => handleNavigate(AppView.LEAVE)}
             openLeaves={stats.pendingLeaves}
-            className="md:col-span-2 md:row-span-2 min-h-[320px]"
+            className="md:col-span-1 min-h-[160px]"
+          />
+        );
+
+      case AppView.PAYROLL:
+        if (!hasPermission('finance.payroll.view') && !hasPermission('*')) return null;
+        return (
+          <PayrollWidget
+            onClick={() => handleNavigate(AppView.PAYROLL)}
+            className="md:col-span-1 min-h-[160px]"
           />
         );
 
@@ -214,6 +314,73 @@ export const Dashboard: React.FC = () => {
         if (!hasPermission('procurement.view') && !hasPermission('*')) return null;
         return <ProcurementWidget onClick={() => handleNavigate(AppView.PROCUREMENT)} className="md:col-span-1 min-h-[180px]" />;
 
+      case AppView.PROJECTS:
+        return <ProjectsWidget onClick={() => handleNavigate(AppView.PROJECTS)} count={stats.projectCount} className="md:col-span-1 min-h-[200px]" />;
+
+      case AppView.DOCUMENTS:
+        return <DocumentsWidget onClick={() => handleNavigate(AppView.DOCUMENTS)} count={stats.documentCount} className="md:col-span-1 min-h-[200px]" />;
+
+      case AppView.SALES:
+        if (!hasPermission('procurement.view') && !hasPermission('*')) return null;
+        return (
+          <SalesWidget
+            onClick={() => handleNavigate(AppView.SALES)}
+            totalSales={stats.totalSales}
+            pendingOrders={stats.pendingSalesOrders}
+            className="md:col-span-1 min-h-[200px]"
+          />
+        );
+
+      case AppView.HELP_DESK:
+        if (!hasPermission('hrms.helpdesk.view') && !hasPermission('*')) return null;
+        return (
+          <HelpDeskWidget
+            onClick={() => handleNavigate(AppView.HELP_DESK)}
+            openTickets={stats.openTickets}
+            className="md:col-span-1 min-h-[180px]"
+          />
+        );
+
+      case AppView.MARKETING:
+        return (
+          <MarketingWidget
+            onClick={() => handleNavigate(AppView.MARKETING)}
+            className="md:col-span-1 min-h-[200px]"
+          />
+        );
+
+      case AppView.RECRUITMENT:
+        return (
+          <RecruitmentWidget
+            onClick={() => handleNavigate(AppView.RECRUITMENT)}
+            className="md:col-span-1 min-h-[200px]"
+          />
+        );
+
+      case AppView.LOANS:
+        return (
+          <LoansWidget
+            onClick={() => handleNavigate(AppView.LOANS)}
+            className="md:col-span-1 min-h-[200px]"
+          />
+        );
+
+      case AppView.PERFORMANCE:
+        return (
+          <PerformanceWidget
+            onClick={() => handleNavigate(AppView.PERFORMANCE)}
+            className="md:col-span-1 min-h-[200px]"
+          />
+        );
+
+      case AppView.TRAVEL:
+        return (
+          <TravelWidget
+            onClick={() => handleNavigate(AppView.TRAVEL)}
+            className="md:col-span-1 min-h-[200px]"
+          />
+        );
+
       default: {
         const config = MODULES.find(m => m.id === moduleId);
         if (!config) return null;
@@ -247,9 +414,18 @@ export const Dashboard: React.FC = () => {
         {/* Top Bar / Command Center */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-12 animate-slide-up">
           <div>
-            <div className="flex items-center gap-3 mb-1">
-              <img src={companyLogo} alt="Company Logo" className="h-20 w-auto object-contain brightness-100 dark:brightness-[1.2]" />
-              <span className="text-xs font-bold tracking-[0.2em] text-slate-400 dark:text-zinc-500 uppercase">Workspace</span>
+            <div className="flex items-center gap-4 mb-3">
+              {companyLogo ? (
+                <img src={companyLogo} alt="Company Logo" className="h-16 w-auto object-contain brightness-100 dark:brightness-[1.2] rounded-xl shadow-lg shadow-indigo-500/10" />
+              ) : (
+                <div className="p-3 bg-white dark:bg-zinc-900 rounded-xl shadow-md border border-slate-100 dark:border-zinc-800">
+                  <Building2 className="w-8 h-8 text-indigo-500" />
+                </div>
+              )}
+              <div className="flex flex-col">
+                <span className="text-[10px] font-black tracking-[0.3em] text-indigo-500/70 dark:text-indigo-400/60 uppercase">Workspace</span>
+                <span className="text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase">Organization Portal</span>
+              </div>
             </div>
             <h1 className="text-4xl md:text-5xl font-bold text-slate-900 dark:text-white tracking-tight">
               {greeting}, <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-purple-600">
@@ -292,17 +468,28 @@ export const Dashboard: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 grid-rows-auto gap-6 pb-20 animate-slide-up" style={{ animationDelay: '0.1s' }}>
 
           {/* Priority Modules */}
-          {renderModuleWidget(AppView.HRMS)}
+          {renderModuleWidget(AppView.EMPLOYEES)}
+          {renderModuleWidget(AppView.ATTENDANCE)}
+          {renderModuleWidget(AppView.LEAVE)}
+          {renderModuleWidget(AppView.PAYROLL)}
           {renderModuleWidget(AppView.CRM)}
 
           {/* Secondary Modules */}
           {renderModuleWidget(AppView.ESSP)}
-
-
+          {renderModuleWidget(AppView.PROJECTS)}
+          {renderModuleWidget(AppView.DOCUMENTS)}
+          {renderModuleWidget(AppView.ACCOUNTING)}
+          {renderModuleWidget(AppView.INVENTORY)}
+          {renderModuleWidget(AppView.SALES)}
 
           {/* Render All Other Modules */}
           {MODULES
-            .filter(m => ![AppView.HRMS, AppView.CRM, AppView.SALES, AppView.ESSP, AppView.ORGANISATION, AppView.DASHBOARD].includes(m.id))
+            .filter(m => ![
+              AppView.EMPLOYEES, AppView.ATTENDANCE, AppView.LEAVE, AppView.PAYROLL,
+              AppView.CRM, AppView.SALES, AppView.ESSP, 
+              AppView.ORGANISATION, AppView.DASHBOARD, AppView.PROJECTS, 
+              AppView.DOCUMENTS, AppView.ACCOUNTING, AppView.INVENTORY
+            ].includes(m.id))
             .map(m => renderModuleWidget(m.id))
           }
 

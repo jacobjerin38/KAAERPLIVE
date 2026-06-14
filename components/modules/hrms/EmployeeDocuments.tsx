@@ -23,12 +23,26 @@ interface EmployeeDocumentsProps {
 }
 
 const DOCUMENT_TYPES = [
-    { value: 'ID_PROOF', label: 'ID Proof (Aadhaar, PAN, Passport)' },
+    { value: 'PASSPORT', label: 'Passport' },
+    { value: 'QID', label: 'QID (Qatar ID)' },
+    { value: 'VISA', label: 'Visa' },
+    { value: 'HAMAD_CARD', label: 'Hamad Health Card' },
+    { value: 'DRIVING_LICENSE', label: 'Driving License' },
+    { value: 'ID_PROOF', label: 'ID Proof (Aadhaar, PAN, etc.)' },
     { value: 'ADDRESS_PROOF', label: 'Address Proof' },
     { value: 'EDUCATION', label: 'Education Certificate' },
     { value: 'EXPERIENCE', label: 'Experience Letter' },
     { value: 'OFFER_LETTER', label: 'Offer Letter' },
     { value: 'CONTRACT', label: 'Employment Contract' },
+    { value: 'MEDICAL', label: 'Medical Report / Fitness' },
+    { value: 'INSURANCE', label: 'Insurance Document' },
+    { value: 'AIR_TICKET', label: 'Air Ticket' },
+    { value: 'SALARY_CERT', label: 'Salary Certificate' },
+    { value: 'NOC', label: 'No Objection Certificate (NOC)' },
+    { value: 'PHOTO', label: 'Photo / Image' },
+    { value: 'PDF', label: 'PDF Document' },
+    { value: 'WORD', label: 'Word Document' },
+    { value: 'EXCEL', label: 'Excel / Spreadsheet' },
     { value: 'OTHER', label: 'Other' }
 ];
 
@@ -55,7 +69,7 @@ export const EmployeeDocuments: React.FC<EmployeeDocumentsProps> = ({ employeeId
 
     // Upload form state
     const [uploadForm, setUploadForm] = useState({
-        document_type: 'ID_PROOF',
+        document_type: 'PASSPORT',
         document_name: '',
         issue_date: '',
         expiry_date: '',
@@ -72,7 +86,8 @@ export const EmployeeDocuments: React.FC<EmployeeDocumentsProps> = ({ employeeId
     const fetchDocuments = async () => {
         setLoading(true);
         try {
-            const { data, error } = await supabase
+            // @ts-ignore
+            const { data, error } = await (supabase as any)
                 .from('employee_documents')
                 .select('*')
                 .eq('employee_id', employeeId)
@@ -80,7 +95,7 @@ export const EmployeeDocuments: React.FC<EmployeeDocumentsProps> = ({ employeeId
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
-            setDocuments(data || []);
+            setDocuments((data as any[]) || []);
         } catch (err: any) {
             console.error('Error fetching documents:', err);
             setError(err.message);
@@ -126,7 +141,7 @@ export const EmployeeDocuments: React.FC<EmployeeDocumentsProps> = ({ employeeId
             if (uploadError) throw uploadError;
 
             // Create document record
-            const { error: insertError } = await supabase
+            const { error: insertError } = await (supabase as any)
                 .from('employee_documents')
                 .insert([{
                     company_id: companyId,
@@ -149,7 +164,7 @@ export const EmployeeDocuments: React.FC<EmployeeDocumentsProps> = ({ employeeId
             setShowUploadModal(false);
             setSelectedFile(null);
             setUploadForm({
-                document_type: 'ID_PROOF',
+                document_type: 'PASSPORT',
                 document_name: '',
                 issue_date: '',
                 expiry_date: '',
@@ -169,7 +184,7 @@ export const EmployeeDocuments: React.FC<EmployeeDocumentsProps> = ({ employeeId
 
         try {
             // Soft delete the record
-            const { error } = await supabase
+            const { error } = await (supabase as any)
                 .from('employee_documents')
                 .update({ is_active: false })
                 .eq('id', doc.id);
@@ -220,7 +235,7 @@ export const EmployeeDocuments: React.FC<EmployeeDocumentsProps> = ({ employeeId
         return (
             <div className="flex items-center justify-center py-8">
                 <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
-                <span className="ml-2 text-gray-500">Loading documents...</span>
+                <span className="ml-2 text-slate-500 dark:text-slate-400">Loading documents...</span>
             </div>
         );
     }
@@ -229,7 +244,7 @@ export const EmployeeDocuments: React.FC<EmployeeDocumentsProps> = ({ employeeId
         <div className="space-y-4">
             {/* Header */}
             <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-gray-900">Documents</h3>
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Documents</h3>
                 {!readOnly && (
                     <button
                         onClick={() => setShowUploadModal(true)}
@@ -243,7 +258,7 @@ export const EmployeeDocuments: React.FC<EmployeeDocumentsProps> = ({ employeeId
 
             {/* Error Display */}
             {error && (
-                <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700">
+                <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-300">
                     <AlertCircle className="w-5 h-5" />
                     <span>{error}</span>
                     <button onClick={() => setError(null)} className="ml-auto">
@@ -254,48 +269,48 @@ export const EmployeeDocuments: React.FC<EmployeeDocumentsProps> = ({ employeeId
 
             {/* Documents List */}
             {documents.length === 0 ? (
-                <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
-                    <File className="w-12 h-12 mx-auto text-gray-400 mb-2" />
-                    <p className="text-gray-500">No documents uploaded yet</p>
+                <div className="text-center py-8 bg-slate-50 dark:bg-zinc-800/50 rounded-lg border-2 border-dashed border-slate-200 dark:border-zinc-700">
+                    <File className="w-12 h-12 mx-auto text-slate-400 dark:text-slate-500 mb-2" />
+                    <p className="text-slate-500 dark:text-slate-400">No documents uploaded yet</p>
                     {!readOnly && (
                         <button
                             onClick={() => setShowUploadModal(true)}
-                            className="mt-2 text-blue-600 hover:underline"
+                            className="mt-2 text-blue-600 dark:text-blue-400 hover:underline"
                         >
                             Upload your first document
                         </button>
                     )}
                 </div>
             ) : (
-                <div className="grid gap-3">
+                    <div className="grid gap-3">
                     {documents.map(doc => (
                         <div
                             key={doc.id}
-                            className="flex items-center gap-4 p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-300 transition-colors"
+                            className="flex items-center gap-4 p-4 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg hover:border-blue-300 dark:hover:border-blue-600 transition-colors"
                         >
                             {/* File Icon */}
-                            <div className="flex-shrink-0 w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
+                            <div className="flex-shrink-0 w-10 h-10 bg-slate-100 dark:bg-zinc-700 rounded-lg flex items-center justify-center">
                                 {getFileIcon(doc.mime_type)}
                             </div>
 
                             {/* Document Info */}
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
-                                    <h4 className="font-medium text-gray-900 truncate">{doc.document_name}</h4>
+                                    <h4 className="font-medium text-slate-900 dark:text-white truncate">{doc.document_name}</h4>
                                     {doc.verified && (
-                                        <span className="flex items-center gap-1 text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full">
+                                        <span className="flex items-center gap-1 text-xs px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full">
                                             <Check className="w-3 h-3" /> Verified
                                         </span>
                                     )}
                                 </div>
-                                <div className="flex items-center gap-3 text-sm text-gray-500">
+                                <div className="flex items-center gap-3 text-sm text-slate-500 dark:text-slate-400">
                                     <span>{DOCUMENT_TYPES.find(t => t.value === doc.document_type)?.label || doc.document_type}</span>
                                     <span>•</span>
                                     <span>{formatFileSize(doc.file_size)}</span>
                                     {doc.expiry_date && (
                                         <>
                                             <span>•</span>
-                                            <span className={new Date(doc.expiry_date) < new Date() ? 'text-red-500' : ''}>
+                                            <span className={new Date(doc.expiry_date) < new Date() ? 'text-red-500 dark:text-red-400' : ''}>
                                                 Expires: {new Date(doc.expiry_date).toLocaleDateString()}
                                             </span>
                                         </>
@@ -307,14 +322,14 @@ export const EmployeeDocuments: React.FC<EmployeeDocumentsProps> = ({ employeeId
                             <div className="flex items-center gap-2">
                                 <button
                                     onClick={() => handleView(doc)}
-                                    className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                    className="p-2 text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors"
                                     title="View"
                                 >
                                     <Eye className="w-4 h-4" />
                                 </button>
                                 <button
                                     onClick={() => handleDownload(doc)}
-                                    className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                    className="p-2 text-slate-500 dark:text-slate-400 hover:text-green-600 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg transition-colors"
                                     title="Download"
                                 >
                                     <Download className="w-4 h-4" />
@@ -322,7 +337,7 @@ export const EmployeeDocuments: React.FC<EmployeeDocumentsProps> = ({ employeeId
                                 {!readOnly && (
                                     <button
                                         onClick={() => handleDelete(doc)}
-                                        className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                        className="p-2 text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
                                         title="Delete"
                                     >
                                         <Trash2 className="w-4 h-4" />
@@ -337,12 +352,12 @@ export const EmployeeDocuments: React.FC<EmployeeDocumentsProps> = ({ employeeId
             {/* Upload Modal */}
             {showUploadModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 m-4">
+                    <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-xl w-full max-w-md p-6 m-4">
                         <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-lg font-semibold">Upload Document</h3>
+                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Upload Document</h3>
                             <button
                                 onClick={() => setShowUploadModal(false)}
-                                className="p-1 hover:bg-gray-100 rounded"
+                                className="p-1 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded text-gray-500 dark:text-gray-400"
                             >
                                 <X className="w-5 h-5" />
                             </button>
@@ -352,7 +367,7 @@ export const EmployeeDocuments: React.FC<EmployeeDocumentsProps> = ({ employeeId
                             {/* File Drop Zone */}
                             <div
                                 onClick={() => fileInputRef.current?.click()}
-                                className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors"
+                                className="border-2 border-dashed border-gray-300 dark:border-zinc-600 rounded-lg p-6 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
                             >
                                 <input
                                     ref={fileInputRef}
@@ -378,11 +393,11 @@ export const EmployeeDocuments: React.FC<EmployeeDocumentsProps> = ({ employeeId
 
                             {/* Document Type */}
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Document Type</label>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Document Type</label>
                                 <select
                                     value={uploadForm.document_type}
                                     onChange={e => setUploadForm(prev => ({ ...prev, document_type: e.target.value }))}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    className="w-full px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                 >
                                     {DOCUMENT_TYPES.map(type => (
                                         <option key={type.value} value={type.value}>{type.label}</option>
@@ -392,34 +407,34 @@ export const EmployeeDocuments: React.FC<EmployeeDocumentsProps> = ({ employeeId
 
                             {/* Document Name */}
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Document Name *</label>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Document Name *</label>
                                 <input
                                     type="text"
                                     value={uploadForm.document_name}
                                     onChange={e => setUploadForm(prev => ({ ...prev, document_name: e.target.value }))}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                    placeholder="e.g., Aadhaar Card"
+                                    className="w-full px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    placeholder="e.g., Passport, QID"
                                 />
                             </div>
 
                             {/* Dates */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Issue Date</label>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Issue Date</label>
                                     <input
                                         type="date"
                                         value={uploadForm.issue_date}
                                         onChange={e => setUploadForm(prev => ({ ...prev, issue_date: e.target.value }))}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        className="w-full px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Expiry Date</label>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Expiry Date</label>
                                     <input
                                         type="date"
                                         value={uploadForm.expiry_date}
                                         onChange={e => setUploadForm(prev => ({ ...prev, expiry_date: e.target.value }))}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        className="w-full px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                     />
                                 </div>
                             </div>

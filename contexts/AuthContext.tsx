@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { Session, User } from '@supabase/supabase-js';
 
@@ -28,33 +28,35 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const fetchUserRoleAndPermissions = async (userId: string, roleNameOverride?: string) => {
         try {
             let roleName = roleNameOverride;
+            let companyId: string | null = null;
 
             if (!roleName) {
                 const { data: profile, error: profileError } = await supabase
                     .from('profiles')
-                    .select('role, role_id')
+                    .select('role, company_id')
                     .eq('id', userId)
                     .maybeSingle();
 
                 if (profileError) {
                     console.warn('Could not fetch profile (RLS?), defaulting to Admin:', profileError.message);
-                    // If we can't even read the profile, grant full access to avoid lockout
                     setUserRole('Admin');
                     setPermissions(['*']);
                     return;
                 }
-                roleName = profile?.role || 'Admin'; // Default to Admin instead of essp_user
+                roleName = profile?.role || 'Admin';
+                companyId = profile?.company_id || null;
             }
 
             setUserRole(roleName);
 
-            // Admin bypass - don't even need to look up permissions
-            if (roleName?.toLowerCase() === 'admin') {
+            // Admin bypass
+            if (['admin', 'super admin'].includes(roleName?.toLowerCase() || '')) {
                 setPermissions(['*']);
                 return;
             }
 
-            // Fetch permissions from roles table for non-admin roles
+            // Fetch role-based permissions
+            let rolePerms: string[] = [];
             const { data: roleData, error: roleError } = await supabase
                 .from('roles')
                 .select('permissions')
@@ -68,11 +70,22 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             }
 
             if (roleData?.permissions && roleData.permissions.length > 0) {
-                setPermissions(roleData.permissions);
+                rolePerms = roleData.permissions;
             } else {
-                // Fallback: grant full access if role has no permissions defined
                 setPermissions(['*']);
+                return;
             }
+
+            // Fetch per-user permission overrides and merge (additive)
+            const { data: userPerms } = await supabase
+                .from('user_permissions')
+                .select('permission, granted')
+                .eq('user_id', userId)
+                .eq('granted', true);
+
+            const extraPerms = userPerms?.map((p: any) => p.permission) || [];
+            const merged = Array.from(new Set([...rolePerms, ...extraPerms]));
+            setPermissions(merged);
         } catch (err) {
             console.error('Permission fetch crashed, granting full access:', err);
             setUserRole('Admin');
@@ -99,7 +112,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         });
 
         // Listen for changes
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
             setSession(session);
             setUser(session?.user ?? null);
             setLoading(false);
@@ -116,6 +129,34 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
         return () => subscription.unsubscribe();
     }, []);
+
+    // ===== Session Timeout (15 min inactivity) =====
+    const TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
+    const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const resetTimer = useCallback(() => {
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        if (session) {
+            timeoutRef.current = setTimeout(() => {
+                alert('Your session has expired due to inactivity. Please log in again.');
+                signOut();
+            }, TIMEOUT_MS);
+        }
+    }, [session]);
+
+    useEffect(() => {
+        if (!session) {
+            if (timeoutRef.current) clearTimeout(timeoutRef.current);
+            return;
+        }
+        const events = ['mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
+        events.forEach(evt => window.addEventListener(evt, resetTimer));
+        resetTimer(); // Start the timer
+        return () => {
+            events.forEach(evt => window.removeEventListener(evt, resetTimer));
+            if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        };
+    }, [session, resetTimer]);
 
     const selectCompany = async (companyId: string) => {
         setCurrentCompanyId(companyId);
@@ -138,12 +179,39 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         // 3. Force token refresh to ensure claims (if using custom claims later) are updated
         await supabase.auth.refreshSession();
 
-        // No reload needed if our app is reactive, but good for clean slate
+        // 4. Log LOGIN activity
+        if (user) {
+            try {
+                await supabase.from('activity_logs' as any).insert({
+                    company_id: companyId,
+                    user_id: user.id,
+                    user_email: user.email,
+                    action: 'LOGIN',
+                    description: `User session activated: ${user.email}`
+                });
+            } catch (err) {
+                console.error('Failed to log login activity:', err);
+            }
+        }
     };
 
     const signOut = async () => {
+        // Log LOGOUT activity before clearing credentials and session
+        try {
+            if (user && currentCompanyId) {
+                await supabase.from('activity_logs' as any).insert({
+                    company_id: currentCompanyId,
+                    user_id: user.id,
+                    user_email: user.email,
+                    action: 'LOGOUT',
+                    description: `User session ended: ${user.email}`
+                });
+            }
+        } catch (err) {
+            console.error('Failed to log logout activity:', err);
+        }
+
         localStorage.removeItem('app.current_company');
-        setCurrentCompanyId(null);
         setCurrentCompanyId(null);
         setUserRole(null);
         setPermissions([]);
@@ -164,7 +232,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     const hasPermission = (permission: string) => {
         if (permissions.includes('*')) return true; // Super admin wildcard
-        if (userRole?.toLowerCase() === 'admin') return true; // Admin bypass (case insensitive)
+        if (['admin', 'super admin'].includes(userRole?.toLowerCase() || '')) return true; // Admin bypass
         return permissions.includes(permission);
     };
 

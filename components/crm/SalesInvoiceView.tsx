@@ -46,7 +46,7 @@ const SalesInvoiceView: React.FC<Props> = ({ companyId, onConvert }) => {
     };
 
     const openNew = () => {
-        setActiveInv({ currency: 'INR', status: 'Unpaid', invoice_date: new Date().toISOString().split('T')[0], amount_paid: 0 });
+        setActiveInv({ currency: 'QAR', status: 'Unpaid', invoice_date: new Date().toISOString().split('T')[0], amount_paid: 0 });
         setLines([]);
         setShowModal(true);
     };
@@ -171,8 +171,8 @@ const SalesInvoiceView: React.FC<Props> = ({ companyId, onConvert }) => {
                                     <td className="px-5 py-3 text-slate-500">{inv.invoice_date}</td>
                                     <td className="px-5 py-3 font-medium text-slate-900 dark:text-white">{inv.customer?.name || '-'}</td>
                                     <td className="px-5 py-3"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${statusColors[inv.status]}`}>{inv.status}</span></td>
-                                    <td className="px-5 py-3 text-right font-semibold text-slate-900 dark:text-white">₹{(inv.grand_total || 0).toLocaleString()}</td>
-                                    <td className="px-5 py-3 text-right text-emerald-600">₹{(inv.amount_paid || 0).toLocaleString()}</td>
+                                    <td className="px-5 py-3 text-right font-semibold text-slate-900 dark:text-white">QAR {(inv.grand_total || 0).toLocaleString()}</td>
+                                    <td className="px-5 py-3 text-right text-emerald-600">QAR {(inv.amount_paid || 0).toLocaleString()}</td>
                                     <td className="px-5 py-3 text-slate-500">{inv.due_date || '-'}</td>
                                 </tr>
                             ))}
@@ -248,7 +248,7 @@ const SalesInvoiceView: React.FC<Props> = ({ companyId, onConvert }) => {
                                                     <td className="px-2 py-1.5"><input type="number" value={line.rate} onChange={e => updateLine(idx, 'rate', parseFloat(e.target.value) || 0)} className="w-full px-2 py-1.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-xs text-right" /></td>
                                                     <td className="px-2 py-1.5"><input type="number" value={line.discount_percent} onChange={e => updateLine(idx, 'discount_percent', parseFloat(e.target.value) || 0)} className="w-full px-2 py-1.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-xs text-center" /></td>
                                                     <td className="px-2 py-1.5"><input type="number" value={line.tax_percent} onChange={e => updateLine(idx, 'tax_percent', parseFloat(e.target.value) || 0)} className="w-full px-2 py-1.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-xs text-center" /></td>
-                                                    <td className="px-2 py-1.5 text-right font-medium">₹{calcLineAmount(line).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                                    <td className="px-2 py-1.5 text-right font-medium">QAR {calcLineAmount(line).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                                                     <td className="px-2 py-1.5"><button onClick={() => removeLine(idx)} className="p-1 hover:bg-red-50 rounded"><Trash2 size={12} className="text-red-400" /></button></td>
                                                 </tr>
                                             ))}
@@ -258,11 +258,11 @@ const SalesInvoiceView: React.FC<Props> = ({ companyId, onConvert }) => {
                                 </div>
                                 <div className="flex justify-end mt-3">
                                     <div className="w-56 space-y-1 text-xs">
-                                        <div className="flex justify-between text-slate-500"><span>Subtotal</span><span>₹{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
-                                        <div className="flex justify-between text-slate-500"><span>Tax</span><span>₹{taxAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
-                                        <div className="flex justify-between font-bold text-slate-900 dark:text-white text-sm border-t border-slate-200 dark:border-zinc-700 pt-1"><span>Grand Total</span><span>₹{grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                                        <div className="flex justify-between text-slate-500"><span>Subtotal</span><span>QAR {subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                                        <div className="flex justify-between text-slate-500"><span>Tax</span><span>QAR {taxAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                                        <div className="flex justify-between font-bold text-slate-900 dark:text-white text-sm border-t border-slate-200 dark:border-zinc-700 pt-1"><span>Grand Total</span><span>QAR {grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
                                         {activeInv.amount_paid !== undefined && activeInv.amount_paid > 0 && (
-                                            <div className="flex justify-between text-emerald-600 font-medium"><span>Paid</span><span>₹{(activeInv.amount_paid || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                                            <div className="flex justify-between text-emerald-600 font-medium"><span>Paid</span><span>QAR {(activeInv.amount_paid || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
                                         )}
                                     </div>
                                 </div>
