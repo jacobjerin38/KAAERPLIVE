@@ -52,7 +52,7 @@ export const EmployeeDirectory: React.FC<EmployeeDirectoryProps> = ({
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100/50 dark:divide-zinc-800/50">
-                            {employees.map(emp => (
+                            {[...employees].sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(emp => (
                                 <tr key={emp.id} className="hover:bg-indigo-50/30 dark:hover:bg-indigo-900/20 transition-colors group cursor-pointer" onClick={() => onSelectEmployee(emp)}>
                                     {/* Employee - Name + Staff No */}
                                     <td className="px-5 py-3">
