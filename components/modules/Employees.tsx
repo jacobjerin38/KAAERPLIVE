@@ -307,7 +307,7 @@ export const Employees: React.FC = () => {
                                             </div>
                                         </div>
                                         <span className="text-xs text-slate-400 font-bold font-mono">
-                                            {emp.joinDate ? new Date(emp.joinDate).toLocaleDateString() : '—'}
+                                            {emp.joinDate ? `${String(new Date(emp.joinDate).getDate()).padStart(2, '0')}/${String(new Date(emp.joinDate).getMonth() + 1).padStart(2, '0')}/${new Date(emp.joinDate).getFullYear()}` : '—'}
                                         </span>
                                     </div>
                                 ))}

@@ -37,6 +37,27 @@ interface EmployeeFormModalProps {
     employees: Employee[];
 }
 
+// Helper functions for custom dd/mm/yyyy handling in input fields
+const toDisplayDate = (val?: string | null): string => {
+    if (!val) return '';
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(val)) return val;
+    const match = val.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) {
+        return `${match[3]}/${match[2]}/${match[1]}`;
+    }
+    return val;
+};
+
+const toDbDate = (val?: string | null): string | null => {
+    if (!val) return null;
+    const match = val.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (match) {
+        return `${match[3]}-${match[2]}-${match[1]}`;
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
+    return null;
+};
+
 export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
     initialData, onClose, refreshData,
     departments, locations, designations, grades, employmentTypes,
@@ -49,7 +70,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
         last_name: initialData?.name?.split(' ').slice(1).join(' ') || '',
         name: initialData?.name || '',
         employee_code: initialData?.employee_code || '',
-        date_of_birth: initialData?.date_of_birth || '',
+        date_of_birth: toDisplayDate(initialData?.date_of_birth),
         gender: initialData?.gender || '',
         faith_id: initialData?.faith_id?.toString() || '',
         blood_group_id: initialData?.blood_group_id?.toString() || '',
@@ -65,7 +86,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
         grade_id: initialData?.grade_id?.toString() || '',
         location_id: initialData?.location_id?.toString() || '',
         employment_type_id: initialData?.employment_type_id?.toString() || '',
-        join_date: initialData?.join_date || initialData?.joinDate || '',
+        join_date: toDisplayDate(initialData?.join_date || initialData?.joinDate),
         reporting_manager_id: (initialData as any)?.manager_id?.toString() || '',
         shift_timing_id: initialData?.shift_timing_id?.toString() || '',
         weekoff_rule_id: initialData?.weekoff_rule_id?.toString() || '',
@@ -80,9 +101,9 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
         profile_photo_url: initialData?.profile_photo_url || '',
         // Immigration & Travel Documents
         passport_number: (initialData as any)?.passport_number || '',
-        passport_expiry: (initialData as any)?.passport_expiry || '',
+        passport_expiry: toDisplayDate((initialData as any)?.passport_expiry),
         visa_number: (initialData as any)?.visa_number || '',
-        visa_expiry: (initialData as any)?.visa_expiry || '',
+        visa_expiry: toDisplayDate((initialData as any)?.visa_expiry),
         visa_sponsor: (initialData as any)?.visa_sponsor || '',
         visa_type: (initialData as any)?.visa_type || '',
         visa_type_id: (initialData as any)?.visa_type_id?.toString() || '',
@@ -265,8 +286,19 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
         const fullName = `${formData.first_name} ${formData.last_name}`.trim();
         if (!fullName) { setSubmitError("Name is required"); return; }
         if (!formData.join_date) { setSubmitError("Join Date is required"); return; }
+        const dbJoinDate = toDbDate(formData.join_date);
+        if (!dbJoinDate) { setSubmitError("Join Date must be in dd/mm/yyyy format"); return; }
         if (!formData.employee_code) { setSubmitError("Employee Code is required"); return; }
         if (!formData.role_id) { setSubmitError("Role is required"); return; }
+
+        const dbDob = toDbDate(formData.date_of_birth);
+        if (formData.date_of_birth && !dbDob) { setSubmitError("Date of Birth must be in dd/mm/yyyy format"); return; }
+
+        const dbPassportExpiry = toDbDate(formData.passport_expiry);
+        if (formData.passport_expiry && !dbPassportExpiry) { setSubmitError("Passport Expiry must be in dd/mm/yyyy format"); return; }
+
+        const dbVisaExpiry = toDbDate(formData.visa_expiry);
+        if (formData.visa_expiry && !dbVisaExpiry) { setSubmitError("Visa Expiry must be in dd/mm/yyyy format"); return; }
 
         setLoading(true);
 
@@ -282,7 +314,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                 name: fullName,
                 employee_code: formData.employee_code,
                 // ... map all other fields - UUID fields use string directly ...
-                date_of_birth: formData.date_of_birth || null,
+                date_of_birth: dbDob || null,
                 gender: formData.gender || null,
                 faith_id: formData.faith_id ? parseInt(formData.faith_id) : null,
                 blood_group_id: formData.blood_group_id ? parseInt(formData.blood_group_id) : null,
@@ -298,7 +330,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                 grade_id: formData.grade_id ? parseInt(formData.grade_id) : null,
                 location_id: formData.location_id ? parseInt(formData.location_id) : null,
                 employment_type_id: formData.employment_type_id ? parseInt(formData.employment_type_id) : null,
-                join_date: formData.join_date || null,
+                join_date: dbJoinDate || null,
                 manager_id: formData.reporting_manager_id || null, // Keeping as string if UUID, but check if manager_id is also numeric
                 shift_timing_id: formData.shift_timing_id ? parseInt(formData.shift_timing_id) : null,
                 weekoff_rule_id: formData.weekoff_rule_id ? parseInt(formData.weekoff_rule_id) : null,
@@ -316,9 +348,9 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                 department: departments.find(d => d.id === (formData.department_id ? parseInt(formData.department_id) : null))?.name || null,
                 // Immigration fields
                 passport_number: formData.passport_number || null,
-                passport_expiry: formData.passport_expiry || null,
+                passport_expiry: dbPassportExpiry || null,
                 visa_number: formData.visa_number || null,
-                visa_expiry: formData.visa_expiry || null,
+                visa_expiry: dbVisaExpiry || null,
                 visa_sponsor: formData.visa_sponsor || null,
                 visa_type: formData.visa_type || null,
                 visa_type_id: formData.visa_type_id ? parseInt(formData.visa_type_id) : null,
@@ -522,7 +554,8 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                                                 <div className="space-y-2">
                                                     <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Date of Joining <span className="text-rose-500">*</span></label>
                                                     <input
-                                                        type="date"
+                                                        type="text"
+                                                        placeholder="dd/mm/yyyy"
                                                         name="join_date"
                                                         value={formData.join_date}
                                                         onChange={handleChange}
@@ -532,7 +565,8 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                                                 <div className="space-y-2">
                                                     <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Date of Birth <span className="text-rose-500">*</span></label>
                                                     <input
-                                                        type="date"
+                                                        type="text"
+                                                        placeholder="dd/mm/yyyy"
                                                         name="date_of_birth"
                                                         value={formData.date_of_birth}
                                                         onChange={handleChange}
@@ -544,7 +578,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                                                     <input
                                                         type="text"
                                                         readOnly
-                                                        value={formData.date_of_birth ? Math.floor((Date.now() - new Date(formData.date_of_birth).getTime()) / (365.25 * 24 * 60 * 60 * 1000)) + " yrs" : ''}
+                                                        value={formData.date_of_birth && toDbDate(formData.date_of_birth) ? Math.floor((Date.now() - new Date(toDbDate(formData.date_of_birth)!).getTime()) / (365.25 * 24 * 60 * 60 * 1000)) + " yrs" : ''}
                                                         className="w-full bg-slate-100 dark:bg-zinc-800/50 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm font-bold text-slate-500 outline-none cursor-not-allowed"
                                                         placeholder="Auto"
                                                     />
@@ -753,7 +787,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                                             </div>
                                             <div className="space-y-2">
                                                 <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Passport Expiry Date</label>
-                                                <input type="date" name="passport_expiry" value={formData.passport_expiry} onChange={handleChange} className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-slate-800 dark:text-white" />
+                                                <input type="text" placeholder="dd/mm/yyyy" name="passport_expiry" value={formData.passport_expiry} onChange={handleChange} className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-slate-800 dark:text-white" />
                                             </div>
                                         </div>
                                     </div>
@@ -769,7 +803,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                                             </div>
                                             <div className="space-y-2">
                                                 <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Visa / OD Valid Until</label>
-                                                <input type="date" name="visa_expiry" value={formData.visa_expiry} onChange={handleChange} className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none text-slate-800 dark:text-white" />
+                                                <input type="text" placeholder="dd/mm/yyyy" name="visa_expiry" value={formData.visa_expiry} onChange={handleChange} className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none text-slate-800 dark:text-white" />
                                             </div>
                                             <div className="space-y-2">
                                                 <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Visa Sponsor</label>
