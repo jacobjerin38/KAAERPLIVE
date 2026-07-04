@@ -37,6 +37,24 @@ export const ExitModule: React.FC<ExitModuleProps> = ({ employees, currentEmploy
         if (!currentEmployee) return;
 
         const formData = new FormData(e.target as HTMLFormElement);
+        const lastWorkingDateRaw = formData.get('lastWorkingDate') as string;
+
+        const toDbDate = (val?: string | null): string | null => {
+            if (!val) return null;
+            const match = val.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+            if (match) {
+                return `${match[3]}-${match[2]}-${match[1]}`;
+            }
+            if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
+            return null;
+        };
+
+        const dbLastDate = toDbDate(lastWorkingDateRaw);
+        if (!dbLastDate) {
+            alert("Proposed Last Working Day must be in dd/mm/yyyy format");
+            return;
+        }
+
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
         const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', user.id).single();
@@ -46,7 +64,7 @@ export const ExitModule: React.FC<ExitModuleProps> = ({ employees, currentEmploy
             employee_id: currentEmployee.id,
             reason_category: formData.get('category'),
             reason_text: formData.get('reason'),
-            proposed_last_working_date: formData.get('lastWorkingDate'),
+            proposed_last_working_date: dbLastDate,
             status: 'Pending'
         } as any]);
 
@@ -59,7 +77,13 @@ export const ExitModule: React.FC<ExitModuleProps> = ({ employees, currentEmploy
     };
 
     const formatDate = (dateStr: string) => {
-        return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        if (!dateStr) return '-';
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return '-';
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const year = d.getFullYear();
+        return `${day}/${month}/${year}`;
     };
 
     const getEmployeeName = (id: string) => {
@@ -156,7 +180,7 @@ export const ExitModule: React.FC<ExitModuleProps> = ({ employees, currentEmploy
 
                         <div>
                             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Proposed Last Working Day</label>
-                            <input type="date" name="lastWorkingDate" required className="w-full p-4 bg-slate-50 dark:bg-zinc-800 rounded-2xl border border-slate-200 dark:border-zinc-700 text-slate-900 dark:text-white" />
+                            <input type="text" placeholder="dd/mm/yyyy" name="lastWorkingDate" required className="w-full p-4 bg-slate-50 dark:bg-zinc-800 rounded-2xl border border-slate-200 dark:border-zinc-700 text-slate-900 dark:text-white" />
                         </div>
 
                         <button className="w-full py-4 bg-rose-600 text-white rounded-2xl font-bold hover:shadow-lg shadow-rose-500/30 active:scale-95 transition-all">Submit Request</button>

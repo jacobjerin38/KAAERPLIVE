@@ -1669,6 +1669,16 @@ export const ESSP: React.FC = () => {
         const [loading, setLoading] = useState(false);
         const [resignationFile, setResignationFile] = useState<File | null>(null);
 
+        const toDbDate = (val?: string | null): string | null => {
+            if (!val) return null;
+            const match = val.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+            if (match) {
+                return `${match[3]}-${match[2]}-${match[1]}`;
+            }
+            if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
+            return null;
+        };
+
         useEffect(() => {
             const checkStatus = async () => {
                 if (!currentEmployee) return;
@@ -1694,6 +1704,13 @@ export const ESSP: React.FC = () => {
         const handleSubmit = async (e: React.FormEvent) => {
             e.preventDefault();
             if (!currentEmployee) return;
+
+            const dbLastDate = toDbDate(formData.lastDate);
+            if (!dbLastDate) {
+                alert("Proposed Last Working Day must be in dd/mm/yyyy format");
+                return;
+            }
+
             setLoading(true);
 
             let attachmentUrl = '';
@@ -1717,7 +1734,7 @@ export const ESSP: React.FC = () => {
                     employee_id: currentEmployee.id,
                     reason_category: formData.category,
                     reason_text: formData.reason,
-                    proposed_last_working_date: formData.lastDate,
+                    proposed_last_working_date: dbLastDate,
                     status: 'Pending',
                     attachment_url: attachmentUrl || null,
                     attachment_name: attachmentName || null
@@ -1765,7 +1782,7 @@ export const ESSP: React.FC = () => {
                         <div className="text-left bg-slate-50 dark:bg-zinc-800/50 p-6 rounded-2xl text-sm space-y-2">
                             <div className="flex justify-between">
                                 <span className="text-slate-500">Proposed Last Day:</span>
-                                <span className="font-bold">{new Date(activeResignation.proposed_last_working_date).toLocaleDateString()}</span>
+                                <span className="font-bold">{activeResignation.proposed_last_working_date ? `${String(new Date(activeResignation.proposed_last_working_date).getDate()).padStart(2, '0')}/${String(new Date(activeResignation.proposed_last_working_date).getMonth() + 1).padStart(2, '0')}/${new Date(activeResignation.proposed_last_working_date).getFullYear()}` : '—'}</span>
                             </div>
                             <div className="flex justify-between">
                                 <span className="text-slate-500">Reason:</span>
@@ -1810,7 +1827,8 @@ export const ESSP: React.FC = () => {
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Proposed Last Working Day</label>
                                 <input
-                                    type="date"
+                                    type="text"
+                                    placeholder="dd/mm/yyyy"
                                     required
                                     className="w-full p-4 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-900 dark:text-white"
                                     value={formData.lastDate}
