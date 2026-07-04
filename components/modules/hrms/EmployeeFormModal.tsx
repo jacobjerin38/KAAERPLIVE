@@ -340,7 +340,8 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                 account_number: formData.account_number || null,
                 ifsc_code: formData.ifsc_code || null,
                 role_id: formData.role_id || null,
-                status: formData.status,
+                employee_status_id: formData.employee_status_id ? parseInt(formData.employee_status_id) : null,
+                status: employeeStatuses.find(s => s.id.toString() === formData.employee_status_id)?.name || 'Active',
                 // Legacy
                 email: formData.office_email || formData.personal_email || null,
                 phone: formData.office_mobile || formData.personal_mobile || null,
