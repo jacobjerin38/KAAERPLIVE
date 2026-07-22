@@ -26,6 +26,7 @@ export enum AppView {
   TRAVEL = 'TRAVEL',
   CAREERS = 'CAREERS',
   CHAT = 'CHAT',
+  PRO = 'PRO',
 }
 
 export interface ModuleConfig {
@@ -302,3 +303,123 @@ export interface WebsiteFinderResult {
   raw_response?: string;
   created_at: string;
 }
+
+// Employee Leave Authority
+export interface EmployeeLeaveAuthority {
+  id: string;
+  company_id: string;
+  employee_id: string;
+  employee?: Employee;
+  approver_level_1?: string;
+  approver_level_1_emp?: Employee;
+  approver_level_2?: string;
+  approver_level_2_emp?: Employee;
+  approver_level_3?: string;
+  approver_level_3_emp?: Employee;
+  effective_from: string;
+  effective_to?: string;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// PRO (Madoob) Module Interfaces
+export interface PROApplication {
+  id: string;
+  company_id: string;
+  title: string;
+  application_number?: string;
+  applicant_employee_id?: string;
+  applicant?: Employee;
+  application_type: string;
+  sponsor_entity?: string;
+  submission_date?: string;
+  expiry_date?: string;
+  status: 'PENDING' | 'IN_PROGRESS' | 'APPROVED' | 'REJECTED';
+  cost?: number;
+  government_fees?: number;
+  remarks?: string;
+  created_at?: string;
+}
+
+export interface PROLicense {
+  id: string;
+  company_id: string;
+  license_name: string;
+  license_number: string;
+  issuing_authority?: string;
+  issue_date?: string;
+  expiry_date?: string;
+  status: 'ACTIVE' | 'EXPIRING_SOON' | 'EXPIRED';
+  fee_amount?: number;
+  document_url?: string;
+  created_at?: string;
+}
+
+export interface PRODocument {
+  id: string;
+  company_id: string;
+  document_name: string;
+  document_type: string;
+  document_number?: string;
+  entity_type?: string;
+  entity_id?: string;
+  issue_date?: string;
+  expiry_date?: string;
+  status: 'VALID' | 'EXPIRING' | 'EXPIRED';
+  attachment_url?: string;
+  created_at?: string;
+}
+
+export interface PRORenewal {
+  id: string;
+  company_id: string;
+  entity_type: string;
+  entity_id: string;
+  entity_name: string;
+  renewal_due_date: string;
+  status: 'PENDING' | 'IN_PROGRESS' | 'RENEWED';
+  cost?: number;
+  assigned_to?: string;
+  assignee?: Employee;
+  created_at?: string;
+}
+
+export interface PROTask {
+  id: string;
+  company_id: string;
+  task_name: string;
+  description?: string;
+  due_date?: string;
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
+  assigned_to?: string;
+  assignee?: Employee;
+  related_application_id?: string;
+  created_at?: string;
+}
+
+// HRMS Separation Interface
+export interface EmployeeSeparation {
+  id: string;
+  company_id: string;
+  employee_id: string;
+  employee?: Employee;
+  separation_type: 'RESIGNATION' | 'TERMINATION' | 'RETIREMENT' | 'ABSCONDING' | 'CONTRACT_COMPLETION' | 'DEATH' | 'OTHER';
+  reason_category?: string;
+  reason_text?: string;
+  proposed_last_working_date?: string;
+  last_working_day?: string;
+  relieving_date?: string;
+  notice_period_days?: number;
+  status: string;
+  exit_status?: string;
+  manager_comment?: string;
+  approved_by?: string;
+  approver?: Employee;
+  approved_at?: string;
+  attachment_url?: string;
+  attachment_name?: string;
+  settlement_status?: string;
+  created_at?: string;
+}

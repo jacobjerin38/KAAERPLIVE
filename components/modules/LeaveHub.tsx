@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-    Calendar, Check, X, Settings, Plus, Loader2, FileText, LayoutDashboard, ShieldCheck
+    Calendar, Check, X, Settings, Plus, Loader2, FileText, LayoutDashboard, ShieldCheck, UserCheck
 } from 'lucide-react';
 import { LeaveRequest, Employee } from '../hrms/types';
 import { LeaveViewMode } from '../../types';
 import { LeaveModule } from './hrms/LeaveModule';
 import { HolidayCalendar } from './hrms/HolidayCalendar';
 import { LeaveAccrualManager } from './hrms/LeaveAccrualManager';
+import { LeaveAuthorityMapping } from './hrms/LeaveAuthorityMapping';
 import { ReportsListView } from './reports/ReportsListView';
 import { Modal } from '../ui/Modal';
 
@@ -106,6 +107,7 @@ export const LeaveHub: React.FC = () => {
         { id: 'APPROVALS', icon: ShieldCheck, label: 'Approvals', permission: 'hrms.leave.approve' },
         { id: 'CALENDAR', icon: Calendar, label: 'Holidays', permission: 'hrms.leave.view' },
         { id: 'BALANCES', icon: Settings, label: 'Accruals', permission: 'hrms.leave.view' },
+        { id: 'AUTHORITIES', icon: UserCheck, label: 'Leave Authority', permission: 'hrms.leave.view' },
         { id: 'REPORTS', icon: FileText, label: 'Reports', permission: 'hrms.reports.view' },
     ].filter(item => hasPermission(item.permission) || hasPermission('*')), [hasPermission]);
 
@@ -383,6 +385,9 @@ export const LeaveHub: React.FC = () => {
                                 <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-6">Leave Accruals & Policy</h2>
                                 <LeaveAccrualManager />
                             </div>
+                        )}
+                        {(activeTab as string) === 'AUTHORITIES' && (
+                            <LeaveAuthorityMapping companyId={companyId} />
                         )}
                         {activeTab === 'REPORTS' && <ReportsListView moduleFilter="LEAVE" />}
                     </>

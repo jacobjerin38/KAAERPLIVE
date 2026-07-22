@@ -2,77 +2,106 @@ import { supabase } from './supabase';
 
 export type ApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
 
+export interface ApproverSequence {
+    level1?: string | null;
+    level2?: string | null;
+    level3?: string | null;
+}
+
 export class WorkflowEngine {
 
     /**
-     * Start a new workflow for a specific entity (e.g., Leave Request)
+     * Helper to get the employee leave authority or manager hierarchy for a given employee
+     */
+    static async getEmployeeApprovers(companyId: string, employeeId: string): Promise<ApproverSequence> {
+        // 1. Check employee_leave_authority table for active mapping
+        const { data: auth } = await supabase.from('employee_leave_authority')
+            .select('approver_level_1, approver_level_2, approver_level_3')
+            .eq('company_id', companyId)
+            .eq('employee_id', employeeId)
+            .eq('is_active', true)
+            .lte('effective_from', new Date().toISOString().split('T')[0])
+            .maybeSingle();
+
+        // 2. Fetch employee manager as default fallback
+        const { data: emp } = await supabase.from('employees')
+            .select('manager_id')
+            .eq('id', employeeId)
+            .maybeSingle();
+
+        const managerId = emp?.manager_id || null;
+
+        const level1 = auth?.approver_level_1 || managerId;
+        const level2 = auth?.approver_level_2 || null;
+        const level3 = auth?.approver_level_3 || null;
+
+        return {
+            level1: level1 !== employeeId ? level1 : null, // Prevent self approval
+            level2: (level2 !== employeeId && level2 !== level1) ? level2 : null,
+            level3: (level3 !== employeeId && level3 !== level1 && level3 !== level2) ? level3 : null
+        };
+    }
+
+    /**
+     * Start a new workflow for a specific entity (e.g., Leave Request, Resignation)
      */
     static async startWorkflow(companyId: string, triggerType: string, entityId: string, requesterId: string, module: string) {
-        // 1. Find the Active Workflow for this Trigger
+        // 1. Determine approver hierarchy
+        const approvers = await this.getEmployeeApprovers(companyId, requesterId);
+
+        // Find active workflow definition if configured
         const { data: workflow } = await supabase.from('workflows')
             .select('id')
             .eq('company_id', companyId)
             .eq('trigger_type', triggerType)
             .eq('is_active', true)
-            .single();
+            .maybeSingle();
 
-        if (!workflow) {
-            console.warn(`No active workflow found for ${triggerType}. Auto-approving if applicable, or leaving orphan.`);
-            return null;
+        // Find initial step / level
+        let firstStepId: string | null = null;
+        if (workflow) {
+            const { data: step } = await supabase.from('workflow_steps')
+                .select('id')
+                .eq('workflow_id', workflow.id)
+                .order('step_order', { ascending: true })
+                .limit(1)
+                .maybeSingle();
+            firstStepId = step?.id || null;
         }
 
-        // 2. Find the First Step
-        const { data: firstStep } = await supabase.from('workflow_steps')
-            .select('*')
-            .eq('workflow_id', workflow.id)
-            .order('step_order', { ascending: true })
-            .limit(1)
-            .single();
+        // Target initial assigned user
+        const initialApprover = approvers.level1 || approvers.level2 || approvers.level3;
 
-        if (!firstStep) {
-            console.error("Workflow exists but has no steps.");
-            return null;
-        }
-
-        // 3. Determine Assignee (Approver)
-        // Simple Logic: If step is 'Manager', find requester's manager.
-        let assignedUser = null;
-        let assignedRole = null;
-
-        if (firstStep.name.toLowerCase().includes('manager')) {
-            const { data: emp } = await supabase.from('employees').select('manager_id').eq('id', requesterId).single();
-            assignedUser = emp?.manager_id;
-        } else {
-            // Assign to role (e.g. HR Admin)
-            // This requires mapping Step Role to DB Role ID. For now, we might leave it open to role.
-            assignedRole = firstStep.approver_role_id; // Using approver_role_id
-        }
-
-        // 4. Create Instance
+        // Create Workflow Instance
         const { data: instance, error } = await supabase.from('workflow_instances').insert([{
             company_id: companyId,
-            workflow_id: workflow.id,
+            workflow_id: workflow?.id || null,
             module,
             trigger_type: triggerType,
             entity_id: entityId,
-            current_step_id: firstStep.id,
-            status: 'PENDING',
+            current_step_id: firstStepId,
+            status: initialApprover ? 'PENDING' : 'APPROVED',
             requester_id: requesterId,
-            assigned_to_user_id: assignedUser,
-            assigned_to_role_id: assignedRole
+            assigned_to_user_id: initialApprover
         }]).select().single();
 
-        if (error) throw error;
+        if (error) {
+            console.error("Error creating workflow instance:", error);
+            throw error;
+        }
+
+        // If no approvers configured at all, auto-approve
+        if (!initialApprover) {
+            await this.finalizeEntity(triggerType, entityId, 'APPROVED');
+        }
+
         return instance;
     }
 
     /**
-     * Fetch all pending approvals for a user
+     * Fetch pending approvals for a specific employee/user
      */
     static async getMyApprovals(userId: string) {
-        // 1. Get User's Roles to check role-based assignments
-        // For simplified V1.2, we mainly check direct assignment or Manager logic.
-
         const { data: requests, error } = await supabase.from('workflow_instances')
             .select(`
                 *,
@@ -81,21 +110,22 @@ export class WorkflowEngine {
             `)
             .eq('status', 'PENDING')
             .or(`assigned_to_user_id.eq.${userId}`);
-        // .or(`assigned_to_role_id.in.(${userRoleIds})`) -- Add this for role based
 
-        if (error) throw error;
-        return requests;
+        if (error) {
+            console.error("Error fetching approvals:", error);
+            throw error;
+        }
+        return requests || [];
     }
 
     /**
-     * Process an Approval
+     * Process an Approval & Route to Next Approver Level
      */
     static async approve(instanceId: string, actorId: string, comment?: string) {
-        // 1. Get Current Instance
         const { data: instance } = await supabase.from('workflow_instances').select('*').eq('id', instanceId).single();
-        if (!instance) throw new Error("Instance not found");
+        if (!instance) throw new Error("Workflow instance not found");
 
-        // 2. Log Action
+        // Log Action to audit trail
         await supabase.from('workflow_action_logs').insert([{
             instance_id: instanceId,
             step_id: instance.current_step_id,
@@ -104,39 +134,49 @@ export class WorkflowEngine {
             comment
         }]);
 
-        // 3. Find Next Step
-        const { data: currentStep } = await supabase.from('workflow_steps').select('step_order, workflow_id').eq('id', instance.current_step_id).single();
+        // Get hierarchy for requester
+        const approvers = await this.getEmployeeApprovers(instance.company_id, instance.requester_id);
 
-        const { data: nextStep } = await supabase.from('workflow_steps')
-            .select('*')
-            .eq('workflow_id', currentStep.workflow_id)
-            .gt('step_order', currentStep.step_order)
-            .order('step_order', { ascending: true })
-            .limit(1)
-            .maybeSingle();
+        // Determine next level
+        let nextApprover: string | null = null;
+        if (instance.assigned_to_user_id === approvers.level1 && approvers.level2) {
+            nextApprover = approvers.level2;
+        } else if ((instance.assigned_to_user_id === approvers.level1 || instance.assigned_to_user_id === approvers.level2) && approvers.level3) {
+            nextApprover = approvers.level3;
+        }
 
-        if (nextStep) {
-            // Move to Next Step
-            // Determine Assignee again... (Simplified for now: keep assigned to null or same)
+        if (nextApprover) {
+            // Advance to next approval level
             await supabase.from('workflow_instances').update({
-                current_step_id: nextStep.id,
+                assigned_to_user_id: nextApprover,
                 updated_at: new Date().toISOString()
             }).eq('id', instanceId);
+
+            // Update entity partial level status if leave request
+            if (instance.trigger_type === 'LEAVE_REQUEST') {
+                if (instance.assigned_to_user_id === approvers.level1) {
+                    await supabase.from('leaves').update({ level1_status: 'Approved' }).eq('id', instance.entity_id);
+                } else if (instance.assigned_to_user_id === approvers.level2) {
+                    await supabase.from('leaves').update({ level2_status: 'Approved' }).eq('id', instance.entity_id);
+                }
+            }
         } else {
-            // Workflow Complete
+            // Workflow Completed & Fully Approved
             await supabase.from('workflow_instances').update({
-                current_step_id: null,
                 status: 'APPROVED',
                 updated_at: new Date().toISOString()
             }).eq('id', instanceId);
 
-            // TODO: Trigger Final Success Hook (e.g. Update Leave Table status to 'Approved')
             await this.finalizeEntity(instance.trigger_type, instance.entity_id, 'APPROVED');
         }
     }
 
+    /**
+     * Process a Rejection
+     */
     static async reject(instanceId: string, actorId: string, comment?: string) {
         const { data: instance } = await supabase.from('workflow_instances').select('*').eq('id', instanceId).single();
+        if (!instance) throw new Error("Workflow instance not found");
 
         await supabase.from('workflow_action_logs').insert([{
             instance_id: instanceId,
@@ -155,21 +195,26 @@ export class WorkflowEngine {
     }
 
     /**
-     * Helper to update the actual record (Leave, Expense, etc.)
+     * Helper to update the entity record (Leaves, Resignations, Expenses)
      */
     private static async finalizeEntity(type: string, entityId: string, status: string) {
-        const tableMap: Record<string, string> = {
-            'LEAVE_REQUEST': 'leaves',
-            'RESIGNATION': 'resignations',
-            'EXPENSE_CLAIM': 'expenses'
-        };
+        const dbStatus = status === 'APPROVED' ? 'Approved' : status === 'REJECTED' ? 'Rejected' : status;
 
-        const tableName = tableMap[type];
-        if (!tableName) return;
-
-        // Map 'APPROVED'/'REJECTED' to title case if needed, but DB usually uses Capitalized
-        const dbStatus = status.charAt(0) + status.slice(1).toLowerCase(); // 'Approved'
-
-        await supabase.from(tableName as any).update({ status: dbStatus }).eq('id', entityId);
+        if (type === 'LEAVE_REQUEST') {
+            await supabase.from('leaves').update({
+                status: dbStatus,
+                level1_status: dbStatus,
+                level2_status: dbStatus
+            }).eq('id', entityId);
+        } else if (type === 'RESIGNATION') {
+            await supabase.from('resignations').update({
+                status: dbStatus,
+                exit_status: dbStatus
+            }).eq('id', entityId);
+        } else if (type === 'EXPENSE_CLAIM') {
+            await supabase.from('expenses').update({
+                status: dbStatus
+            }).eq('id', entityId);
+        }
     }
 }

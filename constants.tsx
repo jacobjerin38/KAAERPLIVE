@@ -17,7 +17,8 @@ import {
   DollarSign,
   Award,
   Plane,
-  MessageSquare
+  MessageSquare,
+  ShieldCheck
 } from 'lucide-react';
 import { AppView, ModuleConfig } from './types';
 
@@ -187,5 +188,13 @@ export const MODULES: ModuleConfig[] = [
     icon: MessageSquare,
     color: "text-indigo-600",
     bgColor: "bg-indigo-100",
+  },
+  {
+    id: AppView.PRO,
+    name: "PRO (Madoob)",
+    description: "Public Relations, Licenses & Govt Approvals",
+    icon: ShieldCheck,
+    color: "text-blue-600",
+    bgColor: "bg-blue-100",
   },
 ];

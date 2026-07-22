@@ -818,7 +818,6 @@ export const ESSP: React.FC = () => {
         { id: 'DIRECTORY', icon: Users, label: 'People Directory' },
         { id: 'LEARNING', icon: BookOpen, label: 'Learning' },
         { id: 'CHAT', icon: MessageSquare, label: 'Team Chat' },
-        { id: 'REPORTS', icon: Clipboard, label: 'Reports' },
     ];
 
     const MyProfile = () => (

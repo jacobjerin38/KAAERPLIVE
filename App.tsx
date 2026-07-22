@@ -36,6 +36,8 @@ import { PerformanceHub } from './components/modules/PerformanceHub';
 import { RecruitmentHub } from './components/modules/RecruitmentHub';
 import { CareersPortal } from './components/modules/CareersPortal';
 import { TeamChat } from './components/modules/TeamChat';
+import { PROHub } from './components/modules/PROHub';
+import { SalesHub } from './components/modules/SalesHub';
 
 const AppContent: React.FC = () => {
   const { session, loading, currentCompanyId, selectCompany, userRole } = useAuth();
@@ -108,6 +110,7 @@ const AppContent: React.FC = () => {
     if (path === 'travel') return AppView.TRAVEL;
     if (path === 'careers') return AppView.CAREERS;
     if (path === 'chat') return AppView.CHAT;
+    if (path === 'pro') return AppView.PRO;
     return AppView.DASHBOARD;
   };
 
@@ -127,7 +130,8 @@ const AppContent: React.FC = () => {
     { path: '/essp', element: <ESSP />, id: 'essp' },
     { path: '/projects', element: <ProjectManagement />, id: 'projects' },
     { path: '/documents', element: <DocumentManagement />, id: 'documents' },
-    { path: '/sales', element: <ProcurementSalesDashboard defaultTab="sales" />, id: 'sales' },
+    { path: '/sales', element: <SalesHub />, id: 'sales' },
+    { path: '/pro', element: <PROHub />, id: 'pro' },
     { path: '/help_desk', element: <HelpDeskHub />, id: 'help_desk' },
     { path: '/marketing', element: <MarketingHub />, id: 'marketing' },
     { path: '/recruitment', element: <RecruitmentHub />, id: 'recruitment' },
