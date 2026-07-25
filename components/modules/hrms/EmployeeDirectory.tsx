@@ -16,6 +16,8 @@ interface EmployeeDirectoryProps {
 export const EmployeeDirectory: React.FC<EmployeeDirectoryProps> = ({
     employees, roles, departments, designations, onSelectEmployee, onAddEmployee
 }) => {
+    const [searchTerm, setSearchTerm] = React.useState('');
+
     const formatDate = (dateStr?: string) => {
         if (!dateStr) return '-';
         const d = new Date(dateStr);
@@ -26,6 +28,39 @@ export const EmployeeDirectory: React.FC<EmployeeDirectoryProps> = ({
         return `${day}/${month}/${year}`;
     };
 
+    const getDesignationName = (emp: Employee) => {
+        if (emp.designation) return emp.designation;
+        if (emp.designation_id != null) {
+            const found = designations.find(d => String(d.id) === String(emp.designation_id));
+            if (found?.name) return found.name;
+        }
+        return '-';
+    };
+
+    const getDepartmentName = (emp: Employee) => {
+        if (emp.department) return emp.department;
+        if (emp.department_id != null) {
+            const found = departments.find(d => String(d.id) === String(emp.department_id));
+            if (found?.name) return found.name;
+        }
+        return '-';
+    };
+
+    const filteredEmployees = React.useMemo(() => {
+        const sorted = [...employees].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        if (!searchTerm.trim()) return sorted;
+        const term = searchTerm.toLowerCase();
+        return sorted.filter(emp => {
+            const desig = getDesignationName(emp).toLowerCase();
+            const dept = getDepartmentName(emp).toLowerCase();
+            const name = (emp.name || '').toLowerCase();
+            const code = (emp.employee_code || '').toLowerCase();
+            const client = (emp.client_name || '').toLowerCase();
+            const contact = (emp.personal_mobile || emp.phone || '').toLowerCase();
+            return name.includes(term) || code.includes(term) || desig.includes(term) || dept.includes(term) || client.includes(term) || contact.includes(term);
+        });
+    }, [employees, designations, departments, searchTerm]);
+
     return (
         <div className="p-8 h-full flex flex-col animate-page-enter">
             <div className="flex justify-between items-center mb-6 shrink-0">
@@ -33,11 +68,19 @@ export const EmployeeDirectory: React.FC<EmployeeDirectoryProps> = ({
                 <div className="flex gap-3">
                     <div className="relative group">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
-                        <input type="text" placeholder="Search people..." className="pl-11 pr-4 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl text-sm focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500/20 w-72 shadow-sm transition-all text-slate-800 dark:text-slate-200" />
+                        <input
+                            type="text"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            placeholder="Search people..."
+                            className="pl-11 pr-4 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl text-sm focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500/20 w-72 shadow-sm transition-all text-slate-800 dark:text-slate-200"
+                        />
                     </div>
-                    <button onClick={onAddEmployee} className="bg-slate-900 dark:bg-white text-white dark:text-black px-5 py-3 rounded-2xl font-bold text-sm flex items-center gap-2 hover:bg-slate-800 dark:hover:bg-slate-200 hover:shadow-lg active:scale-95 transition-all">
-                        <Plus className="w-4 h-4" /> Add Employee
-                    </button>
+                    {onAddEmployee && (
+                        <button onClick={onAddEmployee} className="bg-slate-900 dark:bg-white text-white dark:text-black px-5 py-3 rounded-2xl font-bold text-sm flex items-center gap-2 hover:bg-slate-800 dark:hover:bg-slate-200 hover:shadow-lg active:scale-95 transition-all">
+                            <Plus className="w-4 h-4" /> Add Employee
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -57,12 +100,12 @@ export const EmployeeDirectory: React.FC<EmployeeDirectoryProps> = ({
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100/50 dark:divide-zinc-800/50">
-                            {[...employees].sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(emp => (
+                            {filteredEmployees.map(emp => (
                                 <tr key={emp.id} className="hover:bg-indigo-50/30 dark:hover:bg-indigo-900/20 transition-colors group cursor-pointer" onClick={() => onSelectEmployee(emp)}>
                                     {/* Employee - Name + Staff No */}
                                     <td className="px-5 py-3">
                                         <div className="flex items-center gap-3">
-                                            <img src={emp.avatar || `https://ui-avatars.com/api/?name=${emp.name}&background=random`} alt="" className="w-9 h-9 rounded-full border-2 border-white dark:border-zinc-700 shadow-sm group-hover:scale-105 transition-transform" />
+                                            <img src={emp.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(emp.name)}&background=random`} alt="" className="w-9 h-9 rounded-full border-2 border-white dark:border-zinc-700 shadow-sm group-hover:scale-105 transition-transform" />
                                             <div>
                                                 <p className="font-bold text-sm text-slate-800 dark:text-white leading-tight">{emp.name}</p>
                                                 <p className="text-[11px] text-slate-400 dark:text-slate-500 font-medium">{emp.employee_code || '-'}</p>
@@ -72,13 +115,13 @@ export const EmployeeDirectory: React.FC<EmployeeDirectoryProps> = ({
                                     {/* Position / Designation */}
                                     <td className="px-4 py-3">
                                         <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800/40 px-2.5 py-1 rounded-lg">
-                                            {designations.find(d => Number(d.id) === emp.designation_id)?.name || emp.designation || '-'}
+                                            {getDesignationName(emp)}
                                         </span>
                                     </td>
                                     {/* Department */}
                                     <td className="px-4 py-3">
                                         <span className="text-xs font-bold text-slate-600 dark:text-slate-300 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 px-2.5 py-1 rounded-lg shadow-sm">
-                                            {departments.find(d => Number(d.id) === emp.department_id)?.name || emp.department || '-'}
+                                            {getDepartmentName(emp)}
                                         </span>
                                     </td>
                                     {/* Client */}

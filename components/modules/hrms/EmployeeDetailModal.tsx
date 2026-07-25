@@ -416,15 +416,15 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
                                 <h3 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">Professional Details</h3>
                                 <div className="grid grid-cols-2 gap-4">
                                     <ViewField label="Staff No." value={emp.employee_code || '-'} />
-                                    <ViewField label="Department" value={departments.find(d => d.id === emp.department_id)?.name || emp.department || '-'} />
-                                    <ViewField label="Designation / Position" value={designations.find(d => d.id === emp.designation_id)?.name || emp.designation || '-'} />
-                                    <ViewField label="Grade" value={grades.find(g => g.id === emp.grade_id)?.name || '-'} />
-                                    <ViewField label="Employment Type" value={employmentTypes.find(e => e.id === emp.employment_type_id)?.name || '-'} />
+                                    <ViewField label="Department" value={departments.find(d => String(d.id) === String(emp.department_id))?.name || emp.department || '-'} />
+                                    <ViewField label="Designation / Position" value={designations.find(d => String(d.id) === String(emp.designation_id))?.name || emp.designation || '-'} />
+                                    <ViewField label="Grade" value={grades.find(g => String(g.id) === String(emp.grade_id))?.name || '-'} />
+                                    <ViewField label="Employment Type" value={employmentTypes.find(e => String(e.id) === String(emp.employment_type_id))?.name || '-'} />
                                     <ViewField label="Join Date" value={formatDate(emp.joinDate || emp.join_date)} />
-                                    <ViewField label="Location" value={locations.find(l => l.id === emp.location_id)?.name || emp.location || '-'} />
-                                    <ViewField label="Reporting Manager" value={employees.find(e => e.id === (emp as any).manager_id || e.id === emp.reporting_manager_id)?.name || '-'} />
+                                    <ViewField label="Location" value={locations.find(l => String(l.id) === String(emp.location_id))?.name || emp.location || '-'} />
+                                    <ViewField label="Reporting Manager" value={employees.find(e => String(e.id) === String((emp as any).manager_id) || String(e.id) === String(emp.reporting_manager_id))?.name || '-'} />
                                     <ViewField label="Client" value={emp.client_name || '-'} />
-                                    <ViewField label="Status" value={employeeStatuses?.find(s => s.id === (emp as any).employee_status_id)?.name || emp.status || '-'} />
+                                    <ViewField label="Status" value={employeeStatuses?.find(s => String(s.id) === String((emp as any).employee_status_id))?.name || emp.status || '-'} />
                                 </div>
                             </div>
 
@@ -435,8 +435,8 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
                                     <ViewField label="Date of Birth" value={formatDate(emp.date_of_birth)} />
                                     <ViewField label="Age" value={emp.age || (emp.date_of_birth ? Math.floor((Date.now() - new Date(emp.date_of_birth).getTime()) / (365.25 * 24 * 60 * 60 * 1000)) : '-')} />
                                     <ViewField label="Gender" value={emp.gender || '-'} />
-                                    <ViewField label="Nationality" value={nationalities?.find(n => n.id === emp.nationality_id)?.name || emp.nationality || '-'} />
-                                    <ViewField label="Civil Status" value={maritalStatuses?.find(m => m.id === emp.marital_status_id)?.name || '-'} />
+                                    <ViewField label="Nationality" value={nationalities?.find(n => String(n.id) === String(emp.nationality_id))?.name || emp.nationality || '-'} />
+                                    <ViewField label="Civil Status" value={maritalStatuses?.find(m => String(m.id) === String(emp.marital_status_id))?.name || '-'} />
                                 </div>
                             </div>
 
@@ -449,7 +449,7 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
                                     <ViewField label="QID / Visa Number" value={emp.visa_number || '-'} />
                                     <ViewField label="Visa / QID Validity" value={formatDate(emp.visa_expiry)} />
                                     <ViewField label="Visa Sponsor" value={emp.visa_sponsor || '-'} />
-                                    <ViewField label="Visa Type" value={visaTypes?.find(v => v.id === (emp as any).visa_type_id)?.name || emp.visa_type || '-'} />
+                                    <ViewField label="Visa Type" value={visaTypes?.find(v => String(v.id) === String((emp as any).visa_type_id))?.name || emp.visa_type || '-'} />
                                 </div>
                             </div>
 
@@ -468,7 +468,7 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
                             <div>
                                 <h3 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">Additional Information</h3>
                                 <div className="grid grid-cols-2 gap-4">
-                                    <ViewField label="Annual Leave Duration Policy" value={leavePlans?.find(p => p.id === (emp as any).leave_plan_id)?.name || emp.annual_leave_duration_policy || '-'} />
+                                    <ViewField label="Annual Leave Duration Policy" value={leavePlans?.find(p => String(p.id) === String((emp as any).leave_plan_id))?.name || emp.annual_leave_duration_policy || '-'} />
                                     <ViewField label="Air Ticket" value={emp.air_ticket || '-'} />
                                     <ViewField label="Memo" value={emp.memo || '-'} />
                                     <ViewField label="Remarks" value={emp.remarks || '-'} />
@@ -481,10 +481,10 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
                         <div className="space-y-6">
                             <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-6">Job Information</h3>
                             <div className="grid grid-cols-2 gap-6">
-                                <ViewField label="Designation" value={designations.find(d => d.id === emp.designation_id)?.name || '-'} />
-                                <ViewField label="Grade" value={grades.find(g => g.id === emp.grade_id)?.name || '-'} />
-                                <ViewField label="Employment Type" value={employmentTypes.find(e => e.id === emp.employment_type_id)?.name || '-'} />
-                                <ViewField label="Reporting Manager" value={employees.find(e => e.id === emp.reporting_manager_id)?.name || 'None'} />
+                                <ViewField label="Designation" value={designations.find(d => String(d.id) === String(emp.designation_id))?.name || '-'} />
+                                <ViewField label="Grade" value={grades.find(g => String(g.id) === String(emp.grade_id))?.name || '-'} />
+                                <ViewField label="Employment Type" value={employmentTypes.find(e => String(e.id) === String(emp.employment_type_id))?.name || '-'} />
+                                <ViewField label="Reporting Manager" value={employees.find(e => String(e.id) === String(emp.reporting_manager_id))?.name || 'None'} />
                             </div>
                         </div>
                     )}

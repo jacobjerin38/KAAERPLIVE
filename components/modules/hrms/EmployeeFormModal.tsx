@@ -345,8 +345,9 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                 // Legacy
                 email: formData.office_email || formData.personal_email || null,
                 phone: formData.office_mobile || formData.personal_mobile || null,
-                role: roles.find(r => r.id === formData.role_id)?.name || null,
-                department: departments.find(d => d.id === (formData.department_id ? parseInt(formData.department_id) : null))?.name || null,
+                role: roles.find(r => String(r.id) === String(formData.role_id))?.name || null,
+                department: departments.find(d => String(d.id) === String(formData.department_id))?.name || null,
+                designation: designations.find(d => String(d.id) === String(formData.designation_id))?.name || null,
                 // Immigration fields
                 passport_number: formData.passport_number || null,
                 passport_expiry: dbPassportExpiry || null,
