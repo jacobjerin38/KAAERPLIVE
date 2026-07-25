@@ -28,7 +28,9 @@ import {
     X,
     Paperclip,
     MessageSquare,
-    Loader2
+    Loader2,
+    Mail,
+    Phone
 } from 'lucide-react';
 import { Employee, AttendanceRecord, LeaveRequest } from '../hrms/types';
 import { KAA_LOGO_URL } from '../../constants';
@@ -987,14 +989,17 @@ export const ESSP: React.FC = () => {
             const fetchPeople = async () => {
                 if (!currentEmployee?.company_id) return;
                 const { data } = await supabase.from('employees')
-                    .select('id, name, org_designations(name), departments(name), email, mobile:office_mobile, status')
+                    .select('id, name, designation, department, designation_id, department_id, org_designations(name), departments(name), email, office_email, personal_email, phone, office_mobile, personal_mobile, status, profile_photo_url, location_id, locations(name)')
                     .eq('company_id', currentEmployee.company_id)
                     .eq('status', 'Active');
                 if (data) {
                     setPeople(data.map((p: any) => ({
                         ...p,
-                        designation: p.org_designations?.name,
-                        department: p.departments?.name
+                        designation: p.org_designations?.name || p.designation || 'Staff',
+                        department: p.departments?.name || p.department || null,
+                        email: p.office_email || p.personal_email || p.email || null,
+                        mobile: p.personal_mobile || p.office_mobile || p.phone || null,
+                        location: p.locations?.name || null
                     })));
                 }
             };
@@ -1002,9 +1007,11 @@ export const ESSP: React.FC = () => {
         }, [currentEmployee]);
 
         const filteredPeople = people.filter(p =>
-            p.name.toLowerCase().includes(search.toLowerCase()) ||
-            p.designation?.toLowerCase().includes(search.toLowerCase()) ||
-            p.department?.toLowerCase().includes(search.toLowerCase())
+            (p.name || '').toLowerCase().includes(search.toLowerCase()) ||
+            (p.designation || '').toLowerCase().includes(search.toLowerCase()) ||
+            (p.department || '').toLowerCase().includes(search.toLowerCase()) ||
+            (p.email || '').toLowerCase().includes(search.toLowerCase()) ||
+            (p.mobile || '').toLowerCase().includes(search.toLowerCase())
         );
 
         return (
@@ -1027,27 +1034,43 @@ export const ESSP: React.FC = () => {
                     {filteredPeople.map(person => (
                         <div key={person.id} className="bg-white dark:bg-zinc-900/50 p-6 rounded-2xl border border-slate-100 dark:border-zinc-800 hover:border-indigo-200 dark:hover:border-indigo-800 transition-all group shadow-sm hover:shadow-md">
                             <div className="flex items-center gap-4 mb-4">
-                                <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-zinc-800 flex items-center justify-center text-slate-500 font-bold text-lg group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
-                                    {person.name.charAt(0)}
-                                </div>
-                                <div>
-                                    <h3 className="font-bold text-slate-900 dark:text-white">{person.name}</h3>
-                                    <p className="text-xs text-slate-500 font-medium">{person.designation}</p>
+                                {person.profile_photo_url ? (
+                                    <img src={person.profile_photo_url} alt={person.name} className="w-12 h-12 rounded-full object-cover border border-slate-200 dark:border-zinc-700 shadow-sm" />
+                                ) : (
+                                    <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-zinc-800 flex items-center justify-center text-slate-500 font-bold text-lg group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors shrink-0">
+                                        {person.name.charAt(0)}
+                                    </div>
+                                )}
+                                <div className="min-w-0 flex-1">
+                                    <h3 className="font-bold text-slate-900 dark:text-white truncate">{person.name}</h3>
+                                    <p className="text-xs text-slate-500 font-medium truncate">{person.designation}</p>
                                 </div>
                             </div>
                             <div className="space-y-2 pt-4 border-t border-slate-50 dark:border-zinc-800">
-                                <div className="flex items-center gap-2 text-xs text-slate-500">
-                                    <Briefcase className="w-3.5 h-3.5" />
-                                    {person.department}
-                                </div>
-                                <div className="flex items-center gap-2 text-xs text-slate-500">
-                                    <MapPin className="w-3.5 h-3.5" />
-                                    New York Office
-                                </div>
-                                <div className="flex items-center gap-2 text-xs text-indigo-600 dark:text-indigo-400 font-medium mt-2">
-                                    <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
-                                    Active Now
-                                </div>
+                                {person.department && (
+                                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                                        <Briefcase className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                        <span className="truncate">{person.department}</span>
+                                    </div>
+                                )}
+                                {person.email && (
+                                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                                        <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                        <a href={`mailto:${person.email}`} className="hover:text-indigo-600 dark:hover:text-indigo-400 truncate">{person.email}</a>
+                                    </div>
+                                )}
+                                {person.mobile && (
+                                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                                        <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                        <a href={`tel:${person.mobile}`} className="hover:text-indigo-600 dark:hover:text-indigo-400 truncate">{person.mobile}</a>
+                                    </div>
+                                )}
+                                {person.location && (
+                                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                                        <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                        <span className="truncate">{person.location}</span>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     ))}
