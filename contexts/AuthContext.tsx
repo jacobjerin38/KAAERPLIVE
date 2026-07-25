@@ -28,7 +28,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const fetchUserRoleAndPermissions = async (userId: string, roleNameOverride?: string) => {
         try {
             let roleName = roleNameOverride;
-            let companyId: string | null = null;
 
             if (!roleName) {
                 const { data: profile, error: profileError } = await supabase
@@ -37,43 +36,46 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                     .eq('id', userId)
                     .maybeSingle();
 
-                if (profileError) {
-                    console.warn('Could not fetch profile (RLS?), defaulting to Admin:', profileError.message);
-                    setUserRole('Admin');
-                    setPermissions(['*']);
+                if (profileError || !profile) {
+                    console.warn('Could not fetch profile, defaulting to Employee role:', profileError?.message);
+                    setUserRole('Employee');
+                    setPermissions(['essp.view']);
                     return;
                 }
-                roleName = profile?.role || 'Admin';
-                companyId = profile?.company_id || null;
+                roleName = profile?.role || 'Employee';
             }
 
             setUserRole(roleName);
 
-            // Admin bypass
+            // Explicit Admin or Super Admin bypass
             if (['admin', 'super admin'].includes(roleName?.toLowerCase() || '')) {
                 setPermissions(['*']);
                 return;
             }
 
-            // Fetch role-based permissions
+            // Fetch permissions assigned to this role
             let rolePerms: string[] = [];
-            const { data: roleData, error: roleError } = await supabase
-                .from('roles')
-                .select('permissions')
-                .ilike('name', roleName)
+
+            // 1. Try fetching from user_company_access if linked by role_id
+            const { data: userAccess } = await supabase
+                .from('user_company_access')
+                .select('role_id, roles(id, name, permissions)')
+                .eq('user_id', userId)
                 .maybeSingle();
 
-            if (roleError) {
-                console.warn('Could not fetch role permissions (RLS?), granting full access:', roleError.message);
-                setPermissions(['*']);
-                return;
-            }
-
-            if (roleData?.permissions && roleData.permissions.length > 0) {
-                rolePerms = roleData.permissions;
+            if ((userAccess as any)?.roles?.permissions && Array.isArray((userAccess as any).roles.permissions)) {
+                rolePerms = (userAccess as any).roles.permissions;
             } else {
-                setPermissions(['*']);
-                return;
+                // 2. Fallback: Lookup role by name in roles table
+                const { data: roleData } = await supabase
+                    .from('roles')
+                    .select('permissions')
+                    .ilike('name', roleName)
+                    .maybeSingle();
+
+                if (roleData?.permissions && Array.isArray(roleData.permissions)) {
+                    rolePerms = roleData.permissions;
+                }
             }
 
             // Fetch per-user permission overrides and merge (additive)
@@ -85,11 +87,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
             const extraPerms = userPerms?.map((p: any) => p.permission) || [];
             const merged = Array.from(new Set([...rolePerms, ...extraPerms]));
+
+            // Set exact permissions assigned to the role (do NOT default to ['*'])
             setPermissions(merged);
         } catch (err) {
-            console.error('Permission fetch crashed, granting full access:', err);
-            setUserRole('Admin');
-            setPermissions(['*']);
+            console.error('Permission fetch crashed, setting Employee defaults:', err);
+            setUserRole('Employee');
+            setPermissions(['essp.view']);
         }
     };
 

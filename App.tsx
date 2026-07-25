@@ -40,7 +40,7 @@ import { PROHub } from './components/modules/PROHub';
 import { SalesHub } from './components/modules/SalesHub';
 
 const AppContent: React.FC = () => {
-  const { session, loading, currentCompanyId, selectCompany, userRole } = useAuth();
+  const { session, loading, currentCompanyId, selectCompany, userRole, hasPermission } = useAuth();
   const { initialDataLoaded } = useGlobalLoading();
   const [isDarkMode, setIsDarkMode] = useState(false);
   const location = useLocation();
@@ -114,6 +114,33 @@ const AppContent: React.FC = () => {
     return AppView.DASHBOARD;
   };
 
+  const getModulePermission = (path: string): string | null => {
+    switch (path) {
+      case '/employees': return 'hrms.employees.view';
+      case '/attendance': return 'hrms.attendance.view';
+      case '/leave': return 'hrms.leave.view';
+      case '/payroll': return 'finance.payroll.view';
+      case '/crm': return 'crm.dashboard.view';
+      case '/sales': return 'sales.view';
+      case '/accounting': return 'finance.dashboard.view';
+      case '/inventory': return 'inventory.view';
+      case '/projects': return 'projects.view';
+      case '/documents': return 'documents.view';
+      case '/help_desk': return 'hrms.helpdesk.view';
+      case '/manufacturing': return 'manufacturing.view';
+      case '/procurement': return 'procurement.view';
+      case '/marketing': return 'marketing.view';
+      case '/recruitment': return 'recruitment.view';
+      case '/loans': return 'loans.view';
+      case '/performance': return 'performance.view';
+      case '/travel': return 'travel.view';
+      case '/pro': return 'pro.view';
+      case '/organisation': return 'org.structure.view';
+      case '/essp': return 'essp.view';
+      default: return null;
+    }
+  };
+
   // Define modules for Keep-Alive
   const KEEPALIVE_MODULES = [
     { path: '/', element: <Dashboard />, id: 'dashboard' },
@@ -162,11 +189,8 @@ const AppContent: React.FC = () => {
           style={{ display: KEEPALIVE_MODULES.some(m => m.path === location.pathname) ? 'block' : 'none' }}
         >
           {KEEPALIVE_MODULES.map((module) => {
-            // Check if user has access to this path (simple check or role-based)
-            const isEsspOnly = userRole === 'essp_user';
-            const hasAccess = !isEsspOnly || module.path === '/essp';
-            
-            if (!hasAccess) return null;
+            const requiredPerm = getModulePermission(module.path);
+            const hasAccess = !requiredPerm || hasPermission(requiredPerm) || hasPermission('*');
 
             return (
               <div
@@ -177,7 +201,18 @@ const AppContent: React.FC = () => {
                   visibility: location.pathname === module.path ? 'visible' : 'hidden' 
                 }}
               >
-                {module.element}
+                {hasAccess ? (
+                  module.element
+                ) : (
+                  <div className="p-12 text-center text-slate-400 flex flex-col items-center justify-center h-full">
+                    <ShieldAlert className="w-16 h-16 text-rose-500 mb-4 opacity-80" />
+                    <h2 className="text-2xl font-bold text-slate-800 dark:text-white mb-2">Access Restricted</h2>
+                    <p className="text-sm max-w-md mb-6">You do not have permission to view the <span className="font-bold text-slate-900 dark:text-white uppercase">{module.id}</span> module. Please contact your system administrator to request access.</p>
+                    <button onClick={() => navigate('/')} className="px-6 py-2.5 bg-slate-900 dark:bg-white text-white dark:text-black font-bold text-sm rounded-xl hover:shadow-lg transition-all">
+                      Return to Dashboard
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })}

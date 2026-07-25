@@ -353,15 +353,17 @@ export const Dashboard: React.FC = () => {
         return <ProcurementWidget onClick={() => handleNavigate(AppView.PROCUREMENT)} className="md:col-span-1 min-h-[180px]" />;
 
       case AppView.PROJECTS:
+        if (!hasPermission('projects.view')) return null;
         if (errors.projDocs) return <ErrorWidget name="Projects" />;
         return <ProjectsWidget onClick={() => handleNavigate(AppView.PROJECTS)} count={stats.projectCount} className="md:col-span-1 min-h-[200px]" />;
 
       case AppView.DOCUMENTS:
+        if (!hasPermission('documents.view')) return null;
         if (errors.projDocs) return <ErrorWidget name="Documents" />;
         return <DocumentsWidget onClick={() => handleNavigate(AppView.DOCUMENTS)} count={stats.documentCount} className="md:col-span-1 min-h-[200px]" />;
 
       case AppView.SALES:
-        if (!hasPermission('procurement.view') && !hasPermission('*')) return null;
+        if (!hasPermission('sales.view') && !hasPermission('crm.deals.view')) return null;
         if (errors.sales) return <ErrorWidget name="Sales Metrics" />;
         return (
           <SalesWidget
@@ -373,7 +375,7 @@ export const Dashboard: React.FC = () => {
         );
 
       case AppView.HELP_DESK:
-        if (!hasPermission('hrms.helpdesk.view') && !hasPermission('*')) return null;
+        if (!hasPermission('hrms.helpdesk.view')) return null;
         if (errors.tickets) return <ErrorWidget name="Help Desk Tickets" />;
         return (
           <HelpDeskWidget
@@ -384,6 +386,7 @@ export const Dashboard: React.FC = () => {
         );
 
       case AppView.MARKETING:
+        if (!hasPermission('marketing.view')) return null;
         return (
           <MarketingWidget
             onClick={() => handleNavigate(AppView.MARKETING)}
@@ -392,6 +395,7 @@ export const Dashboard: React.FC = () => {
         );
 
       case AppView.RECRUITMENT:
+        if (!hasPermission('recruitment.view')) return null;
         return (
           <RecruitmentWidget
             onClick={() => handleNavigate(AppView.RECRUITMENT)}
@@ -400,6 +404,7 @@ export const Dashboard: React.FC = () => {
         );
 
       case AppView.LOANS:
+        if (!hasPermission('loans.view')) return null;
         return (
           <LoansWidget
             onClick={() => handleNavigate(AppView.LOANS)}
@@ -408,6 +413,7 @@ export const Dashboard: React.FC = () => {
         );
 
       case AppView.PERFORMANCE:
+        if (!hasPermission('performance.view')) return null;
         return (
           <PerformanceWidget
             onClick={() => handleNavigate(AppView.PERFORMANCE)}
@@ -416,10 +422,25 @@ export const Dashboard: React.FC = () => {
         );
 
       case AppView.TRAVEL:
+        if (!hasPermission('travel.view')) return null;
         return (
           <TravelWidget
             onClick={() => handleNavigate(AppView.TRAVEL)}
             className="md:col-span-1 min-h-[200px]"
+          />
+        );
+
+      case AppView.PRO:
+        if (!hasPermission('pro.view')) return null;
+        return (
+          <UpcomingWidget
+            key={moduleId}
+            onClick={() => handleNavigate(AppView.PRO)}
+            className="md:col-span-1 min-h-[180px]"
+            title="PRO (Madoob)"
+            subtitle="Public Relations & Licenses"
+            icon={ShieldAlert}
+            gradient="bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-zinc-900 dark:to-zinc-800"
           />
         );
 

@@ -2034,6 +2034,10 @@ const ALL_PERMISSIONS = {
         { id: 'crm.pipeline.manage', label: 'Manage Pipeline' },
         { id: 'crm.settings.manage', label: 'Manage Settings' },
     ],
+    SALES: [
+        { id: 'sales.view', label: 'View Sales' },
+        { id: 'sales.manage', label: 'Manage Sales Orders & Quotations' }
+    ],
     ORGANISATION: [
         { id: 'org.structure.view', label: 'View Structure' },
         { id: 'org.company.manage', label: 'Manage Company' },
@@ -2045,6 +2049,7 @@ const ALL_PERMISSIONS = {
     ],
     FINANCE: [
         { id: 'finance.dashboard.view', label: 'View Finance Dashboard' },
+        { id: 'finance.payroll.view', label: 'View Payroll' },
         { id: 'finance.setup.manage', label: 'Manage Finance Setup' },
         { id: 'finance.payroll.manage', label: 'Manage Payroll Settings' },
         { id: 'finance.invoices.manage', label: 'Manage Invoices' },
@@ -2054,6 +2059,14 @@ const ALL_PERMISSIONS = {
         { id: 'inventory.view', label: 'View Inventory' },
         { id: 'inventory.manage', label: 'Manage Inventory' }
     ],
+    PROJECTS: [
+        { id: 'projects.view', label: 'View Projects' },
+        { id: 'projects.manage', label: 'Manage Projects' }
+    ],
+    DOCUMENTS: [
+        { id: 'documents.view', label: 'View Documents' },
+        { id: 'documents.manage', label: 'Manage Documents' }
+    ],
     MANUFACTURING: [
         { id: 'manufacturing.view', label: 'View Manufacturing' },
         { id: 'manufacturing.manage', label: 'Manage Manufacturing' }
@@ -2061,6 +2074,30 @@ const ALL_PERMISSIONS = {
     PROCUREMENT: [
         { id: 'procurement.view', label: 'View Procurement' },
         { id: 'procurement.manage', label: 'Manage Procurement' }
+    ],
+    MARKETING: [
+        { id: 'marketing.view', label: 'View Marketing' },
+        { id: 'marketing.manage', label: 'Manage Marketing' }
+    ],
+    RECRUITMENT: [
+        { id: 'recruitment.view', label: 'View Recruitment' },
+        { id: 'recruitment.manage', label: 'Manage Recruitment' }
+    ],
+    LOANS: [
+        { id: 'loans.view', label: 'View Loans & Benefits' },
+        { id: 'loans.manage', label: 'Manage Loans' }
+    ],
+    PERFORMANCE: [
+        { id: 'performance.view', label: 'View Performance' },
+        { id: 'performance.manage', label: 'Manage Performance' }
+    ],
+    TRAVEL: [
+        { id: 'travel.view', label: 'View Travel & Expenses' },
+        { id: 'travel.manage', label: 'Manage Travel' }
+    ],
+    PRO: [
+        { id: 'pro.view', label: 'View PRO (Madoob)' },
+        { id: 'pro.manage', label: 'Manage PRO Module' }
     ],
     ESSP: [
         { id: 'essp.view', label: 'Access ESSP' },
