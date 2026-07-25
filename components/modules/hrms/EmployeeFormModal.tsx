@@ -211,13 +211,16 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
     const handleAddLeaveBalance = async (leaveTypeId: string) => {
         if (!initialData?.id || !initialData?.company_id) return;
         setLeaveSaveMsg(null);
+        const lt = companyLeaveTypes.find(t => String(t.id) === String(leaveTypeId));
+        const initBalance = lt?.default_balance || 0;
+
         const { data, error } = await supabase
             .from('employee_leave_balances')
             .insert({
                 company_id: initialData.company_id,
                 employee_id: initialData.id,
                 leave_type_id: leaveTypeId,
-                total_balance: 0,
+                total_balance: initBalance,
                 used: 0
             })
             .select()
@@ -954,7 +957,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                                                     >
                                                         <option value="" disabled>Select a leave type...</option>
                                                         {companyLeaveTypes
-                                                            .filter(lt => !leaveBalances.find(lb => lb.leave_type_id === lt.id))
+                                                            .filter(lt => !leaveBalances.find(lb => String(lb.leave_type_id) === String(lt.id)))
                                                             .map(lt => (
                                                                 <option key={lt.id} value={lt.id}>{lt.name} ({lt.code})</option>
                                                             ))}
@@ -986,7 +989,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                                                     </thead>
                                                     <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
                                                         {leaveBalances.map(bal => {
-                                                            const lt = companyLeaveTypes.find(t => t.id === bal.leave_type_id);
+                                                            const lt = companyLeaveTypes.find(t => String(t.id) === String(bal.leave_type_id));
                                                             return (
                                                                 <tr key={bal.id || bal.leave_type_id}>
                                                                     <td className="p-3 font-medium text-slate-700 dark:text-slate-200">
