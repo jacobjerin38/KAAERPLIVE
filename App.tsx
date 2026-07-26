@@ -15,7 +15,7 @@ import { HelpDeskHub } from './components/modules/HelpDeskHub';
 import { MarketingHub } from './components/modules/MarketingHub';
 import { Settings } from './components/Settings';
 import { AppView } from './types';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, ShieldAlert } from 'lucide-react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { UIProvider } from './contexts/UIContext';
 import { ESSPProvider } from './contexts/ESSPContext';

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { KAA_LOGO_URL, MODULES } from '../constants';
 import { AppView } from '../types';
-import { Search, Command, Bell, Settings, Building2, XCircle } from 'lucide-react';
+import { Search, Command, Bell, Settings, Building2, XCircle, ShieldAlert } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
   EmployeesWidget, AttendanceWidget, LeaveWidget, PayrollWidget, CRMWidget, OrganisationWidget, ESSPWidget, UpcomingWidget,
