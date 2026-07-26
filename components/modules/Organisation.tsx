@@ -1579,6 +1579,8 @@ const GenericWorkflowsView = ({
                                 <option value="LEAVE_REQUEST">Leave Request</option>
                                 <option value="RESIGNATION">Resignation</option>
                                 <option value="EXPENSE_CLAIM">Expense Claim</option>
+                                <option value="MISSED_PUNCH">Missed Punch Request</option>
+                                <option value="SUPPORT_TICKET">Support Ticket</option>
                                 <option value="DEAL_APPROVAL">Deal Approval</option>
                                 <option value="DOCUMENT_APPROVAL">Document Approval</option>
                             </select>

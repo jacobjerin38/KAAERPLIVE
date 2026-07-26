@@ -560,6 +560,9 @@ export const ESSP: React.FC = () => {
     const MyApprovals = () => {
         const [requests, setRequests] = useState<any[]>([]);
         const [loading, setLoading] = useState(true);
+        const [rejectingId, setRejectingId] = useState<string | null>(null);
+        const [rejectComment, setRejectComment] = useState('');
+        const [actionLoading, setActionLoading] = useState<string | null>(null);
 
         useEffect(() => {
             if (currentEmployee) fetchApprovals();
@@ -569,9 +572,9 @@ export const ESSP: React.FC = () => {
             setLoading(true);
             try {
                 if (currentEmployee) {
-                    // Use Unified Engine
-                    const requests = await WorkflowEngine.getMyApprovals(currentEmployee.id);
-                    setRequests(requests || []);
+                    // Use Unified Engine — returns enriched data with entity_details
+                    const results = await WorkflowEngine.getMyApprovals(currentEmployee.id);
+                    setRequests(results || []);
                 }
             } catch (error) {
                 console.error("Error fetching approvals:", error);
@@ -579,16 +582,97 @@ export const ESSP: React.FC = () => {
             setLoading(false);
         };
 
-        const handleAction = async (id: string, action: 'Approved' | 'Rejected') => {
-            if (!confirm(`Are you sure you want to ${action} this request?`)) return;
-
-            // Use Unified Engine
-            if (action === 'Approved') {
+        const handleApprove = async (id: string) => {
+            if (!confirm('Are you sure you want to approve this request?')) return;
+            setActionLoading(id);
+            try {
                 await WorkflowEngine.approve(id, currentEmployee?.id);
-            } else {
-                await WorkflowEngine.reject(id, currentEmployee?.id);
+                fetchApprovals();
+            } catch (err: any) {
+                alert('Approval failed: ' + err.message);
             }
-            fetchApprovals();
+            setActionLoading(null);
+        };
+
+        const handleReject = async (id: string) => {
+            setActionLoading(id);
+            try {
+                await WorkflowEngine.reject(id, currentEmployee?.id, rejectComment || undefined);
+                setRejectingId(null);
+                setRejectComment('');
+                fetchApprovals();
+            } catch (err: any) {
+                alert('Rejection failed: ' + err.message);
+            }
+            setActionLoading(null);
+        };
+
+        const getTriggerLabel = (type: string) => {
+            const labels: Record<string, string> = {
+                'LEAVE_REQUEST': 'Leave Request',
+                'RESIGNATION': 'Resignation',
+                'MISSED_PUNCH': 'Missed Punch',
+                'SUPPORT_TICKET': 'Support Ticket',
+                'EXPENSE_CLAIM': 'Expense Claim',
+                'DEAL_APPROVAL': 'Deal Approval',
+                'DOCUMENT_APPROVAL': 'Document Approval'
+            };
+            return labels[type] || type;
+        };
+
+        const getTriggerColor = (type: string) => {
+            const colors: Record<string, string> = {
+                'LEAVE_REQUEST': 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+                'RESIGNATION': 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400',
+                'MISSED_PUNCH': 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+                'SUPPORT_TICKET': 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+                'EXPENSE_CLAIM': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+            };
+            return colors[type] || 'bg-slate-100 text-slate-600';
+        };
+
+        const renderEntityDetails = (req: any) => {
+            const d = req.entity_details;
+            if (!d) return <p className="text-sm text-slate-400 italic">Details unavailable</p>;
+
+            return (
+                <div className="space-y-2">
+                    {d.reason && (
+                        <p className="text-sm text-slate-500 bg-slate-50 dark:bg-zinc-800/50 p-3 rounded-xl italic">"{d.reason}"</p>
+                    )}
+                    <div className="flex flex-wrap gap-3 text-xs text-slate-500">
+                        {req.trigger_type === 'LEAVE_REQUEST' && d.start_date && (
+                            <span className="flex items-center gap-1">
+                                <Calendar className="w-3 h-3" />
+                                {new Date(d.start_date).toLocaleDateString()} — {new Date(d.end_date).toLocaleDateString()}
+                            </span>
+                        )}
+                        {req.trigger_type === 'MISSED_PUNCH' && d.request_date && (
+                            <span className="flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                {d.punch_type} · {new Date(d.request_date).toLocaleDateString()}
+                            </span>
+                        )}
+                        {req.trigger_type === 'RESIGNATION' && d.proposed_last_working_date && (
+                            <span className="flex items-center gap-1">
+                                <Calendar className="w-3 h-3" />
+                                Last day: {new Date(d.proposed_last_working_date).toLocaleDateString()}
+                            </span>
+                        )}
+                        {req.trigger_type === 'SUPPORT_TICKET' && d.subject && (
+                            <span className="flex items-center gap-1">
+                                <Headphones className="w-3 h-3" />
+                                {d.subject} · {d.priority}
+                            </span>
+                        )}
+                        {req.trigger_type === 'EXPENSE_CLAIM' && d.amount && (
+                            <span className="flex items-center gap-1 font-bold">
+                                Amount: {d.amount}
+                            </span>
+                        )}
+                    </div>
+                </div>
+            );
         };
 
         return (
@@ -598,6 +682,9 @@ export const ESSP: React.FC = () => {
                         <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white mb-2 tracking-tight">Approvals</h1>
                         <p className="text-slate-500 font-medium">Review and act on pending requests.</p>
                     </div>
+                    {requests.length > 0 && (
+                        <span className="text-sm font-bold text-slate-400">{requests.length} pending</span>
+                    )}
                 </div>
 
                 <div className="space-y-4 max-w-4xl">
@@ -614,17 +701,17 @@ export const ESSP: React.FC = () => {
                                 {/* Employee Info */}
                                 <div className="flex items-start gap-4 md:w-1/3 border-b md:border-b-0 md:border-r border-slate-100 dark:border-zinc-800 pb-4 md:pb-0 md:pr-4">
                                     <div className="w-12 h-12 rounded-full bg-slate-100 overflow-hidden flex-shrink-0">
-                                        {req.employee?.profile_photo_url ? (
-                                            <img src={req.employee.profile_photo_url} className="w-full h-full object-cover" />
+                                        {req.requester?.profile_photo_url ? (
+                                            <img src={req.requester.profile_photo_url} className="w-full h-full object-cover" />
                                         ) : (
-                                            <div className="flex items-center justify-center h-full font-bold text-slate-400">{req.employee?.name?.[0]}</div>
+                                            <div className="flex items-center justify-center h-full font-bold text-slate-400">{req.requester?.name?.[0] || '?'}</div>
                                         )}
                                     </div>
                                     <div>
-                                        <h3 className="font-bold text-slate-900 dark:text-white">{req.employee?.name}</h3>
-                                        <p className="text-xs text-slate-500 mb-1">{req.employee?.designation}</p>
-                                        <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-bold uppercase tracking-wide">
-                                            {req.leave_type || req.type} Leave
+                                        <h3 className="font-bold text-slate-900 dark:text-white">{req.requester?.name || 'Unknown'}</h3>
+                                        <p className="text-xs text-slate-500 mb-1">{req.requester?.designation}</p>
+                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${getTriggerColor(req.trigger_type)}`}>
+                                            {req.entity_details?.type_label || getTriggerLabel(req.trigger_type)}
                                         </span>
                                     </div>
                                 </div>
@@ -634,26 +721,56 @@ export const ESSP: React.FC = () => {
                                     <div className="flex justify-between items-start mb-2">
                                         <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300 font-bold">
                                             <Calendar className="w-4 h-4 text-slate-400" />
-                                            {req.trigger_type} {/* Generic Display */}
+                                            {getTriggerLabel(req.trigger_type)}
                                         </div>
                                         <span className="text-xs font-mono text-slate-400">{new Date(req.created_at).toLocaleDateString()}</span>
                                     </div>
-                                    <p className="text-sm text-slate-500 mb-6 bg-slate-50 dark:bg-zinc-800/50 p-3 rounded-xl italic">"{req.reason}"</p>
 
-                                    <div className="flex gap-3 justify-end">
-                                        <button
-                                            onClick={() => handleAction(req.id, 'Rejected')}
-                                            className="px-5 py-2 rounded-xl text-sm font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-100 transition-colors"
-                                        >
-                                            Reject
-                                        </button>
-                                        <button
-                                            onClick={() => handleAction(req.id, 'Approved')}
-                                            className="px-5 py-2 rounded-xl text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-500/20 transition-all active:scale-95"
-                                        >
-                                            Approve Request
-                                        </button>
-                                    </div>
+                                    {renderEntityDetails(req)}
+
+                                    {/* Reject Comment Dialog */}
+                                    {rejectingId === req.id && (
+                                        <div className="mt-4 p-4 bg-rose-50 dark:bg-rose-900/10 rounded-xl border border-rose-100 dark:border-rose-800/30">
+                                            <label className="block text-xs font-bold text-rose-600 mb-2">Reason for Rejection (optional)</label>
+                                            <textarea
+                                                value={rejectComment}
+                                                onChange={e => setRejectComment(e.target.value)}
+                                                placeholder="Add a comment..."
+                                                rows={2}
+                                                className="w-full p-3 bg-white dark:bg-zinc-900 rounded-xl border border-rose-200 dark:border-rose-800 text-sm text-slate-700 dark:text-slate-200 mb-3"
+                                            />
+                                            <div className="flex gap-2 justify-end">
+                                                <button
+                                                    onClick={() => { setRejectingId(null); setRejectComment(''); }}
+                                                    className="px-4 py-2 rounded-xl text-sm font-bold text-slate-500 hover:text-slate-700"
+                                                >Cancel</button>
+                                                <button
+                                                    onClick={() => handleReject(req.id)}
+                                                    disabled={actionLoading === req.id}
+                                                    className="px-5 py-2 rounded-xl text-sm font-bold text-white bg-rose-600 hover:bg-rose-700 transition-colors disabled:opacity-50"
+                                                >{actionLoading === req.id ? 'Rejecting...' : 'Confirm Reject'}</button>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {rejectingId !== req.id && (
+                                        <div className="flex gap-3 justify-end mt-4">
+                                            <button
+                                                onClick={() => setRejectingId(req.id)}
+                                                disabled={actionLoading === req.id}
+                                                className="px-5 py-2 rounded-xl text-sm font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-100 transition-colors disabled:opacity-50"
+                                            >
+                                                Reject
+                                            </button>
+                                            <button
+                                                onClick={() => handleApprove(req.id)}
+                                                disabled={actionLoading === req.id}
+                                                className="px-5 py-2 rounded-xl text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-500/20 transition-all active:scale-95 disabled:opacity-50"
+                                            >
+                                                {actionLoading === req.id ? 'Processing...' : 'Approve Request'}
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         ))
@@ -1147,22 +1264,39 @@ export const ESSP: React.FC = () => {
 
             const requestedTimestamp = new Date(`${missedPunchForm.request_date}T${missedPunchForm.requested_time}:00`).toISOString();
 
-            const { error } = await (supabase as any).from('missed_punch_requests').insert([{
-                company_id: currentEmployee.company_id,
-                employee_id: currentEmployee.id,
-                request_date: missedPunchForm.request_date,
-                punch_type: missedPunchForm.punch_type,
-                requested_time: requestedTimestamp,
-                reason: missedPunchForm.reason,
-                status: 'Pending'
-            }]);
+            try {
+                const { data, error } = await (supabase as any).from('missed_punch_requests').insert([{
+                    company_id: currentEmployee.company_id,
+                    employee_id: currentEmployee.id,
+                    request_date: missedPunchForm.request_date,
+                    punch_type: missedPunchForm.punch_type,
+                    requested_time: requestedTimestamp,
+                    reason: missedPunchForm.reason,
+                    status: 'Pending'
+                }]).select();
 
-            if (error) {
-                alert('Failed to submit request: ' + error.message);
-            } else {
+                if (error) throw error;
+
+                // Trigger Workflow
+                if (data && data[0] && currentEmployee) {
+                    try {
+                        await WorkflowEngine.startWorkflow(
+                            currentEmployee.company_id,
+                            'MISSED_PUNCH',
+                            data[0].id,
+                            currentEmployee.id,
+                            'HRMS'
+                        );
+                    } catch (wfErr) {
+                        console.warn('Workflow trigger failed (may not be configured):', wfErr);
+                    }
+                }
+
                 setShowMissedPunch(false);
                 setMissedPunchForm({ request_date: new Date().toISOString().split('T')[0], punch_type: 'check_in', requested_time: '', reason: '' });
                 fetchMissedRequests();
+            } catch (err: any) {
+                alert('Failed to submit request: ' + err.message);
             }
             setSubmittingMissed(false);
         };
@@ -2182,7 +2316,7 @@ export const ESSP: React.FC = () => {
                     attachmentName = ticketFile.name;
                 }
 
-                const { error } = await ((supabase as any).from('tickets').insert as any)([{
+                const { data, error } = await ((supabase as any).from('tickets').insert as any)([{
                     company_id: currentEmployee.company_id,
                     employee_id: currentEmployee.id,
                     subject: formData.subject,
@@ -2193,9 +2327,24 @@ export const ESSP: React.FC = () => {
                     created_at: new Date().toISOString(),
                     attachment_url: attachmentUrl || null,
                     attachment_name: attachmentName || null
-                }]);
+                }]).select();
 
                 if (error) throw error;
+
+                // Trigger Workflow
+                if (data && data[0] && currentEmployee) {
+                    try {
+                        await WorkflowEngine.startWorkflow(
+                            currentEmployee.company_id,
+                            'SUPPORT_TICKET',
+                            data[0].id,
+                            currentEmployee.id,
+                            'HRMS'
+                        );
+                    } catch (wfErr) {
+                        console.warn('Workflow trigger failed (may not be configured):', wfErr);
+                    }
+                }
 
                 setShowForm(false);
                 setTicketFile(null);
