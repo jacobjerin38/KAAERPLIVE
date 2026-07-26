@@ -2877,19 +2877,27 @@ export const Organisation: React.FC = () => {
 
     const GenericAddRoleModal = ({ setShowAddRole, handleAddRole }: any) => {
         const [permissions, setPermissions] = useState<string[]>([]);
+        const [roleName, setRoleName] = useState(editingRole?.name || '');
+        const [roleDescription, setRoleDescription] = useState(editingRole?.description || '');
 
         useEffect(() => {
-            if (editingRole && editingRole.permissions) {
-                setPermissions(editingRole.permissions);
+            if (editingRole) {
+                setRoleName(editingRole.name || '');
+                setRoleDescription(editingRole.description || '');
+                setPermissions(editingRole.permissions || []);
             } else {
+                setRoleName('');
+                setRoleDescription('');
                 setPermissions([]);
             }
-        }, [editingRole]); // Depend on editingRole
+        }, [editingRole]);
 
         const handleSubmit = (e: React.FormEvent) => {
             e.preventDefault();
             const form = e.target as HTMLFormElement;
             const formData = new FormData(form);
+            formData.set('name', roleName);
+            formData.set('description', roleDescription);
             handleAddRole(formData, permissions);
         };
 
@@ -2901,7 +2909,8 @@ export const Organisation: React.FC = () => {
                             <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Role Name</label>
                             <input
                                 name="name"
-                                defaultValue={editingRole?.name || ''}
+                                value={roleName}
+                                onChange={e => setRoleName(e.target.value)}
                                 required
                                 placeholder="e.g. HR Manager"
                                 className="w-full p-4 bg-slate-50 dark:bg-zinc-800 rounded-2xl border border-slate-200 dark:border-zinc-700 text-slate-900 dark:text-white font-bold text-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm"
@@ -2911,7 +2920,8 @@ export const Organisation: React.FC = () => {
                             <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Description</label>
                             <input
                                 name="description"
-                                defaultValue={editingRole?.description || ''}
+                                value={roleDescription}
+                                onChange={e => setRoleDescription(e.target.value)}
                                 required
                                 placeholder="Brief description of the role's responsibilities..."
                                 className="w-full p-4 bg-slate-50 dark:bg-zinc-800 rounded-2xl border border-slate-200 dark:border-zinc-700 text-slate-900 dark:text-white transition-all shadow-sm"
@@ -2957,6 +2967,24 @@ export const Organisation: React.FC = () => {
         ];
         const [grantedPerms, setGrantedPerms] = React.useState<string[]>([]);
         const [showPerms, setShowPerms] = React.useState(false);
+        const [userName, setUserName] = React.useState(editingUser?.name || '');
+        const [userEmail, setUserEmail] = React.useState(editingUser?.email || '');
+        const [userRoleId, setUserRoleId] = React.useState(editingUser?.roleId || '');
+        const [userEmployeeId, setUserEmployeeId] = React.useState(editingUser?.linkedEmployeeId || '');
+
+        React.useEffect(() => {
+            if (editingUser) {
+                setUserName(editingUser.name || '');
+                setUserEmail(editingUser.email || '');
+                setUserRoleId(editingUser.roleId || '');
+                setUserEmployeeId(editingUser.linkedEmployeeId || '');
+            } else {
+                setUserName('');
+                setUserEmail('');
+                setUserRoleId('');
+                setUserEmployeeId('');
+            }
+        }, [editingUser]);
 
         React.useEffect(() => {
             if (editingUser?.id) {
@@ -2986,19 +3014,19 @@ export const Organisation: React.FC = () => {
         return (
             <Modal title={editingUser ? "Edit User" : "Add New User"} onClose={() => { setShowAddUser(false); setEditingUser(null); }} maxWidth="max-w-xl">
                 <form onSubmit={handleSubmit} className="space-y-4">
-                    <input name="name" defaultValue={editingUser?.name || ''} required placeholder="Full Name"
+                    <input name="name" value={userName} onChange={e => setUserName(e.target.value)} required placeholder="Full Name"
                         className="w-full p-4 bg-slate-50 dark:bg-zinc-800 rounded-2xl border border-slate-200 dark:border-zinc-700 text-slate-900 dark:text-white shadow-sm" />
-                    <input name="email" defaultValue={editingUser?.email || ''} required type="email" placeholder="Email"
+                    <input name="email" value={userEmail} onChange={e => setUserEmail(e.target.value)} required type="email" placeholder="Email"
                         disabled={!!editingUser}
                         className={`w-full p-4 bg-slate-50 dark:bg-zinc-800 rounded-2xl border border-slate-200 dark:border-zinc-700 text-slate-900 dark:text-white shadow-sm ${editingUser ? 'opacity-60 cursor-not-allowed' : ''}`} />
-                    <select name="roleId" defaultValue={editingUser?.roleId || ''} required
+                    <select name="roleId" value={userRoleId} onChange={e => setUserRoleId(e.target.value)} required
                         className="w-full p-4 bg-slate-50 dark:bg-zinc-800 rounded-2xl border border-slate-200 dark:border-zinc-700 text-slate-900 dark:text-white shadow-sm">
                         <option value="">Select Role...</option>
                         {roles.map((r: any) => <option key={r.id} value={r.id}>{r.name}</option>)}
                     </select>
                     <div>
                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Link Employee Record</label>
-                        <select name="employeeId" defaultValue={editingUser?.linkedEmployeeId || ''}
+                        <select name="employeeId" value={userEmployeeId} onChange={e => setUserEmployeeId(e.target.value)}
                             className="w-full p-4 bg-slate-50 dark:bg-zinc-800 rounded-2xl border border-slate-200 dark:border-zinc-700 text-slate-900 dark:text-white shadow-sm">
                             <option value="">— No Employee Linked —</option>
                             {(allEmployees || []).map((emp: any) => (
