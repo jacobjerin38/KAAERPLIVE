@@ -255,6 +255,23 @@ export class WorkflowEngine {
                 type_label: data.category || 'Support Ticket',
                 status: data.status
             };
+        } else if (triggerType === 'PRO_SERVICE_REQUEST' || triggerType === 'PRO') {
+            const { data } = await (supabase as any).from('pro_applications')
+                .select('*, applicant:employees!applicant_employee_id(name)')
+                .eq('id', entityId)
+                .maybeSingle();
+            if (!data) return null;
+            return {
+                reason: data.remarks || data.title,
+                subject: data.title,
+                applicant_name: data.applicant?.name,
+                service_category: data.service_category || data.application_type,
+                qid_number: data.qid_number,
+                passport_number: data.passport_number,
+                urgent: data.urgent_flag,
+                type_label: data.application_type || 'PRO Service',
+                status: data.status
+            };
         } else if (triggerType === 'EXPENSE_CLAIM') {
             const { data } = await (supabase as any).from('expenses')
                 .select('*')
@@ -441,6 +458,33 @@ export class WorkflowEngine {
             await (supabase as any).from('tickets').update({
                 status: ticketStatus
             }).eq('id', entityId);
+        } else if (type === 'PRO_SERVICE_REQUEST' || type === 'PRO') {
+            const appStatus = status === 'APPROVED' ? 'IN_PROGRESS' : 'REJECTED';
+            const stage = status === 'APPROVED' ? 'MANAGER_APPROVED' : 'REJECTED';
+            await (supabase as any).from('pro_applications').update({
+                status: appStatus,
+                stage: stage
+            }).eq('id', entityId);
+
+            if (status === 'APPROVED') {
+                // Auto-create PRO task for field agent dispatch
+                const { data: appData } = await (supabase as any).from('pro_applications')
+                    .select('*, applicant:employees!applicant_employee_id(name)')
+                    .eq('id', entityId)
+                    .maybeSingle();
+
+                if (appData) {
+                    await (supabase as any).from('pro_tasks').insert([{
+                        company_id: appData.company_id,
+                        task_name: `Process ${appData.application_type || 'PRO Request'}: ${appData.title}`,
+                        description: `Approved request for ${appData.applicant?.name || 'employee'}. QID: ${appData.qid_number || 'N/A'}, Passport: ${appData.passport_number || 'N/A'}. Notes: ${appData.remarks || 'None'}`,
+                        due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                        priority: appData.urgent_flag ? 'HIGH' : 'MEDIUM',
+                        status: 'PENDING',
+                        related_application_id: entityId
+                    }]);
+                }
+            }
         }
     }
 }

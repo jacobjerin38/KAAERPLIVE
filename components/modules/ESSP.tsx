@@ -28,6 +28,7 @@ import {
     X,
     Paperclip,
     MessageSquare,
+    ShieldCheck,
     Loader2,
     Mail,
     Phone
@@ -929,6 +930,7 @@ export const ESSP: React.FC = () => {
         { id: 'PAYSLIPS', icon: FileText, label: 'My Payslips' },
         { id: 'ASSETS', icon: Monitor, label: 'My Assets' },
         { id: 'SUPPORT', icon: Headphones, label: 'Support' },
+        { id: 'PRO_SERVICES', icon: ShieldCheck, label: 'PRO & Govt Services' },
         { id: 'RESIGNATION', icon: LogOut, label: 'Resignation' },
         { id: 'ANNOUNCEMENTS', icon: Bell, label: 'Announcements' },
         // { id: 'BUZZ', icon: Radio, label: 'Buzz Feed' }, // Removed pending features for clarity
@@ -2269,6 +2271,313 @@ export const ESSP: React.FC = () => {
         );
     };
 
+    const MyGovtRequests = () => {
+        const [requests, setRequests] = useState<any[]>([]);
+        const [loading, setLoading] = useState(true);
+        const [showModal, setShowModal] = useState(false);
+        const [submitting, setSubmitting] = useState(false);
+        const [file, setFile] = useState<File | null>(null);
+        const [expandedId, setExpandedId] = useState<string | null>(null);
+        const [formData, setFormData] = useState({
+            title: '',
+            application_type: 'QID_RENEWAL',
+            qid_number: (currentEmployee as any)?.q_id || (currentEmployee as any)?.qid || '',
+            passport_number: (currentEmployee as any)?.passport_no || (currentEmployee as any)?.passport_number || '',
+            dependent_name: '',
+            remarks: '',
+            urgent_flag: false
+        });
+
+        useEffect(() => {
+            if (currentEmployee) fetchRequests();
+        }, [currentEmployee]);
+
+        const fetchRequests = async () => {
+            setLoading(true);
+            try {
+                const { data } = await (supabase as any).from('pro_applications')
+                    .select('*')
+                    .eq('applicant_employee_id', currentEmployee.id)
+                    .order('created_at', { ascending: false });
+                if (data) setRequests(data);
+            } catch (err) {
+                console.error(err);
+            }
+            setLoading(false);
+        };
+
+        const handleSubmit = async (e: React.FormEvent) => {
+            e.preventDefault();
+            if (submitting) return;
+            setSubmitting(true);
+
+            let attachUrl = '';
+            let attachName = '';
+
+            try {
+                if (file) {
+                    const path = `${currentEmployee.company_id}/pro/${Date.now()}_${file.name}`;
+                    const { error: uploadErr } = await supabase.storage
+                        .from('attachments')
+                        .upload(path, file);
+                    if (uploadErr) throw uploadErr;
+
+                    const { data: urlData } = supabase.storage.from('attachments').getPublicUrl(path);
+                    attachUrl = urlData.publicUrl;
+                    attachName = file.name;
+                }
+
+                const { data, error } = await (supabase as any).from('pro_applications').insert([{
+                    company_id: currentEmployee.company_id,
+                    applicant_employee_id: currentEmployee.id,
+                    title: formData.title,
+                    application_type: formData.application_type,
+                    service_category: formData.application_type,
+                    qid_number: formData.qid_number || null,
+                    passport_number: formData.passport_number || null,
+                    dependent_name: formData.dependent_name || null,
+                    urgent_flag: formData.urgent_flag,
+                    remarks: formData.remarks,
+                    submission_date: new Date().toISOString().split('T')[0],
+                    status: 'PENDING',
+                    stage: 'SUBMITTED',
+                    attachment_url: attachUrl || null,
+                    attachment_name: attachName || null
+                }]).select();
+
+                if (error) throw error;
+
+                if (data && data[0] && currentEmployee) {
+                    try {
+                        await WorkflowEngine.startWorkflow(
+                            currentEmployee.company_id,
+                            'PRO_SERVICE_REQUEST',
+                            data[0].id,
+                            currentEmployee.id,
+                            'PRO'
+                        );
+                    } catch (wfErr) {
+                        console.warn('Workflow trigger failed:', wfErr);
+                    }
+                }
+
+                alert('Government service request submitted successfully!');
+                setShowModal(false);
+                setFile(null);
+                setFormData({
+                    title: '',
+                    application_type: 'QID_RENEWAL',
+                    qid_number: (currentEmployee as any)?.q_id || (currentEmployee as any)?.qid || '',
+                    passport_number: (currentEmployee as any)?.passport_no || (currentEmployee as any)?.passport_number || '',
+                    dependent_name: '',
+                    remarks: '',
+                    urgent_flag: false
+                });
+                fetchRequests();
+            } catch (err: any) {
+                alert('Submission failed: ' + err.message);
+            } finally {
+                setSubmitting(false);
+            }
+        };
+
+        const getServiceLabel = (type: string) => {
+            const map: Record<string, string> = {
+                'QID_RENEWAL': 'QID / Civil ID Renewal',
+                'VISA_RENEWAL': 'Residence / Work Visa Renewal',
+                'PASSPORT_RELEASE': 'Passport Release Request',
+                'NOC_REQUEST': 'No Objection Certificate (NOC)',
+                'EXIT_PERMIT': 'Travel / Exit Clearance',
+                'FAMILY_VISA': 'Family Residence Visa',
+                'DOC_ATTESTATION': 'Document Attestation / Translation',
+                'OTHER': 'General Government Service'
+            };
+            return map[type] || type;
+        };
+
+        return (
+            <div className="p-8 h-full overflow-y-auto animate-page-enter">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+                    <div>
+                        <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight mb-1">PRO & Govt Services</h1>
+                        <p className="text-slate-500 font-medium">Request QID renewals, visa assistance, passport releases, and government approvals.</p>
+                    </div>
+                    <button
+                        onClick={() => setShowModal(true)}
+                        className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold shadow-lg shadow-blue-500/20 transition-all active:scale-95 flex items-center gap-2"
+                    >
+                        <ShieldCheck className="w-5 h-5" /> New Government Request
+                    </button>
+                </div>
+
+                {/* List of Requests */}
+                <div className="space-y-4 max-w-4xl">
+                    {loading ? (
+                        <p className="text-slate-400">Loading requests...</p>
+                    ) : requests.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center h-64 text-slate-400 border-2 border-dashed border-slate-200 dark:border-zinc-800 rounded-3xl">
+                            <ShieldCheck className="w-12 h-12 mb-4 opacity-20" />
+                            <p className="font-medium">No government requests submitted yet.</p>
+                        </div>
+                    ) : (
+                        requests.map(req => (
+                            <div key={req.id} className="bg-white dark:bg-zinc-900/50 p-6 rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-sm">
+                                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-3">
+                                    <div>
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                                                {getServiceLabel(req.application_type)}
+                                            </span>
+                                            {req.urgent_flag && (
+                                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700 uppercase">Urgent</span>
+                                            )}
+                                        </div>
+                                        <h3 className="text-lg font-bold text-slate-900 dark:text-white">{req.title}</h3>
+                                        <p className="text-xs text-slate-400 font-mono">Ref: {req.application_number || req.id.slice(0, 8)} • Submitted: {new Date(req.created_at).toLocaleDateString()}</p>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <span className={`px-3 py-1 rounded-xl text-xs font-bold uppercase ${
+                                            req.status === 'APPROVED' || req.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                                            req.status === 'REJECTED' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400' :
+                                            'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                                        }`}>
+                                            {req.stage || req.status}
+                                        </span>
+                                        <button
+                                            onClick={() => setExpandedId(expandedId === req.id ? null : req.id)}
+                                            className="text-xs font-bold text-blue-600 hover:underline"
+                                        >
+                                            {expandedId === req.id ? 'Hide Details' : 'View Workflow'}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {req.remarks && (
+                                    <p className="text-sm text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-zinc-800/50 p-3 rounded-xl italic mb-3">"{req.remarks}"</p>
+                                )}
+
+                                {expandedId === req.id && (
+                                    <div className="mt-4 pt-4 border-t border-slate-100 dark:border-zinc-800">
+                                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Approval & Processing Progress</h4>
+                                        <WorkflowTimeline entityId={req.id} />
+                                    </div>
+                                )}
+                            </div>
+                        ))
+                    )}
+                </div>
+
+                {/* Modal for New Request */}
+                {showModal && (
+                    <Modal title="New Government Service Request" onClose={() => setShowModal(false)} maxWidth="max-w-2xl">
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Service Type *</label>
+                                <select
+                                    value={formData.application_type}
+                                    onChange={e => setFormData({ ...formData, application_type: e.target.value })}
+                                    className="w-full p-4 bg-slate-50 dark:bg-zinc-800 rounded-2xl border border-slate-200 dark:border-zinc-700 text-slate-900 dark:text-white font-medium"
+                                >
+                                    <option value="QID_RENEWAL">QID / Civil ID Renewal</option>
+                                    <option value="VISA_RENEWAL">Residence / Work Visa Renewal</option>
+                                    <option value="PASSPORT_RELEASE">Passport Release / Hold</option>
+                                    <option value="NOC_REQUEST">No Objection Certificate (NOC)</option>
+                                    <option value="EXIT_PERMIT">Travel Clearance / Exit Permit</option>
+                                    <option value="FAMILY_VISA">Family Residence Visa Assistance</option>
+                                    <option value="DOC_ATTESTATION">Document Attestation / Translation</option>
+                                    <option value="OTHER">General Government Service</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Request Subject / Title *</label>
+                                <input
+                                    value={formData.title}
+                                    onChange={e => setFormData({ ...formData, title: e.target.value })}
+                                    required
+                                    placeholder="e.g. Annual QID Renewal for 2026"
+                                    className="w-full p-4 bg-slate-50 dark:bg-zinc-800 rounded-2xl border border-slate-200 dark:border-zinc-700 text-slate-900 dark:text-white"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">QID / Civil ID Number</label>
+                                    <input
+                                        value={formData.qid_number}
+                                        onChange={e => setFormData({ ...formData, qid_number: e.target.value })}
+                                        placeholder="QID #"
+                                        className="w-full p-4 bg-slate-50 dark:bg-zinc-800 rounded-2xl border border-slate-200 dark:border-zinc-700 text-slate-900 dark:text-white font-mono"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Passport Number</label>
+                                    <input
+                                        value={formData.passport_number}
+                                        onChange={e => setFormData({ ...formData, passport_number: e.target.value })}
+                                        placeholder="Passport #"
+                                        className="w-full p-4 bg-slate-50 dark:bg-zinc-800 rounded-2xl border border-slate-200 dark:border-zinc-700 text-slate-900 dark:text-white font-mono"
+                                    />
+                                </div>
+                            </div>
+
+                            {formData.application_type === 'FAMILY_VISA' && (
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Dependent Name</label>
+                                    <input
+                                        value={formData.dependent_name}
+                                        onChange={e => setFormData({ ...formData, dependent_name: e.target.value })}
+                                        placeholder="Spouse / Child Name"
+                                        className="w-full p-4 bg-slate-50 dark:bg-zinc-800 rounded-2xl border border-slate-200 dark:border-zinc-700 text-slate-900 dark:text-white"
+                                    />
+                                </div>
+                            )}
+
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Reason / Details *</label>
+                                <textarea
+                                    value={formData.remarks}
+                                    onChange={e => setFormData({ ...formData, remarks: e.target.value })}
+                                    required
+                                    placeholder="Provide specific notes or instructions for the PRO team..."
+                                    rows={3}
+                                    className="w-full p-4 bg-slate-50 dark:bg-zinc-800 rounded-2xl border border-slate-200 dark:border-zinc-700 text-slate-900 dark:text-white"
+                                />
+                            </div>
+
+                            <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-zinc-800 rounded-2xl border border-slate-200 dark:border-zinc-700">
+                                <span className="text-sm font-bold text-slate-700 dark:text-slate-200">Mark as Urgent Request</span>
+                                <input
+                                    type="checkbox"
+                                    checked={formData.urgent_flag}
+                                    onChange={e => setFormData({ ...formData, urgent_flag: e.target.checked })}
+                                    className="w-5 h-5 accent-blue-600 rounded"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Attach Document (Passport / QID Copy)</label>
+                                <input
+                                    type="file"
+                                    onChange={e => setFile(e.target.files?.[0] || null)}
+                                    className="w-full text-sm text-slate-500 file:mr-4 file:py-3 file:px-6 file:rounded-xl file:border-0 file:text-sm file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                                />
+                            </div>
+
+                            <button
+                                type="submit"
+                                disabled={submitting}
+                                className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold transition-all shadow-lg shadow-blue-500/20 disabled:opacity-50"
+                            >
+                                {submitting ? 'Submitting Request...' : 'Submit Request'}
+                            </button>
+                        </form>
+                    </Modal>
+                )}
+            </div>
+        );
+    };
+
     const Support = () => {
         const [tickets, setTickets] = useState<any[]>([]);
         const [showForm, setShowForm] = useState(false);
@@ -2978,6 +3287,7 @@ export const ESSP: React.FC = () => {
                         {activeTab === 'PAYSLIPS' && <MyPayslips />}
                         {activeTab === 'ASSETS' && <MyAssets />}
                         {activeTab === 'SUPPORT' && <Support />}
+                        {activeTab === 'PRO_SERVICES' && <MyGovtRequests />}
                         {activeTab === 'RESIGNATION' && <Resignation />}
                         {activeTab === 'ANNOUNCEMENTS' && <Announcements />}
                         {activeTab === 'BUZZ' && <Buzz />}

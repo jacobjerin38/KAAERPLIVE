@@ -1581,6 +1581,7 @@ const GenericWorkflowsView = ({
                                 <option value="EXPENSE_CLAIM">Expense Claim</option>
                                 <option value="MISSED_PUNCH">Missed Punch Request</option>
                                 <option value="SUPPORT_TICKET">Support Ticket</option>
+                                <option value="PRO_SERVICE_REQUEST">PRO & Govt Service Request</option>
                                 <option value="DEAL_APPROVAL">Deal Approval</option>
                                 <option value="DOCUMENT_APPROVAL">Document Approval</option>
                             </select>
@@ -2105,8 +2106,11 @@ const ALL_PERMISSIONS = {
         { id: 'travel.manage', label: 'Manage Travel' }
     ],
     PRO: [
-        { id: 'pro.view', label: 'View PRO (Madoob)' },
-        { id: 'pro.manage', label: 'Manage PRO Module' }
+        { id: 'pro.view', label: 'Access PRO (Madoob) Module' },
+        { id: 'pro.applications.manage', label: 'Manage Government Applications' },
+        { id: 'pro.licenses.manage', label: 'Manage Trade Licenses & Commercial Registrations' },
+        { id: 'pro.tasks.assign', label: 'Assign & Dispatch PRO Field Tasks' },
+        { id: 'pro.reports.view', label: 'View PRO Fee & Government Expense Reports' }
     ]
 };
 
@@ -3096,6 +3100,7 @@ export const Organisation: React.FC = () => {
                         <option value="LEAVE_REQUEST">Leave Request</option>
                         <option value="RESIGNATION">Resignation</option>
                         <option value="EXPENSE_CLAIM">Expense Claim</option>
+                        <option value="PRO_SERVICE_REQUEST">PRO & Govt Service Request</option>
                         <option value="DEAL_APPROVAL">New Deal Approval</option>
                     </select>
                 </div>
