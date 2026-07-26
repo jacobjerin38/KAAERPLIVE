@@ -212,7 +212,7 @@ export class WorkflowEngine {
                 reason: data.reason,
                 start_date: data.start_date,
                 end_date: data.end_date,
-                type_label: data.leave_type?.name || 'Leave',
+                type_label: data.leave_type?.name || data.type || 'Leave',
                 status: data.status
             };
         } else if (triggerType === 'RESIGNATION') {

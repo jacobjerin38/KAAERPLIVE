@@ -1673,9 +1673,13 @@ export const ESSP: React.FC = () => {
                     attachmentName = leaveFile.name;
                 }
 
+                const selectedLeaveType = leaveTypes.find((lt: any) => lt.id?.toString() === formData.leave_type_id?.toString());
+                const typeName = selectedLeaveType ? selectedLeaveType.name : (formData.type || 'Annual');
+
                 const { data, error } = await (supabase as any).from('leaves').insert([{
                     employee_id: currentEmployee.id,
-                    leave_type_id: parseInt(formData.leave_type_id),
+                    leave_type_id: formData.leave_type_id ? parseInt(formData.leave_type_id) : null,
+                    type: typeName,
                     start_date: formData.from,
                     end_date: formData.to,
                     reason: formData.reason,
