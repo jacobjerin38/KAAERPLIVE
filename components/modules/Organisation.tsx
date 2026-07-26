@@ -2025,6 +2025,13 @@ const ALL_PERMISSIONS = {
         { id: 'hrms.helpdesk.manage', label: 'Manage Helpdesk' },
         { id: 'hrms.reports.view', label: 'View Reports' },
     ],
+    ESSP: [
+        { id: 'essp.view', label: 'Access ESSP (Employee Self Service Portal)' },
+        { id: 'essp.profile.manage', label: 'Manage Own Profile & Details' },
+        { id: 'essp.leaves.view', label: 'Apply & View Leave Requests' },
+        { id: 'essp.attendance.view', label: 'Punch & View Attendance Log' },
+        { id: 'essp.approvals.view', label: 'Access My Approvals Inbox' }
+    ],
     CRM: [
         { id: 'crm.dashboard.view', label: 'View Dashboard' },
         { id: 'crm.leads.view', label: 'View Leads' },
@@ -2100,10 +2107,6 @@ const ALL_PERMISSIONS = {
     PRO: [
         { id: 'pro.view', label: 'View PRO (Madoob)' },
         { id: 'pro.manage', label: 'Manage PRO Module' }
-    ],
-    ESSP: [
-        { id: 'essp.view', label: 'Access ESSP' },
-        { id: 'essp.profile.manage', label: 'Manage Own Profile' }
     ]
 };
 
