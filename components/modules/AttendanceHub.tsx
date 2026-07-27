@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-    Clock, Calendar, Layers, ClipboardList, BarChart3, FileText, LayoutDashboard
+    Clock, Calendar, Layers, ClipboardList, BarChart3, FileText, MapPin, Globe
 } from 'lucide-react';
 import { Employee } from '../hrms/types';
 import { AttendanceViewMode } from '../../types';
 import {
-    OverviewTab, DailyTab, MonthlyTab, ShiftsTab, DutyRosterTab
+    OverviewTab, DailyTab, MonthlyTab, ShiftsTab, DutyRosterTab, LocationMappingTab, OutdoorReportTab
 } from './hrms/AttendanceModule';
 import { ReportsListView } from './reports/ReportsListView';
 
@@ -76,6 +76,8 @@ export const AttendanceHub: React.FC = () => {
         { id: 'CORRECTION', icon: Calendar, label: 'Correction', permission: 'hrms.attendance.view' },
         { id: 'MANUAL', icon: ClipboardList, label: 'Duty Roster', permission: 'hrms.attendance.view' },
         { id: 'SHIFTS', icon: Layers, label: 'Shifts', permission: 'hrms.attendance.view' },
+        { id: 'LOCATION_MAPPING', icon: MapPin, label: 'Location Mapping', permission: 'hrms.attendance.view' },
+        { id: 'OUTDOOR_REPORT', icon: Globe, label: 'Outdoor Report', permission: 'hrms.attendance.view' },
         { id: 'REPORTS', icon: FileText, label: 'Reports', permission: 'hrms.reports.view' },
     ].filter(item => hasPermission(item.permission) || hasPermission('*')), [hasPermission]);
 
@@ -126,6 +128,8 @@ export const AttendanceHub: React.FC = () => {
                         {activeTab === 'CORRECTION' && <MonthlyTab employees={activeEmployees} companyId={companyId} companyOffDays={companyOffDays} />}
                         {activeTab === 'MANUAL' && <DutyRosterTab employees={activeEmployees} companyId={companyId} companyOffDays={companyOffDays} />}
                         {activeTab === 'SHIFTS' && <ShiftsTab companyId={companyId} />}
+                        {activeTab === 'LOCATION_MAPPING' && <LocationMappingTab employees={activeEmployees} companyId={companyId} />}
+                        {activeTab === 'OUTDOOR_REPORT' && <OutdoorReportTab employees={activeEmployees} companyId={companyId} />}
                         {activeTab === 'REPORTS' && <ReportsListView moduleFilter="ATTENDANCE" />}
                     </>
                 )}
