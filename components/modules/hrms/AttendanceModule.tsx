@@ -1712,6 +1712,7 @@ export const LocationMappingTab: React.FC<{ employees: Employee[]; companyId: st
         punch_mode: 'ONLINE' | 'DEVICE' | 'BOTH';
     }>>({});
     const [empLocationsMap, setEmpLocationsMap] = useState<Record<string, EmployeeLocation[]>>({});
+    const [companyMasterLocations, setCompanyMasterLocations] = useState<any[]>([]);
     const [search, setSearch] = useState('');
     const [loading, setLoading] = useState(true);
     const [savingEmpId, setSavingEmpId] = useState<string | null>(null);
@@ -1720,6 +1721,7 @@ export const LocationMappingTab: React.FC<{ employees: Employee[]; companyId: st
 
     // Modal state for multi-location editing per employee
     const [selectedEmpForModal, setSelectedEmpForModal] = useState<Employee | null>(null);
+    const [selectedMasterLocId, setSelectedMasterLocId] = useState<string>('');
     const [locModalName, setLocModalName] = useState('');
     const [locModalLat, setLocModalLat] = useState('');
     const [locModalLng, setLocModalLng] = useState('');
@@ -1730,6 +1732,12 @@ export const LocationMappingTab: React.FC<{ employees: Employee[]; companyId: st
     const fetchEmployeesLocation = useCallback(async () => {
         if (!companyId) return;
         setLoading(true);
+
+        // Fetch company master locations
+        const { data: masterLocs } = await (supabase as any).from('locations')
+            .select('*')
+            .eq('company_id', companyId);
+        if (masterLocs) setCompanyMasterLocations(masterLocs);
 
         // Fetch employee base settings
         const { data } = await supabase.from('employees')
@@ -1878,11 +1886,24 @@ export const LocationMappingTab: React.FC<{ employees: Employee[]; companyId: st
     // Multi-location modal actions
     const openLocationModal = (emp: Employee) => {
         setSelectedEmpForModal(emp);
+        setSelectedMasterLocId('');
         setLocModalName('');
         setLocModalLat('');
         setLocModalLng('');
         setLocModalRadius('500');
         setEditingLocId(null);
+    };
+
+    const handleSelectMasterLocation = (locId: string) => {
+        setSelectedMasterLocId(locId);
+        if (!locId) return;
+        const masterLoc = companyMasterLocations.find(l => String(l.id) === String(locId));
+        if (masterLoc) {
+            setLocModalName(masterLoc.name || '');
+            if (masterLoc.latitude != null) setLocModalLat(String(masterLoc.latitude));
+            if (masterLoc.longitude != null) setLocModalLng(String(masterLoc.longitude));
+            if (masterLoc.geofence_radius_meters != null) setLocModalRadius(String(masterLoc.geofence_radius_meters));
+        }
     };
 
     const handleSaveLocationItem = async () => {
@@ -2145,9 +2166,33 @@ export const LocationMappingTab: React.FC<{ employees: Employee[]; companyId: st
 
                         {/* Form to Add / Edit Location */}
                         <div className="p-4 bg-indigo-50/50 dark:bg-indigo-950/20 rounded-2xl border border-indigo-100 dark:border-indigo-900/40 space-y-3">
-                            <h4 className="text-xs font-bold text-indigo-900 dark:text-indigo-300 uppercase tracking-wider">
-                                {editingLocId ? 'Edit Location' : 'Add New Location'}
-                            </h4>
+                            <div className="flex justify-between items-center">
+                                <h4 className="text-xs font-bold text-indigo-900 dark:text-indigo-300 uppercase tracking-wider">
+                                    {editingLocId ? 'Edit Location' : 'Add New Location'}
+                                </h4>
+                            </div>
+
+                            {/* Dropdown to pick from Company Master Locations */}
+                            {companyMasterLocations.length > 0 && !editingLocId && (
+                                <div className="p-2.5 bg-white dark:bg-zinc-900 rounded-xl border border-indigo-200 dark:border-indigo-800">
+                                    <label className="block text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider mb-1">
+                                        Select from Company Location Master
+                                    </label>
+                                    <select
+                                        value={selectedMasterLocId}
+                                        onChange={e => handleSelectMasterLocation(e.target.value)}
+                                        className="w-full px-3 py-1.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-xs font-bold text-slate-800 dark:text-white outline-none"
+                                    >
+                                        <option value="">-- Choose Master Location to Auto-Fill --</option>
+                                        {companyMasterLocations.map(ml => (
+                                            <option key={ml.id} value={ml.id}>
+                                                {ml.name} {ml.latitude && ml.longitude ? `(${ml.latitude}, ${ml.longitude})` : '(No Coordinates Set)'}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 <div>
                                     <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Location Name</label>

@@ -668,12 +668,21 @@ export const MASTER_CONFIG: Record<string, MasterTableConfig> = {
     'LOCATIONS': {
         tableName: 'locations',
         displayName: 'Location',
-        description: 'Manage office locations',
+        description: 'Manage office locations & geofences',
         fields: [
             { key: 'name', label: 'Location Name', type: 'text', required: true },
-            { key: 'address', label: 'Address', type: 'textarea', required: true }
+            { key: 'address', label: 'Address', type: 'textarea', required: false },
+            { key: 'latitude', label: 'Latitude (GPS)', type: 'number', required: false },
+            { key: 'longitude', label: 'Longitude (GPS)', type: 'number', required: false },
+            { key: 'geofence_radius_meters', label: 'Geofence Radius (Meters)', type: 'number', required: false }
         ],
-        columns: [{ key: 'name', label: 'Name' }, { key: 'address', label: 'Address' }]
+        columns: [
+            { key: 'name', label: 'Name' },
+            { key: 'address', label: 'Address' },
+            { key: 'latitude', label: 'Latitude' },
+            { key: 'longitude', label: 'Longitude' },
+            { key: 'geofence_radius_meters', label: 'Radius (m)' }
+        ]
     },
     'DESIGNATIONS': {
         tableName: 'org_designations',
