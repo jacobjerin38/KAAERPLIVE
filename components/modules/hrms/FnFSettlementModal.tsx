@@ -228,7 +228,7 @@ export const FnFSettlementModal: React.FC<FnFSettlementModalProps> = ({
     // > 5 yrs: 21 days basic for first 5 yrs + 30 days basic for every yr thereafter ((21 * 5 + 30 * (serviceYears - 5)) * basicSalary / 30)
     // Capped at 2 years total basic salary (24 * basicSalary)
     const calculatedGratuity = useMemo(() => {
-        if (serviceYears < 1 || basicSalary <= 0) return 0;
+        if (isNaN(serviceYears) || serviceYears < 1 || isNaN(basicSalary) || basicSalary <= 0) return 0;
         let amount = 0;
         if (serviceYears <= 5) {
             amount = (21 * basicSalary * serviceYears) / 30;
@@ -237,22 +237,25 @@ export const FnFSettlementModal: React.FC<FnFSettlementModalProps> = ({
         }
         const maxCap = 24 * basicSalary;
         if (amount > maxCap) amount = maxCap;
-        return Math.round(amount);
+        return isNaN(amount) ? 0 : Math.round(amount);
     }, [serviceYears, basicSalary]);
 
     const gratuityAmount = manualGratuity !== null ? manualGratuity : calculatedGratuity;
 
     // Totals & Net Calculation
     const totalEarnings = useMemo(() => {
-        return Number(unpaidSalaryAmount) + Number(leaveEncashmentAmount) + Number(gratuityAmount) + Number(otherEarnings);
+        const sum = Number(unpaidSalaryAmount) + Number(leaveEncashmentAmount) + Number(gratuityAmount) + Number(otherEarnings);
+        return isNaN(sum) ? 0 : sum;
     }, [unpaidSalaryAmount, leaveEncashmentAmount, gratuityAmount, otherEarnings]);
 
     const totalDeductions = useMemo(() => {
-        return Number(noticeRecoveryAmount) + Number(assetDeduction) + Number(loanDeduction) + Number(otherDeduction);
+        const sum = Number(noticeRecoveryAmount) + Number(assetDeduction) + Number(loanDeduction) + Number(otherDeduction);
+        return isNaN(sum) ? 0 : sum;
     }, [noticeRecoveryAmount, assetDeduction, loanDeduction, otherDeduction]);
 
     const netAmount = useMemo(() => {
-        return totalEarnings - totalDeductions;
+        const net = totalEarnings - totalDeductions;
+        return isNaN(net) ? 0 : net;
     }, [totalEarnings, totalDeductions]);
 
     const handleSave = async (e: React.FormEvent) => {
@@ -269,28 +272,28 @@ export const FnFSettlementModal: React.FC<FnFSettlementModalProps> = ({
                 employee_id: selectedEmployeeId,
                 resignation_date: resignationDate,
                 last_working_day: lastWorkingDay,
-                notice_period_days: Number(noticePeriodDays),
-                shortfall_days: Number(shortfallDays),
-                notice_recovery_amount: Number(noticeRecoveryAmount),
-                unpaid_salary_days: Number(unpaidSalaryDays),
-                unpaid_salary_amount: Number(unpaidSalaryAmount),
-                remaining_leave_days: Number(remainingLeaveDays),
-                leave_encashment_amount: Number(leaveEncashmentAmount),
-                service_years: Number(serviceYears),
-                gratuity_amount: Number(gratuityAmount),
-                asset_deduction: Number(assetDeduction),
-                loan_deduction: Number(loanDeduction),
-                other_deduction: Number(otherDeduction),
-                hra_amount: Number(hraAmount),
-                transport_allowance: Number(transportAllowance),
-                special_allowance: Number(specialAllowance),
-                food_allowance: Number(foodAllowance),
-                other_allowance: Number(otherAllowance),
-                basic_salary: Number(basicSalary),
-                gross_salary: Number(grossSalary),
-                total_earnings: Number(totalEarnings),
-                total_deductions: Number(totalDeductions),
-                net_amount: Number(netAmount),
+                notice_period_days: Number(noticePeriodDays) || 0,
+                shortfall_days: Number(shortfallDays) || 0,
+                notice_recovery_amount: Number(noticeRecoveryAmount) || 0,
+                unpaid_salary_days: Number(unpaidSalaryDays) || 0,
+                unpaid_salary_amount: Number(unpaidSalaryAmount) || 0,
+                remaining_leave_days: Number(remainingLeaveDays) || 0,
+                leave_encashment_amount: Number(leaveEncashmentAmount) || 0,
+                service_years: Number(serviceYears) || 0,
+                gratuity_amount: Number(gratuityAmount) || 0,
+                asset_deduction: Number(assetDeduction) || 0,
+                loan_deduction: Number(loanDeduction) || 0,
+                other_deduction: Number(otherDeduction) || 0,
+                hra_amount: Number(hraAmount) || 0,
+                transport_allowance: Number(transportAllowance) || 0,
+                special_allowance: Number(specialAllowance) || 0,
+                food_allowance: Number(foodAllowance) || 0,
+                other_allowance: Number(otherAllowance) || 0,
+                basic_salary: Number(basicSalary) || 0,
+                gross_salary: Number(grossSalary) || 0,
+                total_earnings: Number(totalEarnings) || 0,
+                total_deductions: Number(totalDeductions) || 0,
+                net_amount: Number(netAmount) || 0,
                 remarks: remarks,
                 status: 'PROCESSED'
             };
@@ -298,7 +301,7 @@ export const FnFSettlementModal: React.FC<FnFSettlementModalProps> = ({
             // 1. Insert into employee_fnf_settlements
             const { error: fnfError } = await (supabase as any).from('employee_fnf_settlements').insert([payload as any]);
             if (fnfError) {
-                console.warn('Could not insert into employee_fnf_settlements:', fnfError.message);
+                throw new Error('Failed to save settlement record: ' + fnfError.message);
             }
 
             // 2. Update employee status to Resigned

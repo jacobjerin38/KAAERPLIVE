@@ -375,9 +375,19 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                 // Attendance & Location Settings
                 punch_mode: formData.punch_mode || 'BOTH',
                 gps_punch_enabled: formData.gps_punch_enabled !== false && String(formData.gps_punch_enabled) !== 'false',
-                geo_latitude: formData.geo_latitude.trim() !== '' ? parseFloat(formData.geo_latitude) : null,
-                geo_longitude: formData.geo_longitude.trim() !== '' ? parseFloat(formData.geo_longitude) : null,
-                geofence_radius_meters: formData.geofence_radius_meters ? parseInt(formData.geofence_radius_meters) : 500,
+                geo_latitude: (() => {
+                    const str = String(formData.geo_latitude || '').trim();
+                    if (!str) return null;
+                    const val = parseFloat(str);
+                    return isNaN(val) ? null : val;
+                })(),
+                geo_longitude: (() => {
+                    const str = String(formData.geo_longitude || '').trim();
+                    if (!str) return null;
+                    const val = parseFloat(str);
+                    return isNaN(val) ? null : val;
+                })(),
+                geofence_radius_meters: formData.geofence_radius_meters ? (parseInt(formData.geofence_radius_meters) || 500) : 500,
             };
 
             let employeeId = initialData?.id;

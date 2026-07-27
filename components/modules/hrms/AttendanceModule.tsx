@@ -1818,8 +1818,10 @@ export const LocationMappingTab: React.FC<{ employees: Employee[]; companyId: st
         setSavingEmpId(empId);
         setSaveMessage(null);
 
-        const lat = item.geo_latitude.trim() !== '' ? parseFloat(item.geo_latitude) : null;
-        const lng = item.geo_longitude.trim() !== '' ? parseFloat(item.geo_longitude) : null;
+        const latStr = String(item.geo_latitude || '').trim();
+        const lngStr = String(item.geo_longitude || '').trim();
+        const lat = latStr !== '' ? parseFloat(latStr) : null;
+        const lng = lngStr !== '' ? parseFloat(lngStr) : null;
         const radius = Number(item.geofence_radius_meters) || 500;
 
         const { error } = await (supabase as any).from('employees').update({
@@ -1847,8 +1849,10 @@ export const LocationMappingTab: React.FC<{ employees: Employee[]; companyId: st
         for (const emp of filteredEmployees) {
             const item = empData[emp.id];
             if (!item) continue;
-            const lat = item.geo_latitude.trim() !== '' ? parseFloat(item.geo_latitude) : null;
-            const lng = item.geo_longitude.trim() !== '' ? parseFloat(item.geo_longitude) : null;
+            const latStr = String(item.geo_latitude || '').trim();
+            const lngStr = String(item.geo_longitude || '').trim();
+            const lat = latStr !== '' ? parseFloat(latStr) : null;
+            const lng = lngStr !== '' ? parseFloat(lngStr) : null;
             const radius = Number(item.geofence_radius_meters) || 500;
 
             const { error } = await (supabase as any).from('employees').update({

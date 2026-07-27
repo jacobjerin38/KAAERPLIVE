@@ -385,34 +385,31 @@ export const ESSP: React.FC = () => {
 
             if (mappedLocs && mappedLocs.length > 0) {
                 mappedLocs.forEach((l: any) => {
-                    const lat = Number(l.latitude || l.geo_latitude);
-                    const lng = Number(l.longitude || l.geo_longitude);
-                    const radius = Number(l.radius_meters || l.geofence_radius_meters || 500);
+                    const lat = parseFloat(l.latitude != null ? l.latitude : l.geo_latitude);
+                    const lng = parseFloat(l.longitude != null ? l.longitude : l.geo_longitude);
+                    const radius = Number(l.geofence_radius_meters || l.radius_meters || 500);
                     if (!isNaN(lat) && !isNaN(lng) && (lat !== 0 || lng !== 0)) {
                         geofences.push({ lat, lng, radius });
                     }
                 });
-            }
+            } else {
+                // Fallback to employee base coordinates if no mapped locations exist
+                const empLat = Number((currentEmployee as any).geo_latitude || empRecord?.geo_latitude);
+                const empLng = Number((currentEmployee as any).geo_longitude || empRecord?.geo_longitude);
+                const empRadius = Number((currentEmployee as any).geofence_radius_meters || empRecord?.geofence_radius_meters || 500);
 
-            // Fallback to employee base coordinates if set
-            const empLat = Number(empRecord?.geo_latitude ?? (currentEmployee as any).geo_latitude);
-            const empLng = Number(empRecord?.geo_longitude ?? (currentEmployee as any).geo_longitude);
-            const empRadius = Number(empRecord?.geofence_radius_meters ?? (currentEmployee as any).geofence_radius_meters ?? 500);
-            if (!isNaN(empLat) && !isNaN(empLng) && (empLat !== 0 || empLng !== 0)) {
-                geofences.push({ lat: empLat, lng: empLng, radius: empRadius });
+                if (!isNaN(empLat) && !isNaN(empLng) && (empLat !== 0 || empLng !== 0)) {
+                    geofences.push({ lat: empLat, lng: empLng, radius: empRadius });
+                }
             }
 
             if (geofences.length > 0) {
-                let isInsideAny = false;
-                for (const gf of geofences) {
-                    const dist = calculateDistanceMeters(coords.lat, coords.lng, gf.lat, gf.lng);
-                    if (dist <= gf.radius) {
-                        isInsideAny = true;
-                        break;
-                    }
-                }
+                const isInAnyFence = geofences.some(gf => {
+                    const dist = calculateDistanceMeters(coords!.lat, coords!.lng, gf.lat, gf.lng);
+                    return dist <= gf.radius;
+                });
 
-                if (!isInsideAny) {
+                if (!isInAnyFence) {
                     alert("Punch blocked: You are currently outside your designated work location(s).");
                     setPunchLoading(false);
                     return;
@@ -453,12 +450,15 @@ export const ESSP: React.FC = () => {
         } else {
             // PUNCH OUT
             if (!lastAttendanceId) {
-                const { data: activePunch } = await (supabase as any).from('attendance')
+                // Look for active open punch across dates (supports shifts across midnight)
+                const { data: activePunches } = await (supabase as any).from('attendance')
                     .select('id, check_in')
                     .eq('employee_id', currentEmployee.id)
-                    .eq('date', today)
                     .is('check_out', null)
-                    .maybeSingle();
+                    .order('created_at', { ascending: false })
+                    .limit(1);
+
+                const activePunch = activePunches && activePunches.length > 0 ? activePunches[0] : null;
 
                 if (!activePunch) {
                     alert("No active session found to punch out from.");
