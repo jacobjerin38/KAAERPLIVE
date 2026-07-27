@@ -2482,6 +2482,12 @@ export const Organisation: React.FC = () => {
             }
         }
         if (activeTab === 'USERS') {
+            // Fetch roles so the dropdown in Add/Edit User modal is populated
+            if (currentCompanyId) {
+                const { data: rolesData } = await supabase.from('roles').select('*').eq('company_id', currentCompanyId);
+                if (rolesData) setRoles(rolesData as any[]);
+            }
+
             // Fetch all employees for the linking dropdown
             if (currentCompanyId) {
                 const { data: empList } = await supabase.from('employees')
