@@ -23,6 +23,7 @@ import {
     Check,
     Sparkles, // [NEW] For Assistant
     TrendingUp, // [NEW] For Skills
+    Folder,
     Zap, // [NEW] For Insights
     Landmark,
     X,
@@ -1039,6 +1040,7 @@ export const ESSP: React.FC = () => {
         { id: 'TARGETS', icon: TrendingUp, label: 'My Targets' },
         { id: 'PAYSLIPS', icon: FileText, label: 'My Payslips' },
         { id: 'ASSETS', icon: Monitor, label: 'My Assets' },
+        { id: 'DOCUMENTS', icon: Folder, label: 'My Documents' },
         { id: 'SUPPORT', icon: Headphones, label: 'Support' },
         { id: 'PRO_SERVICES', icon: ShieldCheck, label: 'PRO & Govt Services' },
         { id: 'RESIGNATION', icon: LogOut, label: 'Resignation' },
@@ -3586,6 +3588,15 @@ export const ESSP: React.FC = () => {
                         {activeTab === 'TARGETS' && <MyTargets />}
                         {activeTab === 'PAYSLIPS' && <MyPayslips />}
                         {activeTab === 'ASSETS' && <MyAssets />}
+                        {activeTab === 'DOCUMENTS' && (
+                            <div className="p-8 h-full overflow-y-auto animate-page-enter">
+                                <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white mb-2 tracking-tight">My Documents</h1>
+                                <p className="text-slate-500 text-sm mb-8">Access your personal employee documents, contracts, and certificates</p>
+                                <div className="bg-white dark:bg-zinc-900/50 p-8 rounded-[2rem] border border-slate-100 dark:border-zinc-800 text-center text-slate-400 italic">
+                                    Your uploaded documents are synchronized automatically from HR records. Contact HR for document requests.
+                                </div>
+                            </div>
+                        )}
                         {activeTab === 'SUPPORT' && <Support />}
                         {activeTab === 'PRO_SERVICES' && <MyGovtRequests />}
                         {activeTab === 'RESIGNATION' && <Resignation />}

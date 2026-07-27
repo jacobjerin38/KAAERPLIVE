@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
     DollarSign, FileText, LayoutDashboard, Settings, Play, Lock,
-    Plus, Trash2, ShieldCheck, Check, Calendar, AlertCircle
+    Plus, Trash2, ShieldCheck, Check, Calendar, AlertCircle, Clock, TrendingUp
 } from 'lucide-react';
 import { PayrollDashboard } from './hrms/PayrollDashboard';
 import { ReportsListView } from './reports/ReportsListView';
@@ -109,8 +109,11 @@ export const PayrollHub: React.FC = () => {
 
     const navItems = useMemo(() => [
         { id: 'OVERVIEW', icon: LayoutDashboard, label: 'Overview', permission: 'finance.payroll.view' },
-        { id: 'PROCESSING', icon: DollarSign, label: 'Processing', permission: 'finance.payroll.process' },
-        { id: 'STRUCTURES', icon: Settings, label: 'Components', permission: 'finance.payroll.process' },
+        { id: 'PROCESSING', icon: DollarSign, label: 'Payroll Processing', permission: 'finance.payroll.process' },
+        { id: 'RUNS', icon: Clock, label: 'Payroll Runs', permission: 'finance.payroll.view' },
+        { id: 'PAYSLIPS', icon: FileText, label: 'Payslips', permission: 'finance.payroll.view' },
+        { id: 'STRUCTURES', icon: Settings, label: 'Salary Components', permission: 'finance.payroll.process' },
+        { id: 'REVISIONS', icon: TrendingUp, label: 'Salary Revisions', permission: 'finance.payroll.process' },
         { id: 'REPORTS', icon: FileText, label: 'Reports', permission: 'hrms.reports.view' },
     ].filter(item => hasPermission(item.permission) || hasPermission('*')), [hasPermission]);
 
@@ -325,6 +328,48 @@ export const PayrollHub: React.FC = () => {
                                             )}
                                         </tbody>
                                     </table>
+                                </div>
+                            </div>
+                        )}
+                        {activeTab === 'RUNS' && (
+                            <div className="p-8 h-full flex flex-col overflow-y-auto">
+                                <div className="mb-6">
+                                    <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Historic Payroll Runs</h2>
+                                    <p className="text-slate-500 text-sm mt-1">Review past pay periods and execution logs</p>
+                                </div>
+                                <div className="space-y-4">
+                                    {runs.map(run => (
+                                        <div key={run.id} className="flex items-center justify-between p-5 bg-white dark:bg-zinc-900 rounded-2xl border border-slate-100 dark:border-zinc-800 shadow-sm">
+                                            <div>
+                                                <p className="font-bold text-slate-800 dark:text-slate-200">{run.name || run.month_year || run.period_start}</p>
+                                                <p className="text-xs text-slate-500 mt-1">Total Net Payout: {formatCurrency(run.total_net_pay || run.total_amount || 0)}</p>
+                                            </div>
+                                            <span className={`px-3 py-1 rounded-xl text-xs font-bold ${run.status === 'PAID' || run.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400'}`}>{run.status}</span>
+                                        </div>
+                                    ))}
+                                    {runs.length === 0 && <div className="text-center py-12 text-slate-400 italic">No historic payroll runs recorded yet.</div>}
+                                </div>
+                            </div>
+                        )}
+                        {activeTab === 'PAYSLIPS' && (
+                            <div className="p-8 h-full flex flex-col overflow-y-auto">
+                                <div className="mb-6">
+                                    <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Employee Payslips</h2>
+                                    <p className="text-slate-500 text-sm mt-1">Generate and view individual monthly payslips</p>
+                                </div>
+                                <div className="bg-white dark:bg-zinc-900 p-8 rounded-[2rem] border border-slate-100 dark:border-zinc-800 text-center text-slate-400 italic">
+                                    Payslips generated automatically during Payroll Processing. Use processing module to issue payslips.
+                                </div>
+                            </div>
+                        )}
+                        {activeTab === 'REVISIONS' && (
+                            <div className="p-8 h-full flex flex-col overflow-y-auto">
+                                <div className="mb-6">
+                                    <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Salary Revisions & Hikes</h2>
+                                    <p className="text-slate-500 text-sm mt-1">Track employee salary increments and structural adjustments</p>
+                                </div>
+                                <div className="bg-white dark:bg-zinc-900 p-8 rounded-[2rem] border border-slate-100 dark:border-zinc-800 text-center text-slate-400 italic">
+                                    No pending salary revisions. Configure revisions under employee profiles or salary structures.
                                 </div>
                             </div>
                         )}

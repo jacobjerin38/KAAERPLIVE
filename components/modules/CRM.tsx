@@ -6,7 +6,7 @@ import { TableSkeleton, DashboardSkeleton } from '../ui/LoadingSkeletons';
 import {
     LayoutDashboard, Users, FileText, CheckSquare, Calendar, Folder, Briefcase, Plus, Search,
     X, ChevronRight, ChevronDown, Sparkles, Workflow, Mic, Play, KanbanSquare, Bell, Loader2, BarChart3,
-    Package, Receipt, Truck
+    Package, Receipt, Truck, FileSpreadsheet
 } from 'lucide-react';
 import { ReportsListView } from './reports/ReportsListView';
 import { LiveView } from '../crm/LiveView';
@@ -183,6 +183,9 @@ export const CRM: React.FC = () => {
             { id: 'LEADS', icon: Users, label: 'Leads', permission: 'crm.leads.view' },
             { id: 'OPPORTUNITIES', icon: KanbanSquare, label: 'Opportunities', permission: 'crm.deals.view' },
             { id: 'CUSTOMERS', icon: Briefcase, label: 'Customers', permission: 'crm.contacts.view' },
+            { id: 'QUOTATIONS', icon: FileText, label: 'Quotations', permission: 'crm.deals.view' },
+            { id: 'SALES_INVOICES', icon: FileSpreadsheet, label: 'Sales Invoices', permission: 'crm.deals.view' },
+            { id: 'DELIVERY_NOTES', icon: Truck, label: 'Delivery Notes', permission: 'crm.deals.view' },
             { id: 'ITEMS', icon: Package, label: 'Items', permission: 'crm.deals.view' },
             { id: 'TASKS', icon: CheckSquare, label: 'Tasks', permission: 'crm.tasks.view' },
             { id: 'DOCUMENTS', icon: Folder, label: 'Documents', permission: 'crm.deals.view' },
