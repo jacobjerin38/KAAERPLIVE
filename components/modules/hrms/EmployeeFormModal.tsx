@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import {
     Users, Briefcase, Phone, DollarSign, FileText, Check, AlertTriangle, X, Loader,
-    Camera, Upload, User, Save, ChevronRight, Hash, Mail, Calendar, Unlock, Leaf, Plus, Trash2
+    Camera, Upload, User, Save, ChevronRight, Hash, Mail, Calendar, Unlock, Leaf, Plus, Trash2, MapPin
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { EmployeeDocuments } from './EmployeeDocuments';
@@ -115,9 +115,15 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
         air_ticket: (initialData as any)?.air_ticket || '',
         memo: (initialData as any)?.memo || '',
         remarks: (initialData as any)?.remarks || '',
+        // Attendance & Location Settings
+        punch_mode: (initialData as any)?.punch_mode || 'BOTH',
+        gps_punch_enabled: (initialData as any)?.gps_punch_enabled ?? true,
+        geo_latitude: (initialData as any)?.geo_latitude?.toString() || '',
+        geo_longitude: (initialData as any)?.geo_longitude?.toString() || '',
+        geofence_radius_meters: (initialData as any)?.geofence_radius_meters?.toString() || '500',
     });
 
-    const [activeSection, setActiveSection] = useState<'OVERVIEW' | 'PROFESSIONAL' | 'CONTACT' | 'IMMIGRATION' | 'FINANCIAL' | 'DOCUMENTS' | 'LEAVE'>('OVERVIEW');
+    const [activeSection, setActiveSection] = useState<'OVERVIEW' | 'PROFESSIONAL' | 'CONTACT' | 'IMMIGRATION' | 'FINANCIAL' | 'DOCUMENTS' | 'LEAVE' | 'ATTENDANCE'>('OVERVIEW');
     const [submitError, setSubmitError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -366,6 +372,12 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                 air_ticket: formData.air_ticket || null,
                 memo: formData.memo || null,
                 remarks: formData.remarks || null,
+                // Attendance & Location Settings
+                punch_mode: formData.punch_mode || 'BOTH',
+                gps_punch_enabled: formData.gps_punch_enabled !== false && String(formData.gps_punch_enabled) !== 'false',
+                geo_latitude: formData.geo_latitude.trim() !== '' ? parseFloat(formData.geo_latitude) : null,
+                geo_longitude: formData.geo_longitude.trim() !== '' ? parseFloat(formData.geo_longitude) : null,
+                geofence_radius_meters: formData.geofence_radius_meters ? parseInt(formData.geofence_radius_meters) : 500,
             };
 
             let employeeId = initialData?.id;
@@ -417,7 +429,8 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
         { id: 'IMMIGRATION', label: 'Immigration', icon: Calendar },
         { id: 'FINANCIAL', label: 'Financial & Statutory', icon: DollarSign },
         { id: 'DOCUMENTS', label: 'Documents', icon: FileText },
-        { id: 'LEAVE', label: 'Leave', icon: Leaf }
+        { id: 'LEAVE', label: 'Leave', icon: Leaf },
+        { id: 'ATTENDANCE', label: 'Attendance & Location', icon: MapPin }
     ];
 
     return (
@@ -1028,6 +1041,89 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                                             <p className="text-sm text-slate-400 mt-2">Save the employee first to assign leave balances.</p>
                                         </div>
                                     )}
+                                </div>
+                            )}
+
+                            {activeSection === 'ATTENDANCE' && (
+                                <div className="space-y-6">
+                                    <div className="border-b border-slate-200 dark:border-zinc-800 pb-4">
+                                        <h3 className="text-base font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                                            <MapPin className="w-5 h-5 text-indigo-600" /> Attendance & Location Settings
+                                        </h3>
+                                        <p className="text-xs text-slate-500 mt-1">Configure punch modes and primary geofence parameters for this employee.</p>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Punch Mode *</label>
+                                            <select
+                                                name="punch_mode"
+                                                value={formData.punch_mode}
+                                                onChange={handleChange}
+                                                className="w-full px-4 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm font-bold text-slate-800 dark:text-slate-100"
+                                            >
+                                                <option value="BOTH">BOTH (Online & Biometric Device)</option>
+                                                <option value="ONLINE">ONLINE (GPS / ESSP Web Punch)</option>
+                                                <option value="DEVICE">DEVICE (Biometric Device Only)</option>
+                                            </select>
+                                            <p className="text-[11px] text-slate-400 mt-1">Controls allowed check-in channels for this employee.</p>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">GPS Access</label>
+                                            <div className="flex items-center gap-3 pt-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setFormData(prev => ({ ...prev, gps_punch_enabled: !prev.gps_punch_enabled }))}
+                                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${formData.gps_punch_enabled ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-zinc-700'}`}
+                                                >
+                                                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.gps_punch_enabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                                                </button>
+                                                <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                                                    {formData.gps_punch_enabled ? 'GPS Location Required' : 'GPS Validation Disabled'}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Primary Latitude</label>
+                                            <input
+                                                type="number"
+                                                step="any"
+                                                name="geo_latitude"
+                                                placeholder="e.g. 25.2048"
+                                                value={formData.geo_latitude}
+                                                onChange={handleChange}
+                                                className="w-full px-4 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm font-mono text-slate-800 dark:text-slate-100"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Primary Longitude</label>
+                                            <input
+                                                type="number"
+                                                step="any"
+                                                name="geo_longitude"
+                                                placeholder="e.g. 55.2708"
+                                                value={formData.geo_longitude}
+                                                onChange={handleChange}
+                                                className="w-full px-4 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm font-mono text-slate-800 dark:text-slate-100"
+                                            />
+                                        </div>
+
+                                        <div className="md:col-span-2">
+                                            <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Geofence Radius (Meters)</label>
+                                            <input
+                                                type="number"
+                                                name="geofence_radius_meters"
+                                                placeholder="500"
+                                                value={formData.geofence_radius_meters}
+                                                onChange={handleChange}
+                                                className="w-full px-4 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm font-mono text-slate-800 dark:text-slate-100"
+                                            />
+                                            <p className="text-[11px] text-slate-400 mt-1">Maximum allowed distance from primary coordinates for web/mobile punch (default 500m).</p>
+                                        </div>
+                                    </div>
                                 </div>
                             )}
 

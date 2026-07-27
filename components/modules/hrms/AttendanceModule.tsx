@@ -1693,6 +1693,16 @@ export const DutyRosterTab: React.FC<{ employees: Employee[]; companyId: string;
 // ═══════════════════════════════════════════════════════════════════════
 // SUB-TAB 6: LOCATION MAPPING
 // ═══════════════════════════════════════════════════════════════════════
+export interface EmployeeLocation {
+    id?: string;
+    company_id?: string;
+    employee_id?: string;
+    location_name: string;
+    latitude: number;
+    longitude: number;
+    radius_meters: number;
+}
+
 export const LocationMappingTab: React.FC<{ employees: Employee[]; companyId: string }> = ({ employees, companyId }) => {
     const [empData, setEmpData] = useState<Record<string, {
         geo_latitude: string;
@@ -1701,15 +1711,27 @@ export const LocationMappingTab: React.FC<{ employees: Employee[]; companyId: st
         gps_punch_enabled: boolean;
         punch_mode: 'ONLINE' | 'DEVICE' | 'BOTH';
     }>>({});
+    const [empLocationsMap, setEmpLocationsMap] = useState<Record<string, EmployeeLocation[]>>({});
     const [search, setSearch] = useState('');
     const [loading, setLoading] = useState(true);
     const [savingEmpId, setSavingEmpId] = useState<string | null>(null);
     const [bulkSaving, setBulkSaving] = useState(false);
     const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
+    // Modal state for multi-location editing per employee
+    const [selectedEmpForModal, setSelectedEmpForModal] = useState<Employee | null>(null);
+    const [locModalName, setLocModalName] = useState('');
+    const [locModalLat, setLocModalLat] = useState('');
+    const [locModalLng, setLocModalLng] = useState('');
+    const [locModalRadius, setLocModalRadius] = useState('500');
+    const [editingLocId, setEditingLocId] = useState<string | null>(null);
+    const [locSaving, setLocSaving] = useState(false);
+
     const fetchEmployeesLocation = useCallback(async () => {
         if (!companyId) return;
         setLoading(true);
+
+        // Fetch employee base settings
         const { data } = await supabase.from('employees')
             .select('id, name, employee_code, geo_latitude, geo_longitude, geofence_radius_meters, gps_punch_enabled, punch_mode')
             .eq('company_id', companyId);
@@ -1726,7 +1748,6 @@ export const LocationMappingTab: React.FC<{ employees: Employee[]; companyId: st
                 };
             });
         }
-        // Fill defaults for any active employee not returned in query
         employees.forEach((emp: any) => {
             if (!map[emp.id]) {
                 map[emp.id] = {
@@ -1739,6 +1760,29 @@ export const LocationMappingTab: React.FC<{ employees: Employee[]; companyId: st
             }
         });
         setEmpData(map);
+
+        // Fetch employee_locations multi-location entries
+        const { data: locs } = await (supabase as any).from('employee_locations')
+            .select('*')
+            .eq('company_id', companyId);
+
+        const locMap: Record<string, EmployeeLocation[]> = {};
+        if (locs && locs.length > 0) {
+            locs.forEach((l: any) => {
+                const empId = l.employee_id;
+                if (!locMap[empId]) locMap[empId] = [];
+                locMap[empId].push({
+                    id: l.id,
+                    company_id: l.company_id,
+                    employee_id: l.employee_id,
+                    location_name: l.location_name || l.name || 'Work Site',
+                    latitude: Number(l.latitude || l.geo_latitude || 0),
+                    longitude: Number(l.longitude || l.geo_longitude || 0),
+                    radius_meters: Number(l.radius_meters || l.geofence_radius_meters || 500)
+                });
+            });
+        }
+        setEmpLocationsMap(locMap);
         setLoading(false);
     }, [companyId, employees]);
 
@@ -1827,6 +1871,76 @@ export const LocationMappingTab: React.FC<{ employees: Employee[]; companyId: st
         }
     };
 
+    // Multi-location modal actions
+    const openLocationModal = (emp: Employee) => {
+        setSelectedEmpForModal(emp);
+        setLocModalName('');
+        setLocModalLat('');
+        setLocModalLng('');
+        setLocModalRadius('500');
+        setEditingLocId(null);
+    };
+
+    const handleSaveLocationItem = async () => {
+        if (!selectedEmpForModal) return;
+        if (!locModalName.trim() || !locModalLat.trim() || !locModalLng.trim()) {
+            alert('Please provide location name, latitude, and longitude.');
+            return;
+        }
+
+        setLocSaving(true);
+        const lat = parseFloat(locModalLat);
+        const lng = parseFloat(locModalLng);
+        const radius = parseInt(locModalRadius) || 500;
+
+        const payload = {
+            company_id: companyId,
+            employee_id: selectedEmpForModal.id,
+            location_name: locModalName.trim(),
+            latitude: lat,
+            longitude: lng,
+            radius_meters: radius
+        };
+
+        if (editingLocId) {
+            const { error } = await (supabase as any).from('employee_locations')
+                .update(payload)
+                .eq('id', editingLocId);
+            if (error) alert('Error updating location: ' + error.message);
+        } else {
+            const { error } = await (supabase as any).from('employee_locations')
+                .insert([payload]);
+            if (error) alert('Error adding location: ' + error.message);
+        }
+
+        setLocSaving(false);
+        setLocModalName('');
+        setLocModalLat('');
+        setLocModalLng('');
+        setLocModalRadius('500');
+        setEditingLocId(null);
+        fetchEmployeesLocation();
+    };
+
+    const handleEditLocationClick = (loc: EmployeeLocation) => {
+        if (!loc.id) return;
+        setEditingLocId(loc.id);
+        setLocModalName(loc.location_name);
+        setLocModalLat(String(loc.latitude));
+        setLocModalLng(String(loc.longitude));
+        setLocModalRadius(String(loc.radius_meters));
+    };
+
+    const handleDeleteLocationClick = async (locId?: string) => {
+        if (!locId) return;
+        if (!confirm('Are you sure you want to delete this location?')) return;
+        const { error } = await (supabase as any).from('employee_locations')
+            .delete()
+            .eq('id', locId);
+        if (error) alert('Error deleting location: ' + error.message);
+        else fetchEmployeesLocation();
+    };
+
     return (
         <div className="h-full flex flex-col space-y-5">
             {/* Header & Controls Bar */}
@@ -1865,9 +1979,7 @@ export const LocationMappingTab: React.FC<{ employees: Employee[]; companyId: st
                         <thead className="bg-slate-50/80 dark:bg-zinc-800/80 sticky top-0 backdrop-blur-sm z-10 border-b border-slate-200/60 dark:border-zinc-700">
                             <tr>
                                 <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Employee</th>
-                                <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Latitude</th>
-                                <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Longitude</th>
-                                <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Geofence Radius (m)</th>
+                                <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Geofence Locations</th>
                                 <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center">GPS Punch</th>
                                 <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Punch Mode</th>
                                 <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-right">Action</th>
@@ -1875,10 +1987,10 @@ export const LocationMappingTab: React.FC<{ employees: Employee[]; companyId: st
                         </thead>
                         <tbody className="divide-y divide-slate-100/50 dark:divide-zinc-800/50">
                             {loading ? (
-                                <tr><td colSpan={7} className="text-center py-12"><Loader2 className="w-6 h-6 mx-auto animate-spin text-slate-400" /></td></tr>
+                                <tr><td colSpan={5} className="text-center py-12"><Loader2 className="w-6 h-6 mx-auto animate-spin text-slate-400" /></td></tr>
                             ) : filteredEmployees.length === 0 ? (
                                 <tr>
-                                    <td colSpan={7} className="text-center py-12 text-slate-400 font-medium">
+                                    <td colSpan={5} className="text-center py-12 text-slate-400 font-medium">
                                         No employees found matching search.
                                     </td>
                                 </tr>
@@ -1891,6 +2003,7 @@ export const LocationMappingTab: React.FC<{ employees: Employee[]; companyId: st
                                     punch_mode: 'BOTH'
                                 };
                                 const isSavingThis = savingEmpId === emp.id;
+                                const locs = empLocationsMap[emp.id] || [];
 
                                 return (
                                     <tr key={emp.id} className="hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-colors">
@@ -1908,35 +2021,29 @@ export const LocationMappingTab: React.FC<{ employees: Employee[]; companyId: st
                                             </div>
                                         </td>
                                         <td className="px-4 py-3">
-                                            <input
-                                                type="number"
-                                                step="any"
-                                                placeholder="e.g. 25.2048"
-                                                value={item.geo_latitude}
-                                                onChange={e => handleFieldChange(emp.id, 'geo_latitude', e.target.value)}
-                                                className="w-32 px-3 py-1.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-mono outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-slate-200"
-                                            />
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <input
-                                                type="number"
-                                                step="any"
-                                                placeholder="e.g. 55.2708"
-                                                value={item.geo_longitude}
-                                                onChange={e => handleFieldChange(emp.id, 'geo_longitude', e.target.value)}
-                                                className="w-32 px-3 py-1.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-mono outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-slate-200"
-                                            />
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <input
-                                                type="number"
-                                                min="10"
-                                                max="10000"
-                                                placeholder="500"
-                                                value={item.geofence_radius_meters}
-                                                onChange={e => handleFieldChange(emp.id, 'geofence_radius_meters', e.target.value)}
-                                                className="w-24 px-3 py-1.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-mono outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-slate-200"
-                                            />
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                {locs.length > 0 ? (
+                                                    locs.map(l => (
+                                                        <span key={l.id || l.location_name} className="px-2.5 py-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-lg text-xs font-semibold border border-indigo-200 dark:border-indigo-800 flex items-center gap-1">
+                                                            <MapPin className="w-3 h-3 text-indigo-500" />
+                                                            {l.location_name} ({l.radius_meters}m)
+                                                        </span>
+                                                    ))
+                                                ) : item.geo_latitude ? (
+                                                    <span className="px-2.5 py-1 bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-400 rounded-lg text-xs font-medium border border-slate-200 dark:border-zinc-700">
+                                                        Default Coords ({item.geofence_radius_meters}m)
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-xs text-slate-400 italic">No location mapped</span>
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => openLocationModal(emp)}
+                                                    className="px-2.5 py-1 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 hover:border-indigo-400 text-indigo-600 dark:text-indigo-400 rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-1"
+                                                >
+                                                    <Plus className="w-3 h-3" /> Manage ({locs.length})
+                                                </button>
+                                            </div>
                                         </td>
                                         <td className="px-4 py-3 text-center">
                                             <button
@@ -1975,6 +2082,151 @@ export const LocationMappingTab: React.FC<{ employees: Employee[]; companyId: st
                     </table>
                 </div>
             </div>
+
+            {/* Modal for Managing Multi-Locations per Employee */}
+            {selectedEmpForModal && (
+                <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+                    <div className="bg-white dark:bg-zinc-900 rounded-3xl max-w-xl w-full p-6 border border-slate-200 dark:border-zinc-800 shadow-2xl space-y-5 animate-scale-up">
+                        <div className="flex justify-between items-center pb-3 border-b border-slate-100 dark:border-zinc-800">
+                            <div>
+                                <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                    <MapPin className="w-5 h-5 text-indigo-600" /> Geofence Locations
+                                </h3>
+                                <p className="text-xs text-slate-500 font-medium mt-0.5">
+                                    {selectedEmpForModal.name} ({(selectedEmpForModal as any).employee_code || selectedEmpForModal.id.substring(0, 6)})
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setSelectedEmpForModal(null)}
+                                className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-xl"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* List of existing locations */}
+                        <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Active Locations</h4>
+                            {(empLocationsMap[selectedEmpForModal.id] || []).length === 0 ? (
+                                <p className="text-xs text-slate-400 italic py-2">No locations added for this employee yet.</p>
+                            ) : (
+                                (empLocationsMap[selectedEmpForModal.id] || []).map(loc => (
+                                    <div key={loc.id || loc.location_name} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-zinc-800 rounded-2xl border border-slate-200/60 dark:border-zinc-700">
+                                        <div>
+                                            <span className="text-sm font-bold text-slate-800 dark:text-white">{loc.location_name}</span>
+                                            <p className="text-xs font-mono text-slate-500">
+                                                {loc.latitude.toFixed(4)}, {loc.longitude.toFixed(4)} | Radius: {loc.radius_meters}m
+                                            </p>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleEditLocationClick(loc)}
+                                                className="px-2.5 py-1 bg-white dark:bg-zinc-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold border border-slate-200 dark:border-zinc-600 hover:border-indigo-400"
+                                            >
+                                                Edit
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDeleteLocationClick(loc.id)}
+                                                className="px-2.5 py-1 bg-rose-50 dark:bg-rose-900/30 text-rose-600 rounded-xl text-xs font-bold border border-rose-200 dark:border-rose-800 hover:bg-rose-100"
+                                            >
+                                                Delete
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+
+                        {/* Form to Add / Edit Location */}
+                        <div className="p-4 bg-indigo-50/50 dark:bg-indigo-950/20 rounded-2xl border border-indigo-100 dark:border-indigo-900/40 space-y-3">
+                            <h4 className="text-xs font-bold text-indigo-900 dark:text-indigo-300 uppercase tracking-wider">
+                                {editingLocId ? 'Edit Location' : 'Add New Location'}
+                            </h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Location Name</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. Main Office / Client Site"
+                                        value={locModalName}
+                                        onChange={e => setLocModalName(e.target.value)}
+                                        className="w-full px-3 py-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-medium"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Radius (Meters)</label>
+                                    <input
+                                        type="number"
+                                        placeholder="500"
+                                        value={locModalRadius}
+                                        onChange={e => setLocModalRadius(e.target.value)}
+                                        className="w-full px-3 py-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-medium"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Latitude</label>
+                                    <input
+                                        type="number"
+                                        step="any"
+                                        placeholder="25.2048"
+                                        value={locModalLat}
+                                        onChange={e => setLocModalLat(e.target.value)}
+                                        className="w-full px-3 py-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-mono"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Longitude</label>
+                                    <input
+                                        type="number"
+                                        step="any"
+                                        placeholder="55.2708"
+                                        value={locModalLng}
+                                        onChange={e => setLocModalLng(e.target.value)}
+                                        className="w-full px-3 py-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-mono"
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex justify-end gap-2 pt-1">
+                                {editingLocId && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setEditingLocId(null);
+                                            setLocModalName('');
+                                            setLocModalLat('');
+                                            setLocModalLng('');
+                                            setLocModalRadius('500');
+                                        }}
+                                        className="px-3 py-1.5 bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-300 rounded-xl text-xs font-bold"
+                                    >
+                                        Cancel Edit
+                                    </button>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={handleSaveLocationItem}
+                                    disabled={locSaving}
+                                    className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md flex items-center gap-1 disabled:opacity-50"
+                                >
+                                    {locSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                                    {editingLocId ? 'Update Location' : 'Add Location'}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end pt-2">
+                            <button
+                                onClick={() => setSelectedEmpForModal(null)}
+                                className="px-5 py-2 bg-slate-900 text-white dark:bg-white dark:text-slate-900 rounded-xl text-xs font-bold"
+                            >
+                                Done
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
@@ -1984,6 +2236,7 @@ export const LocationMappingTab: React.FC<{ employees: Employee[]; companyId: st
 // ═══════════════════════════════════════════════════════════════════════
 export const OutdoorReportTab: React.FC<{ employees: Employee[]; companyId: string }> = ({ employees, companyId }) => {
     const [records, setRecords] = useState<any[]>([]);
+    const [empLocationsMap, setEmpLocationsMap] = useState<Record<string, EmployeeLocation[]>>({});
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [startDate, setStartDate] = useState(() => {
@@ -2004,13 +2257,36 @@ export const OutdoorReportTab: React.FC<{ employees: Employee[]; companyId: stri
             .lte('date', endDate)
             .order('date', { ascending: false });
 
+        // Also fetch employee_locations mapping for calculation
+        const { data: locs } = await (supabase as any).from('employee_locations')
+            .select('*')
+            .eq('company_id', companyId);
+
+        const locMap: Record<string, EmployeeLocation[]> = {};
+        if (locs && locs.length > 0) {
+            locs.forEach((l: any) => {
+                const empId = l.employee_id;
+                if (!locMap[empId]) locMap[empId] = [];
+                locMap[empId].push({
+                    id: l.id,
+                    company_id: l.company_id,
+                    employee_id: l.employee_id,
+                    location_name: l.location_name || l.name || 'Work Site',
+                    latitude: Number(l.latitude || l.geo_latitude || 0),
+                    longitude: Number(l.longitude || l.geo_longitude || 0),
+                    radius_meters: Number(l.radius_meters || l.geofence_radius_meters || 500)
+                });
+            });
+        }
+        setEmpLocationsMap(locMap);
+
         const allLogs = data || [];
 
         const outdoorLogs = allLogs.filter((rec: any) => {
             if (rec.check_in_location || rec.check_out_location || rec.location || rec.check_in_lat || rec.geo_latitude || rec.latitude) {
                 return true;
             }
-            if (rec.source === 'punch' || rec.source === 'mobile' || rec.source === 'online' || rec.punch_mode === 'ONLINE') {
+            if (rec.source === 'punch' || rec.source === 'mobile' || rec.source === 'online' || rec.punch_mode === 'ONLINE' || rec.punch_method === 'ONLINE') {
                 return true;
             }
             return false;
@@ -2056,17 +2332,41 @@ export const OutdoorReportTab: React.FC<{ employees: Employee[]; companyId: stri
         return records.map(rec => {
             const emp = employees.find(e => e.id === rec.employee_id);
             const coords = parseLocation(rec);
-            let geofenceStatus = 'Outdoor / Off-Site';
-            let distance: number | null = null;
+            let geofenceStatus = 'Outdoor';
+            let minDistance: number | null = null;
 
-            if (coords && emp && (emp as any).geo_latitude != null && (emp as any).geo_longitude != null) {
-                const empLat = Number((emp as any).geo_latitude);
-                const empLng = Number((emp as any).geo_longitude);
-                if (!isNaN(empLat) && !isNaN(empLng) && (empLat !== 0 || empLng !== 0)) {
-                    distance = calculateDistanceMeters(coords.lat, coords.lng, empLat, empLng);
-                    const radius = (emp as any).geofence_radius_meters || 500;
-                    if (distance <= radius) {
+            if (coords && emp) {
+                const mappedLocs = empLocationsMap[emp.id] || [];
+                if (mappedLocs.length > 0) {
+                    let insideAny = false;
+                    let lowestDist = Infinity;
+
+                    mappedLocs.forEach(loc => {
+                        const dist = calculateDistanceMeters(coords.lat, coords.lng, loc.latitude, loc.longitude);
+                        if (dist < lowestDist) lowestDist = dist;
+                        if (dist <= loc.radius_meters) insideAny = true;
+                    });
+
+                    if (lowestDist !== Infinity) minDistance = lowestDist;
+
+                    if (insideAny) {
                         geofenceStatus = 'In Fence';
+                    } else if (minDistance !== null) {
+                        geofenceStatus = `Outdoor (${minDistance}m)`;
+                    } else {
+                        geofenceStatus = 'Outdoor';
+                    }
+                } else if ((emp as any).geo_latitude != null && (emp as any).geo_longitude != null) {
+                    const empLat = Number((emp as any).geo_latitude);
+                    const empLng = Number((emp as any).geo_longitude);
+                    if (!isNaN(empLat) && !isNaN(empLng) && (empLat !== 0 || empLng !== 0)) {
+                        minDistance = calculateDistanceMeters(coords.lat, coords.lng, empLat, empLng);
+                        const radius = (emp as any).geofence_radius_meters || 500;
+                        if (minDistance <= radius) {
+                            geofenceStatus = 'In Fence';
+                        } else {
+                            geofenceStatus = `Outdoor (${minDistance}m)`;
+                        }
                     }
                 }
             }
@@ -2081,14 +2381,14 @@ export const OutdoorReportTab: React.FC<{ employees: Employee[]; companyId: stri
                 coords,
                 punchMode,
                 geofenceStatus,
-                distance
+                distance: minDistance
             };
         }).filter(item => {
             if (!search) return true;
             const q = search.toLowerCase();
             return item.employeeName.toLowerCase().includes(q) || item.employeeCode.toLowerCase().includes(q);
         });
-    }, [records, employees, search]);
+    }, [records, employees, search, empLocationsMap]);
 
     const handleExportCSV = () => {
         const headers = ['Employee', 'Code', 'Date', 'Check In', 'Check Out', 'Latitude', 'Longitude', 'Punch Mode', 'Geofence Status'];
@@ -2224,7 +2524,6 @@ export const OutdoorReportTab: React.FC<{ employees: Employee[]; companyId: stri
                                     <td className="px-4 py-3">
                                         <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border ${log.geofenceStatus === 'In Fence' ? 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400'}`}>
                                             {log.geofenceStatus}
-                                            {log.distance !== null && ` (${log.distance}m)`}
                                         </span>
                                     </td>
                                 </tr>
@@ -2236,3 +2535,4 @@ export const OutdoorReportTab: React.FC<{ employees: Employee[]; companyId: stri
         </div>
     );
 };
+

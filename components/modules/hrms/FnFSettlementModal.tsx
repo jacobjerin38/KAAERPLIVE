@@ -31,6 +31,14 @@ export const FnFSettlementModal: React.FC<FnFSettlementModalProps> = ({
     const [grossSalary, setGrossSalary] = useState<number>(0);
     const [joinDate, setJoinDate] = useState<string>('');
 
+    // Allowances
+    const [hraAmount, setHraAmount] = useState<number>(0);
+    const [transportAllowance, setTransportAllowance] = useState<number>(0);
+    const [specialAllowance, setSpecialAllowance] = useState<number>(0);
+    const [foodAllowance, setFoodAllowance] = useState<number>(0);
+    const [otherAllowance, setOtherAllowance] = useState<number>(0);
+    const [assignedAssetsCount, setAssignedAssetsCount] = useState<number>(0);
+
     // Notice Period
     const [noticePeriodDays, setNoticePeriodDays] = useState<number>(30);
     const [shortfallDays, setShortfallDays] = useState<number>(0);
@@ -61,23 +69,121 @@ export const FnFSettlementModal: React.FC<FnFSettlementModalProps> = ({
         return employees.find(e => e.id === selectedEmployeeId) || null;
     }, [employees, selectedEmployeeId]);
 
-    // Pre-fill values on employee select
+    // Pre-fill values on employee select & auto-fetch allowances, leave, loans, assets
     useEffect(() => {
-        if (selectedEmployee) {
-            const gross = Number(selectedEmployee.salary || selectedEmployee.salary_amount || 0);
-            const basic = Number((selectedEmployee as any).basic_salary || (gross * 0.5) || 0);
-            const join = selectedEmployee.joinDate || selectedEmployee.join_date || '';
+        if (!selectedEmployee) return;
 
-            setGrossSalary(gross);
-            setBasicSalary(basic);
-            setJoinDate(join);
+        const gross = Number(selectedEmployee.salary || selectedEmployee.salary_amount || 0);
+        const join = selectedEmployee.joinDate || selectedEmployee.join_date || '';
 
-            // Clear manual overrides on employee switch
-            setManualNoticeRecovery(null);
-            setManualUnpaidSalary(null);
-            setManualLeaveEncashment(null);
-            setManualGratuity(null);
-        }
+        setGrossSalary(gross);
+        setJoinDate(join);
+
+        // Clear manual overrides on employee switch
+        setManualNoticeRecovery(null);
+        setManualUnpaidSalary(null);
+        setManualLeaveEncashment(null);
+        setManualGratuity(null);
+
+        const empId = selectedEmployee.id;
+
+        // 1. Fetch Salary Components
+        const fetchSalaryComponents = async () => {
+            const { data: components } = await (supabase as any)
+                .from('employee_salary_components')
+                .select('*, component:org_salary_components(name, component_type)')
+                .eq('employee_id', empId)
+                .eq('is_active', true);
+
+            if (components && components.length > 0) {
+                let basic = 0;
+                let hra = 0;
+                let transport = 0;
+                let special = 0;
+                let food = 0;
+                let other = 0;
+
+                components.forEach((c: any) => {
+                    const name = (c.component?.name || c.name || '').toLowerCase();
+                    const amt = Number(c.amount || 0);
+                    if (name.includes('basic')) basic += amt;
+                    else if (name.includes('hra') || name.includes('housing')) hra += amt;
+                    else if (name.includes('transport') || name.includes('travel')) transport += amt;
+                    else if (name.includes('special')) special += amt;
+                    else if (name.includes('food') || name.includes('meal')) food += amt;
+                    else other += amt;
+                });
+
+                setBasicSalary(basic > 0 ? basic : Math.round(gross * 0.5));
+                setHraAmount(hra || Math.round(gross * 0.25));
+                setTransportAllowance(transport || Math.round(gross * 0.15));
+                setSpecialAllowance(special || Math.round(gross * 0.10));
+                setFoodAllowance(food || 0);
+                setOtherAllowance(other || 0);
+            } else {
+                setBasicSalary(Math.round(gross * 0.5));
+                setHraAmount(Math.round(gross * 0.25));
+                setTransportAllowance(Math.round(gross * 0.15));
+                setSpecialAllowance(Math.round(gross * 0.10));
+                setFoodAllowance(0);
+                setOtherAllowance(0);
+            }
+        };
+
+        // 2. Fetch Remaining Leave Days
+        const fetchLeaveBalance = async () => {
+            const { data: balances } = await (supabase as any)
+                .from('employee_leave_balances')
+                .select('total_balance, used, remaining_days, balance_days')
+                .eq('employee_id', empId);
+
+            if (balances && balances.length > 0) {
+                const totalRemaining = balances.reduce((sum: number, b: any) => {
+                    const rem = b.remaining_days ?? b.balance_days ?? ((b.total_balance || 0) - (b.used || 0));
+                    return sum + Math.max(0, Number(rem || 0));
+                }, 0);
+                setRemainingLeaveDays(totalRemaining);
+            } else {
+                setRemainingLeaveDays(0);
+            }
+        };
+
+        // 3. Fetch Outstanding Loans
+        const fetchLoans = async () => {
+            const { data: loans } = await (supabase as any)
+                .from('payroll_loans')
+                .select('balance_amount, remaining_amount, loan_amount')
+                .eq('employee_id', empId);
+
+            if (loans && loans.length > 0) {
+                const totalOutstanding = loans.reduce((sum: number, l: any) => {
+                    const rem = l.balance_amount ?? l.remaining_amount ?? l.loan_amount ?? 0;
+                    return sum + Number(rem || 0);
+                }, 0);
+                setLoanDeduction(totalOutstanding);
+            } else {
+                setLoanDeduction(0);
+            }
+        };
+
+        // 4. Fetch Assigned Assets Count
+        const fetchAssets = async () => {
+            const { data: assets } = await (supabase as any)
+                .from('assets')
+                .select('id')
+                .or(`assigned_to.eq.${empId},employee_id.eq.${empId}`);
+
+            if (assets) {
+                setAssignedAssetsCount(assets.length);
+            } else {
+                setAssignedAssetsCount(0);
+            }
+        };
+
+        fetchSalaryComponents();
+        fetchLeaveBalance();
+        fetchLoans();
+        fetchAssets();
     }, [selectedEmployee]);
 
     // Calculate Service Years for Gratuity
@@ -116,10 +222,22 @@ export const FnFSettlementModal: React.FC<FnFSettlementModalProps> = ({
 
     const leaveEncashmentAmount = manualLeaveEncashment !== null ? manualLeaveEncashment : calculatedLeaveEncashment;
 
-    // Gratuity Entitlement based on years of service (>= 5 years standard rule)
+    // Qatar / GCC Gratuity Calculation Rule:
+    // < 1 yr: 0
+    // 1 to 5 yrs: 21 days basic salary per year ((21 * basicSalary * serviceYears) / 30)
+    // > 5 yrs: 21 days basic for first 5 yrs + 30 days basic for every yr thereafter ((21 * 5 + 30 * (serviceYears - 5)) * basicSalary / 30)
+    // Capped at 2 years total basic salary (24 * basicSalary)
     const calculatedGratuity = useMemo(() => {
-        if (serviceYears < 5 || basicSalary <= 0) return 0;
-        return Math.round((15 * basicSalary * serviceYears) / 26);
+        if (serviceYears < 1 || basicSalary <= 0) return 0;
+        let amount = 0;
+        if (serviceYears <= 5) {
+            amount = (21 * basicSalary * serviceYears) / 30;
+        } else {
+            amount = ((21 * 5 + 30 * (serviceYears - 5)) * basicSalary) / 30;
+        }
+        const maxCap = 24 * basicSalary;
+        if (amount > maxCap) amount = maxCap;
+        return Math.round(amount);
     }, [serviceYears, basicSalary]);
 
     const gratuityAmount = manualGratuity !== null ? manualGratuity : calculatedGratuity;
@@ -163,6 +281,13 @@ export const FnFSettlementModal: React.FC<FnFSettlementModalProps> = ({
                 asset_deduction: Number(assetDeduction),
                 loan_deduction: Number(loanDeduction),
                 other_deduction: Number(otherDeduction),
+                hra_amount: Number(hraAmount),
+                transport_allowance: Number(transportAllowance),
+                special_allowance: Number(specialAllowance),
+                food_allowance: Number(foodAllowance),
+                other_allowance: Number(otherAllowance),
+                basic_salary: Number(basicSalary),
+                gross_salary: Number(grossSalary),
                 total_earnings: Number(totalEarnings),
                 total_deductions: Number(totalDeductions),
                 net_amount: Number(netAmount),
@@ -174,7 +299,6 @@ export const FnFSettlementModal: React.FC<FnFSettlementModalProps> = ({
             const { error: fnfError } = await (supabase as any).from('employee_fnf_settlements').insert([payload as any]);
             if (fnfError) {
                 console.warn('Could not insert into employee_fnf_settlements:', fnfError.message);
-                // Attempt upsert/fallback if table structure slightly differs
             }
 
             // 2. Update employee status to Resigned
@@ -257,43 +381,70 @@ export const FnFSettlementModal: React.FC<FnFSettlementModalProps> = ({
                         <div className="mt-4 pt-3 border-t border-indigo-100 dark:border-indigo-900/40 flex flex-wrap items-center gap-6 text-xs font-semibold text-slate-600 dark:text-slate-300">
                             <div><span className="text-slate-400">Join Date:</span> {joinDate || 'N/A'}</div>
                             <div><span className="text-slate-400">Service Tenure:</span> {serviceYears} Years</div>
+                            <div><span className="text-slate-400">Assigned Assets:</span> <span className="text-amber-600 font-bold">{assignedAssetsCount} Assets</span></div>
                             <div><span className="text-slate-400">Current Status:</span> <span className="text-indigo-600 dark:text-indigo-400 font-bold">{selectedEmployee.status || 'Active'}</span></div>
                         </div>
                     )}
                 </div>
 
-                {/* Salary Base Parameters */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="p-4 bg-slate-50 dark:bg-zinc-800/50 rounded-2xl border border-slate-200/60 dark:border-zinc-700">
-                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
-                            Basic Salary (Per Month)
-                        </label>
-                        <div className="relative">
+                {/* Salary Base Parameters & Allowances */}
+                <div className="space-y-3 bg-slate-50 dark:bg-zinc-800/50 p-5 rounded-2xl border border-slate-200/60 dark:border-zinc-700">
+                    <h3 className="font-bold text-slate-800 dark:text-slate-200 text-sm">Salary & Allowance Mapping</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div>
+                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Basic Salary</label>
                             <input
                                 type="number"
-                                step="0.01"
                                 value={basicSalary}
                                 onChange={(e) => setBasicSalary(Number(e.target.value))}
-                                className="w-full p-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl font-bold text-slate-900 dark:text-white"
+                                className="w-full p-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl font-bold text-sm"
                             />
                         </div>
-                        <p className="text-[11px] text-slate-400 mt-1">Used for Notice Recovery & Gratuity</p>
-                    </div>
-
-                    <div className="p-4 bg-slate-50 dark:bg-zinc-800/50 rounded-2xl border border-slate-200/60 dark:border-zinc-700">
-                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
-                            Gross Salary (Per Month)
-                        </label>
-                        <div className="relative">
+                        <div>
+                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Gross Salary</label>
                             <input
                                 type="number"
-                                step="0.01"
                                 value={grossSalary}
                                 onChange={(e) => setGrossSalary(Number(e.target.value))}
-                                className="w-full p-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl font-bold text-slate-900 dark:text-white"
+                                className="w-full p-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl font-bold text-sm"
                             />
                         </div>
-                        <p className="text-[11px] text-slate-400 mt-1">Used for Unpaid Salary & Leave Encashment</p>
+                        <div>
+                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">HRA Allowance</label>
+                            <input
+                                type="number"
+                                value={hraAmount}
+                                onChange={(e) => setHraAmount(Number(e.target.value))}
+                                className="w-full p-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl font-medium text-sm"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Transport Allowance</label>
+                            <input
+                                type="number"
+                                value={transportAllowance}
+                                onChange={(e) => setTransportAllowance(Number(e.target.value))}
+                                className="w-full p-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl font-medium text-sm"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Special Allowance</label>
+                            <input
+                                type="number"
+                                value={specialAllowance}
+                                onChange={(e) => setSpecialAllowance(Number(e.target.value))}
+                                className="w-full p-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl font-medium text-sm"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Food / Other Allowance</label>
+                            <input
+                                type="number"
+                                value={foodAllowance + otherAllowance}
+                                onChange={(e) => setFoodAllowance(Number(e.target.value))}
+                                className="w-full p-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl font-medium text-sm"
+                            />
+                        </div>
                     </div>
                 </div>
 

@@ -313,7 +313,7 @@ export const ESSP: React.FC = () => {
         // Reverting to 'announcements' for safety unless I know otherwise.
     };
 
-    const getCurrentLocation = (): Promise<string | null> => {
+    const getCurrentLocationCoords = (): Promise<{ lat: number; lng: number } | null> => {
         return new Promise((resolve) => {
             if (!navigator.geolocation) {
                 resolve(null);
@@ -321,35 +321,127 @@ export const ESSP: React.FC = () => {
             }
             navigator.geolocation.getCurrentPosition(
                 (position) => {
-                    resolve(`${position.coords.latitude},${position.coords.longitude}`);
+                    resolve({
+                        lat: position.coords.latitude,
+                        lng: position.coords.longitude
+                    });
                 },
                 () => resolve(null),
-                { timeout: 5000 }
+                { timeout: 10000, enableHighAccuracy: true }
             );
         });
+    };
+
+    const calculateDistanceMeters = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+        const R = 6371000;
+        const dLat = (lat2 - lat1) * (Math.PI / 180);
+        const dLon = (lon2 - lon1) * (Math.PI / 180);
+        const a =
+            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return Math.round(R * c);
     };
 
     const handlePunch = async () => {
         if (!currentEmployee) return;
         setPunchLoading(true);
 
+        // 1. Fetch current employee config
+        const { data: empRecord } = await (supabase as any)
+            .from('employees')
+            .select('punch_mode, gps_punch_enabled, geo_latitude, geo_longitude, geofence_radius_meters')
+            .eq('id', currentEmployee.id)
+            .maybeSingle();
+
+        const punchMode = empRecord?.punch_mode || (currentEmployee as any).punch_mode || 'BOTH';
+        const gpsEnabled = empRecord?.gps_punch_enabled ?? (currentEmployee as any).gps_punch_enabled ?? true;
+
+        // Validation 1: Punch Mode check
+        if (punchMode === 'DEVICE') {
+            alert("You are configured for Biometric Device punch only. Web punch is disabled.");
+            setPunchLoading(false);
+            return;
+        }
+
+        // Validation 2: GPS check
+        let coords: { lat: number; lng: number } | null = null;
+        if (gpsEnabled !== false) {
+            coords = await getCurrentLocationCoords();
+            if (!coords) {
+                alert("Location access is required for GPS punch. Please enable location services.");
+                setPunchLoading(false);
+                return;
+            }
+
+            // Fetch employee's mapped locations
+            const { data: mappedLocs } = await (supabase as any)
+                .from('employee_locations')
+                .select('*')
+                .eq('employee_id', currentEmployee.id);
+
+            const geofences: { lat: number; lng: number; radius: number }[] = [];
+
+            if (mappedLocs && mappedLocs.length > 0) {
+                mappedLocs.forEach((l: any) => {
+                    const lat = Number(l.latitude || l.geo_latitude);
+                    const lng = Number(l.longitude || l.geo_longitude);
+                    const radius = Number(l.radius_meters || l.geofence_radius_meters || 500);
+                    if (!isNaN(lat) && !isNaN(lng) && (lat !== 0 || lng !== 0)) {
+                        geofences.push({ lat, lng, radius });
+                    }
+                });
+            }
+
+            // Fallback to employee base coordinates if set
+            const empLat = Number(empRecord?.geo_latitude ?? (currentEmployee as any).geo_latitude);
+            const empLng = Number(empRecord?.geo_longitude ?? (currentEmployee as any).geo_longitude);
+            const empRadius = Number(empRecord?.geofence_radius_meters ?? (currentEmployee as any).geofence_radius_meters ?? 500);
+            if (!isNaN(empLat) && !isNaN(empLng) && (empLat !== 0 || empLng !== 0)) {
+                geofences.push({ lat: empLat, lng: empLng, radius: empRadius });
+            }
+
+            if (geofences.length > 0) {
+                let isInsideAny = false;
+                for (const gf of geofences) {
+                    const dist = calculateDistanceMeters(coords.lat, coords.lng, gf.lat, gf.lng);
+                    if (dist <= gf.radius) {
+                        isInsideAny = true;
+                        break;
+                    }
+                }
+
+                if (!isInsideAny) {
+                    alert("Punch blocked: You are currently outside your designated work location(s).");
+                    setPunchLoading(false);
+                    return;
+                }
+            }
+        }
+
         const now = new Date();
         const today = now.toISOString().split('T')[0];
-        const isoNow = now.toISOString(); // Full ISO timestamp for DB
-        const locStr = await getCurrentLocation();
+        const isoNow = now.toISOString();
+        const locStr = coords ? `${coords.lat},${coords.lng}` : null;
 
         if (punchStatus === 'Out') {
             // PUNCH IN
-            const { data, error } = await (supabase as any).from('attendance').insert([{
+            const insertPayload = {
                 employee_id: currentEmployee.id,
                 company_id: currentEmployee.company_id,
                 date: today,
                 check_in: isoNow,
+                check_in_lat: coords ? coords.lat : null,
+                check_in_lng: coords ? coords.lng : null,
                 check_in_location: locStr,
+                punch_method: 'ONLINE',
                 status: 'Present',
                 total_hours: 0,
                 source: 'punch'
-            }]).select().single();
+            };
+
+            const { data, error } = await (supabase as any).from('attendance').insert([insertPayload]).select().single();
 
             if (error) {
                 console.error("Punch In Error:", error);
@@ -357,13 +449,11 @@ export const ESSP: React.FC = () => {
             } else {
                 setPunchStatus('In');
                 setLastAttendanceId(data.id);
-                // alert("Punched In Successfully!");
             }
         } else {
             // PUNCH OUT
             if (!lastAttendanceId) {
-                // Should not happen if logic is correct, but try to find the open record
-                const { data: activePunch } = await supabase.from('attendance')
+                const { data: activePunch } = await (supabase as any).from('attendance')
                     .select('id, check_in')
                     .eq('employee_id', currentEmployee.id)
                     .eq('date', today)
@@ -377,24 +467,26 @@ export const ESSP: React.FC = () => {
                     return;
                 }
 
-                // Use found ID
-                await performPunchOut(activePunch.id, activePunch.check_in, isoNow, locStr);
+                await performPunchOut(activePunch.id, activePunch.check_in, isoNow, locStr, coords);
             } else {
-                // Fetch check_in time to calculate duration
-                const { data: currentRecord } = await supabase.from('attendance').select('check_in').eq('id', lastAttendanceId).single();
+                const { data: currentRecord } = await (supabase as any).from('attendance').select('check_in').eq('id', lastAttendanceId).single();
                 if (currentRecord) {
-                    await performPunchOut(lastAttendanceId, currentRecord.check_in, isoNow, locStr);
+                    await performPunchOut(lastAttendanceId, currentRecord.check_in, isoNow, locStr, coords);
                 }
             }
         }
 
-        // Refresh data
         refreshDashboard(currentEmployee.id, currentEmployee.company_id);
         setPunchLoading(false);
     };
 
-    const performPunchOut = async (recordId: string, checkInTime: string, checkOutTime: string, locationStr: string | null = null) => {
-        // Calculate Duration from full ISO timestamps
+    const performPunchOut = async (
+        recordId: string,
+        checkInTime: string,
+        checkOutTime: string,
+        locationStr: string | null = null,
+        coords: { lat: number; lng: number } | null = null
+    ) => {
         const d1 = new Date(checkInTime);
         const d2 = new Date(checkOutTime);
         const diffMs = d2.getTime() - d1.getTime();
@@ -402,13 +494,15 @@ export const ESSP: React.FC = () => {
 
         const updateData: any = {
             check_out: checkOutTime,
+            check_out_lat: coords ? coords.lat : null,
+            check_out_lng: coords ? coords.lng : null,
             total_hours: durationHours
         };
         if (locationStr) {
             updateData.check_out_location = locationStr;
         }
 
-        const { error } = await supabase.from('attendance').update(updateData).eq('id', recordId);
+        const { error } = await (supabase as any).from('attendance').update(updateData).eq('id', recordId);
 
         if (error) {
             console.error("Punch Out Error:", error);
