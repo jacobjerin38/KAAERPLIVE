@@ -2106,11 +2106,13 @@ const ALL_PERMISSIONS = {
         { id: 'travel.manage', label: 'Manage Travel' }
     ],
     PRO: [
-        { id: 'pro.view', label: 'Access PRO (Madoob) Module' },
-        { id: 'pro.applications.manage', label: 'Manage Government Applications' },
-        { id: 'pro.licenses.manage', label: 'Manage Trade Licenses & Commercial Registrations' },
-        { id: 'pro.tasks.assign', label: 'Assign & Dispatch PRO Field Tasks' },
-        { id: 'pro.reports.view', label: 'View PRO Fee & Government Expense Reports' }
+        { id: 'pro.view', label: 'Access PRO (Mandoob) Module' },
+        { id: 'pro.requests.create', label: 'Create PRO Requests (HR/CEO)' },
+        { id: 'pro.requests.view', label: 'View All PRO Requests' },
+        { id: 'pro.tasks.manage', label: 'PRO Agent Task Management' },
+        { id: 'pro.documents.manage', label: 'Upload & Manage Documents' },
+        { id: 'pro.renewals.view', label: 'View Renewal Tracker' },
+        { id: 'pro.reports.view', label: 'Access PRO Reports' }
     ]
 };
 

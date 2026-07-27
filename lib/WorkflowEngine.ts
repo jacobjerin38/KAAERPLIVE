@@ -466,13 +466,12 @@ export class WorkflowEngine {
                 stage: stage
             }).eq('id', entityId);
 
-            if (status === 'APPROVED') {
-                // Auto-create PRO task for field agent dispatch
-                const { data: appData } = await (supabase as any).from('pro_applications')
-                    .select('*, applicant:employees!applicant_employee_id(name)')
-                    .eq('id', entityId)
-                    .maybeSingle();
+            const { data: appData } = await (supabase as any).from('pro_applications')
+                .select('*, applicant:employees!applicant_employee_id(name)')
+                .eq('id', entityId)
+                .maybeSingle();
 
+            if (status === 'APPROVED') {
                 if (appData) {
                     await (supabase as any).from('pro_tasks').insert([{
                         company_id: appData.company_id,
@@ -483,7 +482,30 @@ export class WorkflowEngine {
                         status: 'PENDING',
                         related_application_id: entityId
                     }]);
+
+                    // Log approval to activity log
+                    await (supabase as any).from('pro_activity_log').insert([{
+                        company_id: appData.company_id,
+                        application_id: entityId,
+                        action_type: 'STATUS_CHANGE',
+                        old_status: 'PENDING',
+                        new_status: 'IN_PROGRESS',
+                        comment: 'Request approved via workflow. PRO field task auto-created.',
+                        created_by_name: 'Workflow Engine',
+                        created_by_role: 'SYSTEM'
+                    }]);
                 }
+            } else {
+                await (supabase as any).from('pro_activity_log').insert([{
+                    company_id: appData?.company_id || null,
+                    application_id: entityId,
+                    action_type: 'STATUS_CHANGE',
+                    old_status: 'PENDING',
+                    new_status: 'REJECTED',
+                    comment: 'Request rejected via workflow engine.',
+                    created_by_name: 'Workflow Engine',
+                    created_by_role: 'SYSTEM'
+                }]);
             }
         }
     }
