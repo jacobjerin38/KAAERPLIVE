@@ -1778,7 +1778,7 @@ export const LocationMappingTab: React.FC<{ employees: Employee[]; companyId: st
         const lng = item.geo_longitude.trim() !== '' ? parseFloat(item.geo_longitude) : null;
         const radius = Number(item.geofence_radius_meters) || 500;
 
-        const { error } = await supabase.from('employees').update({
+        const { error } = await (supabase as any).from('employees').update({
             geo_latitude: lat,
             geo_longitude: lng,
             geofence_radius_meters: radius,
@@ -1807,7 +1807,7 @@ export const LocationMappingTab: React.FC<{ employees: Employee[]; companyId: st
             const lng = item.geo_longitude.trim() !== '' ? parseFloat(item.geo_longitude) : null;
             const radius = Number(item.geofence_radius_meters) || 500;
 
-            const { error } = await supabase.from('employees').update({
+            const { error } = await (supabase as any).from('employees').update({
                 geo_latitude: lat,
                 geo_longitude: lng,
                 geofence_radius_meters: radius,
@@ -2006,7 +2006,7 @@ export const OutdoorReportTab: React.FC<{ employees: Employee[]; companyId: stri
 
         const allLogs = data || [];
 
-        const outdoorLogs = allLogs.filter(rec => {
+        const outdoorLogs = allLogs.filter((rec: any) => {
             if (rec.check_in_location || rec.check_out_location || rec.location || rec.check_in_lat || rec.geo_latitude || rec.latitude) {
                 return true;
             }

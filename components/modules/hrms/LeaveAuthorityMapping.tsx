@@ -44,7 +44,7 @@ export const LeaveAuthorityMapping: React.FC<LeaveAuthorityMappingProps> = ({ co
         if (empData) setEmployees(empData as any);
 
         // Fetch authority mappings
-        const { data: authData } = await supabase.from('employee_leave_authority')
+        const { data: authData } = await (supabase as any).from('employee_leave_authority')
             .select(`
                 *,
                 employee:employees!employee_id(id, name, designation, department, profile_photo_url),
@@ -55,7 +55,7 @@ export const LeaveAuthorityMapping: React.FC<LeaveAuthorityMappingProps> = ({ co
             .eq('company_id', companyId)
             .order('created_at', { ascending: false });
 
-        if (authData) setAuthorities(authData as any);
+        if (authData) setAuthorities(authData as any[]);
         setLoading(false);
     };
 
@@ -126,12 +126,12 @@ export const LeaveAuthorityMapping: React.FC<LeaveAuthorityMappingProps> = ({ co
             };
 
             if (editingItem) {
-                const { error } = await supabase.from('employee_leave_authority')
+                const { error } = await (supabase as any).from('employee_leave_authority')
                     .update(payload)
                     .eq('id', editingItem.id);
                 if (error) throw error;
             } else {
-                const { error } = await supabase.from('employee_leave_authority')
+                const { error } = await (supabase as any).from('employee_leave_authority')
                     .insert([payload]);
                 if (error) throw error;
             }
@@ -147,7 +147,7 @@ export const LeaveAuthorityMapping: React.FC<LeaveAuthorityMappingProps> = ({ co
 
     const handleDelete = async (id: string) => {
         if (!confirm("Are you sure you want to delete this leave authority mapping?")) return;
-        const { error } = await supabase.from('employee_leave_authority').delete().eq('id', id);
+        const { error } = await (supabase as any).from('employee_leave_authority').delete().eq('id', id);
         if (error) alert("Error deleting: " + error.message);
         else fetchData();
     };

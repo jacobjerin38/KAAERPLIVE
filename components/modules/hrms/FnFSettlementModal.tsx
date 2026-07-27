@@ -171,14 +171,14 @@ export const FnFSettlementModal: React.FC<FnFSettlementModalProps> = ({
             };
 
             // 1. Insert into employee_fnf_settlements
-            const { error: fnfError } = await supabase.from('employee_fnf_settlements').insert([payload as any]);
+            const { error: fnfError } = await (supabase as any).from('employee_fnf_settlements').insert([payload as any]);
             if (fnfError) {
                 console.warn('Could not insert into employee_fnf_settlements:', fnfError.message);
                 // Attempt upsert/fallback if table structure slightly differs
             }
 
             // 2. Update employee status to Resigned
-            const { error: empError } = await supabase
+            const { error: empError } = await (supabase as any)
                 .from('employees')
                 .update({ status: 'Resigned' })
                 .eq('id', selectedEmployeeId);
@@ -186,7 +186,7 @@ export const FnFSettlementModal: React.FC<FnFSettlementModalProps> = ({
             if (empError) throw empError;
 
             // 3. Update resignation record status if exists
-            await supabase
+            await (supabase as any)
                 .from('resignations')
                 .update({ settlement_status: 'SETTLED', exit_status: 'Approved', status: 'Approved' })
                 .eq('employee_id', selectedEmployeeId);
@@ -222,7 +222,7 @@ export const FnFSettlementModal: React.FC<FnFSettlementModalProps> = ({
                                 <option value="">Select Staff Member...</option>
                                 {employees.map(emp => (
                                     <option key={emp.id} value={emp.id}>
-                                        {emp.name} ({emp.employee_code || emp.id.substring(0, 6)}) - {emp.department || 'General'}
+                                        {emp.name} ({(emp as any).employee_code || emp.id.substring(0, 6)}) - {emp.department || 'General'}
                                     </option>
                                 ))}
                             </select>

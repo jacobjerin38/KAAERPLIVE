@@ -42,6 +42,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useESSP } from '../../contexts/ESSPContext';
 import { useDelayLoading } from '../../contexts/GlobalLoadingContext';
 import { TableSkeleton, DashboardSkeleton } from '../ui/LoadingSkeletons';
+import { Modal } from '../ui/Modal';
 import { WorkflowEngine } from '../../lib/WorkflowEngine'; // [NEW] Unified Engine
 import { CareerTimeline } from '../hrms/transitions/CareerTimeline'; // [NEW] Integrated real timeline
 // Reusing some components/styles from HRMS for consistency, but tailor for ESSP

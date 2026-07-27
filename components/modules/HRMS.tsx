@@ -422,13 +422,13 @@ export const HRMS: React.FC = () => {
                     onAddEmployee={hasPermission('hrms.employees.manage') ? () => { setShowEmployeeForm(true); setEditingEmployee(null); } : undefined}
                 />}
                 {activeTab === 'APPROVALS' && <ApprovalsModule currentEmployee={currentEmployee} />}
-                {activeTab === 'ATTENDANCE' && <AttendanceModule employees={employees} />}
+                {activeTab === 'ATTENDANCE' && <AttendanceModule employees={employees as any} />}
                 {activeTab === 'LEAVES' && <LeaveModule leaves={leaves} leaveTypes={leaveTypes} setShowLeaveModal={setShowLeaveModal} onUpdateStatus={handleUpdateLeaveStatus} formatDate={formatDate} />}
-                {activeTab === 'ASSETS' && <AssetModule assets={assets} employees={employees} refreshData={refreshData} />}
-                {activeTab === 'HELPDESK' && <HelpDeskModule employees={employees} currentEmployee={currentEmployee} />}
+                {activeTab === 'ASSETS' && <AssetModule assets={assets} employees={employees as any} refreshData={refreshData} />}
+                {activeTab === 'HELPDESK' && <HelpDeskModule employees={employees as any} currentEmployee={currentEmployee as any} />}
                 {activeTab === 'PAYROLL' && <PayrollDashboard />}
                 {activeTab === 'REPORTS' && <ReportsListView />}
-                {activeTab === 'EXIT' && <ExitModule employees={employees} currentEmployee={currentEmployee} />}
+                {activeTab === 'EXIT' && <ExitModule employees={employees as any} currentEmployee={currentEmployee as any} />}
                 {activeTab === 'SETTINGS' && <SettingsModule />}
             </div>
 

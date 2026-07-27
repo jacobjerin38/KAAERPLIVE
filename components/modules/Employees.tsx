@@ -431,11 +431,11 @@ export const Employees: React.FC = () => {
                             onSelectEmployee={setSelectedEmployee}
                             onAddEmployee={hasPermission('hrms.employees.manage') ? () => { setShowEmployeeForm(true); setEditingEmployee(null); } : undefined}
                         />}
-                        {activeTab === 'APPROVALS' && <ApprovalsModule currentEmployee={currentEmployee} />}
-                        {activeTab === 'ASSETS' && <AssetModule assets={assets} employees={employees} refreshData={refreshData} />}
-                        {activeTab === 'HELPDESK' && <HelpDeskModule employees={employees} currentEmployee={currentEmployee} />}
+                        {activeTab === 'APPROVALS' && <ApprovalsModule currentEmployee={currentEmployee as any} />}
+                        {activeTab === 'ASSETS' && <AssetModule assets={assets} employees={employees as any} refreshData={refreshData} />}
+                        {activeTab === 'HELPDESK' && <HelpDeskModule employees={employees as any} currentEmployee={currentEmployee as any} />}
                         {activeTab === 'REPORTS' && <ReportsListView moduleFilter="EMPLOYEES" />}
-                        {activeTab === 'EXIT' && <ExitModule employees={employees} currentEmployee={currentEmployee} />}
+                        {activeTab === 'EXIT' && <ExitModule employees={employees as any} currentEmployee={currentEmployee as any} />}
                         {activeTab === 'SETTINGS' && <SettingsModule />}
                     </>
                 )}
@@ -495,7 +495,7 @@ export const Employees: React.FC = () => {
                     isOpen={showFnFModal}
                     onClose={() => setShowFnFModal(false)}
                     onSuccess={refreshData}
-                    employees={employees}
+                    employees={employees as any}
                 />
             )}
         </div>

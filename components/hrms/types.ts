@@ -43,7 +43,7 @@ export type HRMSViewMode =
   | 'ROLES'
   | 'SETTINGS';
 
-export type EmployeeStatus = 'Active' | 'On Leave' | 'Terminated' | 'Probation' | 'Notice Period' | 'Inactive';
+export type EmployeeStatus = 'Active' | 'On Leave' | 'Terminated' | 'Probation' | 'Notice Period' | 'Inactive' | 'Resigned';
 export type LeaveStatus = 'Pending' | 'Approved' | 'Rejected';
 export type AttendanceStatusType = 'Present' | 'Absent' | 'Half Day' | 'Weekend'; // Renamed to avoid conflict
 
@@ -165,6 +165,13 @@ export interface Employee {
   office_email?: string;
   profile_photo_url?: string;
   salary_amount?: number;
+
+  // GPS & Location Punch Settings
+  geo_latitude?: number | null;
+  geo_longitude?: number | null;
+  geofence_radius_meters?: number | null;
+  gps_punch_enabled?: boolean | null;
+  punch_mode?: string | null;
 
   // Banking
   bank_name?: string;
