@@ -265,13 +265,28 @@ export const ESSP: React.FC = () => {
             }
         }
         const currentYear = new Date().getFullYear();
-        const { count } = await supabase.from('leaves')
-            .select('*', { count: 'exact', head: true })
+        const { data: approvedLeaves } = await supabase.from('leaves')
+            .select('start_date, end_date')
             .eq('employee_id', empId)
             .eq('status', 'Approved')
             .gte('start_date', `${currentYear}-01-01`);
 
-        setLeaveBalance(totalDefaultBalance - (count || 0));
+        let approvedDays = 0;
+        if (approvedLeaves) {
+            approvedLeaves.forEach((l: any) => {
+                if (l.start_date && l.end_date) {
+                    const start = new Date(l.start_date);
+                    const end = new Date(l.end_date);
+                    if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+                        const diffMs = end.getTime() - start.getTime();
+                        const days = Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1;
+                        if (days > 0) approvedDays += days;
+                    }
+                }
+            });
+        }
+
+        setLeaveBalance(totalDefaultBalance - approvedDays);
 
         // 4. Last Pay (Locked/Paid only)
         // Using 'payroll_records' as per types.ts
@@ -1632,7 +1647,7 @@ export const ESSP: React.FC = () => {
         // Set initial leave type when leaveTypes load
         useEffect(() => {
             if (leaveTypes.length > 0 && !formData.leave_type_id) {
-                setFormData(prev => ({ ...prev, leave_type_id: leaveTypes[0].id, type: leaveTypes[0].name }));
+                setFormData(prev => ({ ...prev, leave_type_id: leaveTypes[0].id?.toString() || '', type: leaveTypes[0].name }));
             }
         }, [leaveTypes]);
 
@@ -1640,6 +1655,51 @@ export const ESSP: React.FC = () => {
             const { data } = await supabase.from('leaves').select('*').eq('employee_id', currentEmployee.id).order('created_at', { ascending: false });
             if (data) setLeaves(data);
         };
+
+        // Live Balance View calculations
+        const selectedLeaveType = leaveTypes.find(
+            (lt: any) => lt.id?.toString() === formData.leave_type_id?.toString()
+        ) || (leaveTypes.length > 0 ? leaveTypes[0] : null);
+
+        const typeName = selectedLeaveType ? selectedLeaveType.name : (formData.type || 'Annual');
+        const defaultEntitlement = selectedLeaveType ? (selectedLeaveType.default_balance || 0) : (leaveTypes.length === 0 ? 22 : 0);
+
+        const leavesForSelectedType = leaves.filter((l: any) => {
+            if (selectedLeaveType && selectedLeaveType.id && l.leave_type_id) {
+                if (l.leave_type_id.toString() === selectedLeaveType.id.toString()) return true;
+            }
+            const itemType = (l.type || l.leave_type || '').toLowerCase();
+            return itemType === (typeName || '').toLowerCase();
+        });
+
+        let usedDays = 0;
+        let pendingDays = 0;
+
+        leavesForSelectedType.forEach((l: any) => {
+            if (l.start_date && l.end_date) {
+                const start = new Date(l.start_date);
+                const end = new Date(l.end_date);
+                if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+                    const days = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+                    if (days > 0) {
+                        if (l.status === 'Approved') usedDays += days;
+                        else if (l.status === 'Pending') pendingDays += days;
+                    }
+                }
+            }
+        });
+
+        const remainingBalance = defaultEntitlement - usedDays;
+
+        let requestedDays = 0;
+        if (formData.from && formData.to) {
+            const s = new Date(formData.from);
+            const e = new Date(formData.to);
+            if (!isNaN(s.getTime()) && !isNaN(e.getTime())) {
+                const diff = Math.round((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+                if (diff > 0) requestedDays = diff;
+            }
+        }
 
         const handleViewAttachment = async (url: string) => {
             const path = url.split('/storage/v1/object/public/attachments/')[1];
@@ -1659,10 +1719,54 @@ export const ESSP: React.FC = () => {
             if (submitting) return;
             setSubmitting(true);
 
-            let attachmentUrl = '';
-            let attachmentName = '';
-
             try {
+                // 1. Leave Authority Mapping Validation
+                const { data: authData } = await (supabase as any)
+                    .from('employee_leave_authority')
+                    .select('approver_level_1')
+                    .eq('employee_id', currentEmployee.id)
+                    .eq('is_active', true);
+
+                const activeAuth = authData && authData.length > 0 ? authData[0] : null;
+
+                if (!activeAuth || !activeAuth.approver_level_1) {
+                    alert("Leave approval authority is not configured for your profile. Please contact HR to map your Leave Approver.");
+                    setSubmitting(false);
+                    return;
+                }
+
+                // 2. Date Validation & Leave Balance Validation
+                if (!formData.from || !formData.to) {
+                    alert("Please select both start and end dates.");
+                    setSubmitting(false);
+                    return;
+                }
+
+                const start = new Date(formData.from);
+                const end = new Date(formData.to);
+                if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+                    alert("Invalid date selection.");
+                    setSubmitting(false);
+                    return;
+                }
+
+                if (end < start) {
+                    alert("End date cannot be earlier than start date.");
+                    setSubmitting(false);
+                    return;
+                }
+
+                const reqDays = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
+                if (reqDays > remainingBalance) {
+                    alert(`Insufficient leave balance! You have ${remainingBalance} days remaining for ${typeName}, but requested ${reqDays} days.`);
+                    setSubmitting(false);
+                    return;
+                }
+
+                let attachmentUrl = '';
+                let attachmentName = '';
+
                 if (leaveFile) {
                     const path = `${currentEmployee.company_id}/leaves/${Date.now()}_${leaveFile.name}`;
                     const { data: uploadData, error: uploadErr } = await supabase.storage
@@ -1675,13 +1779,13 @@ export const ESSP: React.FC = () => {
                     attachmentName = leaveFile.name;
                 }
 
-                const selectedLeaveType = leaveTypes.find((lt: any) => lt.id?.toString() === formData.leave_type_id?.toString());
-                const typeName = selectedLeaveType ? selectedLeaveType.name : (formData.type || 'Annual');
+                const selectedLT = leaveTypes.find((lt: any) => lt.id?.toString() === formData.leave_type_id?.toString());
+                const finalTypeName = selectedLT ? selectedLT.name : (formData.type || 'Annual');
 
                 const { data, error } = await (supabase as any).from('leaves').insert([{
                     employee_id: currentEmployee.id,
                     leave_type_id: formData.leave_type_id ? parseInt(formData.leave_type_id) : null,
-                    type: typeName,
+                    type: finalTypeName,
                     start_date: formData.from,
                     end_date: formData.to,
                     reason: formData.reason,
@@ -1713,7 +1817,13 @@ export const ESSP: React.FC = () => {
                 setLeaveFile(null);
                 setSubmitting(false);
                 refreshLeaves();
-                setFormData({ leave_type_id: leaveTypes[0]?.id || '', type: leaveTypes[0]?.name || 'Annual', from: '', to: '', reason: '' });
+                setFormData({
+                    leave_type_id: leaveTypes[0]?.id?.toString() || '',
+                    type: leaveTypes[0]?.name || 'Annual',
+                    from: '',
+                    to: '',
+                    reason: ''
+                });
             } catch (err: any) {
                 alert('Failed to submit leave application: ' + err.message);
                 setSubmitting(false);
@@ -1734,18 +1844,55 @@ export const ESSP: React.FC = () => {
 
                 {showForm && (
                     <form onSubmit={handleSubmit} className="mb-10 bg-white dark:bg-zinc-900/50 p-6 rounded-[2rem] border border-slate-200 dark:border-zinc-800 shadow-lg animate-in slide-in-from-top-4">
+                        {/* Live Balance View Card */}
+                        <div className="mb-6 p-5 bg-gradient-to-br from-indigo-50/80 via-slate-50 to-emerald-50/50 dark:from-indigo-950/30 dark:via-zinc-900 dark:to-emerald-950/20 rounded-2xl border border-indigo-100 dark:border-indigo-900/40 shadow-sm">
+                            <div className="flex items-center justify-between mb-3 pb-3 border-b border-indigo-100/60 dark:border-indigo-900/40">
+                                <div className="flex items-center gap-2">
+                                    <Sparkles className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                                    <span className="text-xs font-bold uppercase tracking-wider text-indigo-900 dark:text-indigo-300">
+                                        Live Leave Balance — {typeName}
+                                    </span>
+                                </div>
+                                <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300">
+                                    {selectedLeaveType?.code || 'LEAVE'}
+                                </span>
+                            </div>
+                            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-center">
+                                <div className="bg-white/80 dark:bg-zinc-800/80 p-3 rounded-xl border border-slate-100 dark:border-zinc-700/50">
+                                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Entitlement</p>
+                                    <p className="text-lg font-black text-slate-800 dark:text-white">{defaultEntitlement} <span className="text-xs font-normal text-slate-400">days</span></p>
+                                </div>
+                                <div className="bg-white/80 dark:bg-zinc-800/80 p-3 rounded-xl border border-slate-100 dark:border-zinc-700/50">
+                                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Used Days</p>
+                                    <p className="text-lg font-black text-rose-600 dark:text-rose-400">{usedDays} <span className="text-xs font-normal text-slate-400">days</span></p>
+                                </div>
+                                <div className="bg-white/80 dark:bg-zinc-800/80 p-3 rounded-xl border border-slate-100 dark:border-zinc-700/50">
+                                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Pending Days</p>
+                                    <p className="text-lg font-black text-amber-600 dark:text-amber-400">{pendingDays} <span className="text-xs font-normal text-slate-400">days</span></p>
+                                </div>
+                                <div className="bg-emerald-50 dark:bg-emerald-950/40 p-3 rounded-xl border border-emerald-200 dark:border-emerald-800/50">
+                                    <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">Remaining Available</p>
+                                    <p className="text-lg font-black text-emerald-700 dark:text-emerald-300">{remainingBalance} <span className="text-xs font-normal text-emerald-600/70">days</span></p>
+                                </div>
+                                <div className="bg-indigo-50 dark:bg-indigo-950/40 p-3 rounded-xl border border-indigo-200 dark:border-indigo-800/50 col-span-2 sm:col-span-1">
+                                    <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-400">Requested Days</p>
+                                    <p className="text-lg font-black text-indigo-700 dark:text-indigo-300">{requestedDays} <span className="text-xs font-normal text-indigo-600/70">days</span></p>
+                                </div>
+                            </div>
+                        </div>
+
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Type</label>
-                                <select className="w-full p-3 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 outline-none text-slate-900 dark:text-white" value={formData.leave_type_id} onChange={e => { const lt = leaveTypes.find((t: any) => t.id === e.target.value); setFormData({ ...formData, leave_type_id: e.target.value, type: lt?.name || e.target.value }); }}>
+                                <select className="w-full p-3 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 outline-none text-slate-900 dark:text-white" value={formData.leave_type_id} onChange={e => { const lt = leaveTypes.find((t: any) => t.id?.toString() === e.target.value); setFormData({ ...formData, leave_type_id: e.target.value, type: lt?.name || e.target.value }); }}>
                                     {leaveTypes.length > 0 ? leaveTypes.map((lt: any) => (
                                         <option key={lt.id} value={lt.id}>{lt.name}</option>
                                     )) : (
                                         <>
-                                            <option>Annual</option>
-                                            <option>Sick</option>
-                                            <option>Casual</option>
-                                            <option>Unpaid</option>
+                                            <option value="">Annual</option>
+                                            <option value="">Sick</option>
+                                            <option value="">Casual</option>
+                                            <option value="">Unpaid</option>
                                         </>
                                     )}
                                 </select>
@@ -1761,7 +1908,7 @@ export const ESSP: React.FC = () => {
                         </div>
                         <div className="mb-6">
                             <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Reason</label>
-                            <input type="text" required className="w-full p-3 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 outline-none text-slate-900 dark:text-white" placeholder="Going to Hawaii..." value={formData.reason} onChange={e => setFormData({ ...formData, reason: e.target.value })} />
+                            <input type="text" required className="w-full p-3 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 outline-none text-slate-900 dark:text-white" placeholder="Reason for leave..." value={formData.reason} onChange={e => setFormData({ ...formData, reason: e.target.value })} />
                         </div>
                         <div className="mb-6">
                             <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Attachment</label>
@@ -2814,40 +2961,98 @@ export const ESSP: React.FC = () => {
 
     const MyAssets = () => {
         const [assets, setAssets] = useState<any[]>([]);
+        const [loading, setLoading] = useState(true);
 
         useEffect(() => {
             const fetchAssets = async () => {
                 if (!currentEmployee) return;
-                const { data } = await supabase.from('assets').select('*').eq('assigned_to', currentEmployee.id).eq('status', 'Assigned');
+                setLoading(true);
+                const { data, error } = await supabase
+                    .from('assets')
+                    .select('*')
+                    .eq('assigned_to', currentEmployee.id);
                 if (data) setAssets(data);
+                if (error) console.error("Error fetching assets:", error);
+                setLoading(false);
             };
             fetchAssets();
         }, [currentEmployee]);
 
+        const getStatusBadge = (status: string) => {
+            switch (status?.toLowerCase()) {
+                case 'in use':
+                case 'assigned':
+                    return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400';
+                case 'available':
+                    return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
+                case 'repair':
+                case 'maintenance':
+                    return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400';
+                default:
+                    return 'bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-slate-300';
+            }
+        };
+
         return (
             <div className="p-8 h-full overflow-y-auto animate-page-enter">
-                <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight mb-8">My Assets</h1>
-                {assets.length === 0 ? (
+                <div className="flex justify-between items-end mb-8">
+                    <div>
+                        <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight mb-2">My Assets</h1>
+                        <p className="text-slate-500">View items and company assets assigned to you.</p>
+                    </div>
+                </div>
+
+                {loading ? (
+                    <p className="text-slate-400">Loading assets...</p>
+                ) : assets.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-64 text-slate-400 border-2 border-dashed border-slate-200 dark:border-zinc-800 rounded-3xl">
                         <Monitor className="w-12 h-12 mb-4 opacity-20" />
-                        <p className="font-medium">No assets assigned</p>
+                        <p className="font-medium">No assets assigned to your profile.</p>
                     </div>
                 ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {assets.map(asset => (
-                            <div key={asset.id} className="bg-white dark:bg-zinc-900/50 p-6 rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-sm flex items-center gap-6">
-                                <div className="p-4 bg-slate-100 dark:bg-zinc-800 rounded-2xl text-slate-500">
-                                    <Monitor className="w-8 h-8" />
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {assets.map(asset => {
+                            const purchaseDate = asset.purchase_date || asset.purchaseDate;
+                            const warrantyExpiry = asset.warranty_expiry_date || asset.warranty_expiry || asset.warranty_date;
+                            const serialNum = asset.serial_number || asset.serial || 'N/A';
+                            const assetType = asset.type || asset.category || 'Asset';
+
+                            return (
+                                <div key={asset.id} className="bg-white dark:bg-zinc-900/50 p-6 rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-sm flex flex-col justify-between hover:border-indigo-200 transition-colors">
+                                    <div>
+                                        <div className="flex justify-between items-start mb-4">
+                                            <div className="p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl text-indigo-600 dark:text-indigo-400">
+                                                <Monitor className="w-6 h-6" />
+                                            </div>
+                                            <span className={`px-3 py-1 text-xs font-bold rounded-xl uppercase tracking-wider ${getStatusBadge(asset.status)}`}>
+                                                {asset.status || 'Assigned'}
+                                            </span>
+                                        </div>
+                                        <h3 className="font-bold text-lg text-slate-900 dark:text-white mb-1">{asset.name}</h3>
+                                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-4">{assetType}</p>
+
+                                        <div className="space-y-2 pt-3 border-t border-slate-100 dark:border-zinc-800 text-xs">
+                                            <div className="flex justify-between">
+                                                <span className="text-slate-500 font-medium">Serial Number</span>
+                                                <span className="font-mono font-bold text-slate-700 dark:text-slate-300">{serialNum}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-slate-500 font-medium">Purchase Date</span>
+                                                <span className="font-semibold text-slate-700 dark:text-slate-300">
+                                                    {purchaseDate ? new Date(purchaseDate).toLocaleDateString() : 'N/A'}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-slate-500 font-medium">Warranty Expiry</span>
+                                                <span className="font-semibold text-slate-700 dark:text-slate-300">
+                                                    {warrantyExpiry ? new Date(warrantyExpiry).toLocaleDateString() : 'N/A'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h3 className="font-bold text-lg text-slate-900 dark:text-white mb-1">{asset.name}</h3>
-                                    <p className="text-sm text-slate-500 font-mono mb-2">{asset.asset_id}</p>
-                                    <span className="text-xs font-bold px-2 py-1 bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-400 rounded-lg uppercase tracking-wide">
-                                        {asset.type}
-                                    </span>
-                                </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
             </div>

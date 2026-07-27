@@ -2449,8 +2449,12 @@ export const Organisation: React.FC = () => {
         }
         if (activeTab === 'ROLES') {
             if (currentCompanyId) {
-                const { data } = await supabase.from('roles').select('*').eq('company_id', currentCompanyId);
-                if (data) setRoles(data as any[]);
+                const { data: rolesData } = await supabase.from('roles').select('*').eq('company_id', currentCompanyId);
+                let currentRoles = roles;
+                if (rolesData) {
+                    setRoles(rolesData as any[]);
+                    currentRoles = rolesData;
+                }
 
                 // Also fetch users to show counts
                 const { data: userData } = await supabase.from('profiles')
@@ -2460,7 +2464,7 @@ export const Organisation: React.FC = () => {
                 if (userData) {
                     const appUsers: AppUser[] = userData.map((p: any) => {
                         const roleName = p.role || 'Employee';
-                        const roleId = roles.find(r => r.name.toLowerCase() === roleName.toLowerCase())?.id || '';
+                        const roleId = currentRoles.find(r => r.name.toLowerCase() === roleName.toLowerCase() || r.id === p.role_id)?.id || '';
 
                         return {
                             id: p.id,
@@ -2484,10 +2488,14 @@ export const Organisation: React.FC = () => {
             }
         }
         if (activeTab === 'USERS') {
+            let currentRoles = roles;
             // Fetch roles so the dropdown in Add/Edit User modal is populated
             if (currentCompanyId) {
                 const { data: rolesData } = await supabase.from('roles').select('*').eq('company_id', currentCompanyId);
-                if (rolesData) setRoles(rolesData as any[]);
+                if (rolesData) {
+                    setRoles(rolesData as any[]);
+                    currentRoles = rolesData;
+                }
             }
 
             // Fetch all employees for the linking dropdown
@@ -2507,7 +2515,7 @@ export const Organisation: React.FC = () => {
             if (data) {
                 const appUsers: AppUser[] = data.map((p: any) => {
                     const roleName = p.role || 'Employee';
-                    const roleId = roles.find(r => r.name.toLowerCase() === roleName.toLowerCase())?.id || '';
+                    const roleId = currentRoles.find(r => r.name.toLowerCase() === roleName.toLowerCase() || r.id === p.role_id)?.id || '';
 
                     return {
                         id: p.id,

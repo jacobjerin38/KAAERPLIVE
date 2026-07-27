@@ -6,7 +6,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { AttachmentPanel } from './AttachmentPanel';
 
 export default function CustomersView({ companyId }: { companyId: string }) {
-    const { user } = useAuth();
+    const { user, userRole } = useAuth();
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [showModal, setShowModal] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -14,11 +14,11 @@ export default function CustomersView({ companyId }: { companyId: string }) {
 
     useEffect(() => {
         loadCustomers();
-    }, []);
+    }, [user, userRole]);
 
     const loadCustomers = async () => {
         setLoading(true);
-        const data = await getCustomers();
+        const data = await getCustomers(user?.id, userRole);
         setCustomers(data);
         setLoading(false);
     };
@@ -36,6 +36,7 @@ export default function CustomersView({ companyId }: { companyId: string }) {
                 ...activeCustomer,
                 status: 'Active',
                 owner_id: user?.id,
+                created_by: user?.id,
                 company_id: companyId
             });
         }

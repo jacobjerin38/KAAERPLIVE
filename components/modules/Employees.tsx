@@ -3,7 +3,7 @@ import {
     Users, Briefcase, Calendar, ChevronRight, Search, Plus, Bell,
     Settings, LogOut, FileText, Check, AlertCircle, ChevronLeft,
     MoreVertical, Edit3, MoreHorizontal, Headphones, ShieldCheck,
-    Building2, Monitor, LayoutDashboard
+    Building2, Monitor, LayoutDashboard, Calculator
 } from 'lucide-react';
 import {
     Department, Location, Role, Designation, Grade,
@@ -21,6 +21,7 @@ import { AssetModule } from './hrms/AssetModule';
 import { HelpDeskModule } from './hrms/HelpDeskModule';
 import { ExitModule } from './hrms/ExitModule';
 import { SettingsModule } from './hrms/SettingsModule';
+import { FnFSettlementModal } from './hrms/FnFSettlementModal';
 import { ReportsListView } from './reports/ReportsListView';
 
 import { KAA_LOGO_URL } from '../../constants';
@@ -50,6 +51,7 @@ export const Employees: React.FC = () => {
 
     // Modal State
     const [showEmployeeForm, setShowEmployeeForm] = useState(false);
+    const [showFnFModal, setShowFnFModal] = useState(false);
     const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
 
     // Master Data for Dropdowns
@@ -243,6 +245,12 @@ export const Employees: React.FC = () => {
                         <h1 className="text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">Employees Dashboard</h1>
                         <p className="text-slate-500 dark:text-slate-400 mt-2 text-lg font-medium">Overview of your employee base and directories.</p>
                     </div>
+                    <button
+                        onClick={() => setShowFnFModal(true)}
+                        className="px-5 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-2xl font-bold text-sm flex items-center gap-2 shadow-lg shadow-purple-500/20 active:scale-95 transition-all"
+                    >
+                        <Calculator className="w-4 h-4" /> Process F&F Settlement
+                    </button>
                 </header>
 
                 {/* KPI Cards */}
@@ -318,7 +326,7 @@ export const Employees: React.FC = () => {
                     {/* Quick Access Actions */}
                     <div className="bg-white/70 dark:bg-zinc-900/70 backdrop-blur-xl p-8 rounded-[2rem] border border-white/60 dark:border-zinc-800 shadow-xl shadow-slate-200/50 dark:shadow-black/30 flex flex-col">
                         <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-6">Quick Actions</h3>
-                        <div className="grid grid-cols-2 gap-4 flex-1">
+                        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 flex-1">
                             <button 
                                 onClick={() => { setActiveTab('PEOPLE'); setShowEmployeeForm(true); setEditingEmployee(null); }}
                                 className="p-6 rounded-2xl border border-slate-200 dark:border-zinc-700 hover:border-rose-500 dark:hover:border-rose-500 hover:bg-rose-50/20 dark:hover:bg-rose-950/20 transition-all text-left flex flex-col justify-between group active:scale-95"
@@ -327,6 +335,16 @@ export const Employees: React.FC = () => {
                                 <div>
                                     <h4 className="font-bold text-slate-800 dark:text-white group-hover:text-rose-600 transition-colors">Onboard Employee</h4>
                                     <p className="text-xs text-slate-400 mt-1">Add a new record to directory</p>
+                                </div>
+                            </button>
+                            <button 
+                                onClick={() => setShowFnFModal(true)}
+                                className="p-6 rounded-2xl border border-slate-200 dark:border-zinc-700 hover:border-purple-500 dark:hover:border-purple-500 hover:bg-purple-50/20 dark:hover:bg-purple-950/20 transition-all text-left flex flex-col justify-between group active:scale-95"
+                            >
+                                <Calculator className="w-8 h-8 text-purple-500 mb-4" />
+                                <div>
+                                    <h4 className="font-bold text-slate-800 dark:text-white group-hover:text-purple-600 transition-colors">F&F Settlement</h4>
+                                    <p className="text-xs text-slate-400 mt-1">Calculate full & final exit pay</p>
                                 </div>
                             </button>
                             <button 
@@ -469,6 +487,14 @@ export const Employees: React.FC = () => {
                     shiftTimings={shiftTimings}
                     weekoffRules={weekoffRules}
                     salaryComponents={salaryComponents}
+                    employees={employees}
+                />
+            )}
+            {showFnFModal && (
+                <FnFSettlementModal
+                    isOpen={showFnFModal}
+                    onClose={() => setShowFnFModal(false)}
+                    onSuccess={refreshData}
                     employees={employees}
                 />
             )}

@@ -199,6 +199,7 @@ export interface CRMDeal {
   source_id?: string;
   source?: CRMLeadSource; // Joined
   expected_close_date?: string;
+  created_by?: string;
   owner_id?: string; // Auth user
   employee_owner_id?: string; // Employee
   owner?: Employee; // Joined
@@ -223,6 +224,7 @@ export interface CRMContact {
   assignee?: Employee; // Joined
   status: string;
   last_contact?: string;
+  created_by?: string;
   owner_id?: string; // [NEW] Added for ownership tracking
 }
 

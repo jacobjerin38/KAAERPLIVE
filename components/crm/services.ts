@@ -78,16 +78,33 @@ const getAccessFilter = async (): Promise<AccessFilter> => {
 };
 
 // LEADS
-export const getLeads = async (): Promise<Lead[]> => {
-  const filter = await getAccessFilter();
+export const getLeads = async (userId?: string, userRole?: string | null): Promise<Lead[]> => {
+  let effectiveUserId = userId;
+  let effectiveUserRole = userRole;
+
+  if (!effectiveUserId && effectiveUserId !== '') {
+    const { data: { user } } = await supabase.auth.getUser();
+    effectiveUserId = user?.id;
+  }
+  if (effectiveUserRole === undefined && effectiveUserId) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', effectiveUserId)
+      .maybeSingle();
+    effectiveUserRole = profile?.role || null;
+  }
+
+  const isSuperAdmin = effectiveUserRole?.toLowerCase() === 'super admin' || effectiveUserRole?.toLowerCase() === 'admin';
+
   let query = (supabase as any).from('crm_leads')
     .select(`
         *,
         lead_owner:employees!crm_leads_lead_owner_id_fkey(*)
     `);
 
-  if (filter.isSalesRep && filter.userId) {
-    query = query.eq('lead_owner_id', filter.userId);
+  if (!isSuperAdmin && effectiveUserId) {
+    query = query.or(`created_by.eq.${effectiveUserId},owner_id.eq.${effectiveUserId},lead_owner_id.eq.${effectiveUserId}`);
   }
 
   const { data, error } = await query.order('created_at', { ascending: false });
@@ -127,10 +144,32 @@ export const updateLead = async (id: string, updates: Partial<Lead>): Promise<Le
 };
 
 // CUSTOMERS
-export const getCustomers = async (): Promise<Customer[]> => {
-  const { data, error } = await (supabase as any).from('crm_customers')
-    .select(`*`)
-    .order('name', { ascending: true });
+export const getCustomers = async (userId?: string, userRole?: string | null): Promise<Customer[]> => {
+  let effectiveUserId = userId;
+  let effectiveUserRole = userRole;
+
+  if (!effectiveUserId && effectiveUserId !== '') {
+    const { data: { user } } = await supabase.auth.getUser();
+    effectiveUserId = user?.id;
+  }
+  if (effectiveUserRole === undefined && effectiveUserId) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', effectiveUserId)
+      .maybeSingle();
+    effectiveUserRole = profile?.role || null;
+  }
+
+  const isSuperAdmin = effectiveUserRole?.toLowerCase() === 'super admin' || effectiveUserRole?.toLowerCase() === 'admin';
+
+  let query = (supabase as any).from('crm_customers').select(`*`);
+
+  if (!isSuperAdmin && effectiveUserId) {
+    query = query.or(`created_by.eq.${effectiveUserId},owner_id.eq.${effectiveUserId}`);
+  }
+
+  const { data, error } = await query.order('name', { ascending: true });
 
   if (error) {
     console.error('Error fetching customers:', error);
@@ -167,8 +206,25 @@ export const updateCustomer = async (id: string, updates: Partial<Customer>): Pr
 };
 
 // OPPORTUNITIES
-export const getOpportunities = async (): Promise<Opportunity[]> => {
-  const filter = await getAccessFilter();
+export const getOpportunities = async (userId?: string, userRole?: string | null): Promise<Opportunity[]> => {
+  let effectiveUserId = userId;
+  let effectiveUserRole = userRole;
+
+  if (!effectiveUserId && effectiveUserId !== '') {
+    const { data: { user } } = await supabase.auth.getUser();
+    effectiveUserId = user?.id;
+  }
+  if (effectiveUserRole === undefined && effectiveUserId) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', effectiveUserId)
+      .maybeSingle();
+    effectiveUserRole = profile?.role || null;
+  }
+
+  const isSuperAdmin = effectiveUserRole?.toLowerCase() === 'super admin' || effectiveUserRole?.toLowerCase() === 'admin';
+
   let query = (supabase as any).from('crm_opportunities')
     .select(`
         *,
@@ -176,8 +232,8 @@ export const getOpportunities = async (): Promise<Opportunity[]> => {
         stage:org_crm_stages(*)
     `);
 
-  if (filter.isSalesRep && filter.userId) {
-    query = query.eq('owner_id', filter.userId);
+  if (!isSuperAdmin && effectiveUserId) {
+    query = query.or(`created_by.eq.${effectiveUserId},owner_id.eq.${effectiveUserId}`);
   }
 
   const { data, error } = await query.order('created_at', { ascending: false });
@@ -236,6 +292,7 @@ export const convertLeadToOpportunity = async (
     currency: 'INR',
     amount: lead.annual_revenue || 0,
     owner_id: ownerId || lead.lead_owner_id,
+    created_by: ownerId || lead.created_by || lead.lead_owner_id,
     type: 'Sales',
   };
 
@@ -266,6 +323,7 @@ export const convertOpportunityToCustomer = async (
     lifecycle_stage: 'Converted from Opportunity',
     status: 'Active',
     owner_id: ownerId || opp.owner_id,
+    created_by: ownerId || opp.created_by || opp.owner_id,
     // If opportunity has customer data already, use it
     primary_email: opp.customer?.primary_email,
     primary_phone: opp.customer?.primary_phone,
@@ -294,12 +352,29 @@ export const convertOpportunityToCustomer = async (
 };
 
 // DEALS (Legacy / To be migrated)
-export const getDeals = async (): Promise<Deal[]> => {
-  const filter = await getAccessFilter();
+export const getDeals = async (userId?: string, userRole?: string | null): Promise<Deal[]> => {
+  let effectiveUserId = userId;
+  let effectiveUserRole = userRole;
+
+  if (!effectiveUserId && effectiveUserId !== '') {
+    const { data: { user } } = await supabase.auth.getUser();
+    effectiveUserId = user?.id;
+  }
+  if (effectiveUserRole === undefined && effectiveUserId) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', effectiveUserId)
+      .maybeSingle();
+    effectiveUserRole = profile?.role || null;
+  }
+
+  const isSuperAdmin = effectiveUserRole?.toLowerCase() === 'super admin' || effectiveUserRole?.toLowerCase() === 'admin';
+
   let query = (supabase as any).from('crm_deals').select('*');
 
-  if (filter.isSalesRep && filter.userId) {
-    query = query.eq('owner_id', filter.userId);
+  if (!isSuperAdmin && effectiveUserId) {
+    query = query.or(`created_by.eq.${effectiveUserId},owner_id.eq.${effectiveUserId}`);
   }
 
   const { data, error } = await query.order('created_at', { ascending: false });

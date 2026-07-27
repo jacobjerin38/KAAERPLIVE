@@ -10,7 +10,7 @@ interface OpportunitiesViewProps {
 }
 
 export default function OpportunitiesView({ companyId, onConvert }: OpportunitiesViewProps) {
-    const { user } = useAuth();
+    const { user, userRole } = useAuth();
     const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
     const [stages, setStages] = useState<Stage[]>([]);
     const [customers, setCustomers] = useState<Customer[]>([]);
@@ -25,14 +25,14 @@ export default function OpportunitiesView({ companyId, onConvert }: Opportunitie
 
     useEffect(() => {
         loadData();
-    }, []);
+    }, [user, userRole]);
 
     const loadData = async () => {
         setLoading(true);
         const [oppsData, stagesData, custData] = await Promise.all([
-            getOpportunities(),
+            getOpportunities(user?.id, userRole),
             getStages(),
-            getCustomers()
+            getCustomers(user?.id, userRole)
         ]);
         setOpportunities(oppsData);
         setStages(stagesData);
@@ -58,6 +58,7 @@ export default function OpportunitiesView({ companyId, onConvert }: Opportunitie
                 ...payload,
                 status: 'Open',
                 owner_id: user?.id,
+                created_by: user?.id,
                 company_id: companyId
             });
         }

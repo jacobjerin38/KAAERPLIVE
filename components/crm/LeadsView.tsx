@@ -10,7 +10,7 @@ interface LeadsViewProps {
 }
 
 export default function LeadsView({ companyId, onConvert }: LeadsViewProps) {
-    const { user } = useAuth();
+    const { user, userRole } = useAuth();
     const [leads, setLeads] = useState<Lead[]>([]);
     const [showModal, setShowModal] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -19,11 +19,11 @@ export default function LeadsView({ companyId, onConvert }: LeadsViewProps) {
 
     useEffect(() => {
         loadLeads();
-    }, []);
+    }, [user, userRole]);
 
     const loadLeads = async () => {
         setLoading(true);
-        const data = await getLeads();
+        const data = await getLeads(user?.id, userRole);
         setLeads(data);
         setLoading(false);
     };
@@ -41,6 +41,7 @@ export default function LeadsView({ companyId, onConvert }: LeadsViewProps) {
                 ...activeLead,
                 status: 'New',
                 lead_owner_id: user?.id,
+                created_by: user?.id,
                 company_id: companyId
             });
         }

@@ -50,7 +50,7 @@ const ScheduleView = () => (
 );
 
 export const CRM: React.FC = () => {
-    const { user, signOut, hasPermission, currentCompanyId } = useAuth();
+    const { user, userRole, signOut, hasPermission, currentCompanyId } = useAuth();
     const [activeTab, setActiveTab] = useState<CRMViewMode>('DASHBOARD');
     const [stats, setStats] = useState<CRMStats | null>(null);
     const [deals, setDeals] = useState<Deal[]>([]);
@@ -96,11 +96,17 @@ export const CRM: React.FC = () => {
             fetchCRMData(currentCompanyId);
         };
         init();
-    }, [user, currentCompanyId]);
+    }, [user, userRole, currentCompanyId]);
 
     const fetchCRMData = async (companyId: string) => {
         setLoading(true);
         try {
+            const isSuperAdmin = userRole?.toLowerCase() === 'super admin' || userRole?.toLowerCase() === 'admin';
+            let dealsQuery = (supabase as any).from('crm_deals').select('*').eq('company_id', companyId);
+            if (!isSuperAdmin && user?.id) {
+                dealsQuery = dealsQuery.or(`created_by.eq.${user.id},owner_id.eq.${user.id}`);
+            }
+
             // Parallel Fetch
             const [
                 { data: dealsData },
@@ -108,7 +114,7 @@ export const CRM: React.FC = () => {
                 { data: tasksData },
                 { data: documentsData }
             ] = await Promise.all([
-                (supabase as any).from('crm_deals').select('*').eq('company_id', companyId),
+                dealsQuery,
                 (supabase as any).from('crm_contacts').select('*').eq('company_id', companyId),
                 (supabase as any).from('crm_tasks').select('*').eq('company_id', companyId),
                 (supabase as any).from('crm_documents').select('*').eq('company_id', companyId)
@@ -144,7 +150,8 @@ export const CRM: React.FC = () => {
             ...newContact,
             company_id: companyId,
             status: 'Active',
-            owner_id: currentEmployee?.id // Correct owner assignment?
+            owner_id: currentEmployee?.id,
+            created_by: user?.id
         }]);
         if (!error) {
             setShowContactModal(false);

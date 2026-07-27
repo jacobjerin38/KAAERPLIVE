@@ -82,6 +82,7 @@ export interface CRMLead {
   converted_customer_id?: string;
   qualification_notes?: string;
 
+  created_by?: string;
   created_at: string;
 }
 
@@ -106,6 +107,7 @@ export interface CRMCustomer {
   industry?: string;
   tax_id?: string;
   owner_id?: string;
+  created_by?: string;
   status: 'Active' | 'Inactive';
   created_at: string;
 }
@@ -133,6 +135,7 @@ export interface CRMOpportunity {
   amount: number;
 
   owner_id?: string;
+  created_by?: string;
   created_at: string;
 }
 
