@@ -301,114 +301,23 @@ The project utilizes Supabase **RPC (Remote Procedure Calls)** for complex logic
 
 ## 10. Changelog & Recent Updates
 
-### v2.3 — Navigation Restructuring & Portal Activation (Jun 13, 2026)
-Restructured monolithic HRMS navigation into four dedicated top-level modules, activated Help Desk, Marketing, and Sales portals, and upgraded logo styling.
+### v2.5 — Startup Speed & Performance Optimization (Jul 29, 2026)
+Optimized application load times and startup network concurrency while preserving full state and data integrity.
 
 | Area | File(s) | Change |
 |:---|:---|:---|
-| **HRMS Restructure** | `App.tsx`, `Dashboard.tsx`, `Sidebar.tsx`, `constants.tsx` | Split monolithic HRMS module into four dedicated modules: Employees, Attendance, Leave, and Payroll with dynamic compatibility redirects |
-| **Sales Portal** | `App.tsx`, `Dashboard.tsx`, `SalesOrders.tsx` | Enabled Sales Orders portal; added a live dashboard card tracking sales volume; mapped `/sales` directly to `ProcurementSalesDashboard` (with sales tab active) |
-| **Help Desk** | `HelpDeskHub.tsx` [NEW], `App.tsx`, `Dashboard.tsx` | Created a dedicated `/help_desk` route and container displaying real-time ticket counts and loading `HelpDeskModule` |
-| **Marketing Portal** | `MarketingHub.tsx` [NEW], `App.tsx`, `Dashboard.tsx` | Mapped `/marketing` to a premium marketing dashboard with active campaigns status, conversion metrics, and leads management |
-| **Premium Logo Badge** | Multiple | Wrapped KAA logo inside a styled white rounded app-icon container with subtle borders and shadows to eliminate raw box while preserving brand colors |
-| **Global Search** | `GlobalSearchModal.tsx` | Added Employees, Attendance, Leave, Payroll, Sales, Help Desk, and Marketing routes to Command Center search |
+| **On-Demand Module Mounting** | `App.tsx` | Implemented `visitedPaths` tracking; keep-alive modules mount on demand when first visited, reducing startup network calls from 30+ to 5 |
+| **Dashboard Startup Speed** | `App.tsx`, `Dashboard.tsx` | Resolved initial loader screen stall ("Preparing your KAA experience...") for near-instant site access |
+| **Keep-Alive State Persistence** | `App.tsx` | Preserved 100% of component state and memory persistence for visited modules |
 
-### v2.2 — Advanced Accounting Enterprise Upgrades (Apr 21, 2026)
-Enterprise-grade financial controls and reporting capabilities.
+### v2.4 — Enterprise Enhancements & Leave Balances (Jul 2026)
+Master data seeding and database column optimizations.
 
 | Area | File(s) | Change |
 |:---|:---|:---|
-| **Trial Balance** | `FinancialReports.tsx` | New report tab calling `rpc_get_trial_balance` — shows all accounts with Debit/Credit columns and totals verification |
-| **Aging Reports** | `FinancialReports.tsx` | New Aging Report tab with `rpc_get_partner_aging` — Receivables and Payables bucketed into Current, 1-30, 31-60, 61-90, 90+ day columns |
-| **Cash Book** | `CashBook.tsx` [NEW] | Dedicated Cash Book component with date-range filter calling `rpc_get_cash_book` — shows Cash In/Out and running balance |
-| **Credit Limits** | `Partners.tsx`, `Invoices.tsx` | `credit_limit` field on `accounting_partners`; invoice creation warns/blocks when limit exceeded |
-| **Bill Approvals** | `Bills.tsx` | Vendor bills now route through multi-stage `WorkflowEngine` approval before posting |
-| **Payroll WPS** | `PayrollDashboard.tsx` | WPS Export (Qatar format) CSV generation with Employee QID, Visa, Bank details |
-| **Payroll Settlement** | `PayrollDashboard.tsx` | Full & Final Settlement modal — Notice Pay, Leave Encashment, Gratuity, Loan Recovery |
-| **DB Migration** | `accounting_enterprise_upgrades.sql` | Schema for credit limits, bill approval fields, Trial Balance/Aging/Cash Book RPCs |
-
-### v2.1 — Enterprise HRMS Phase 1 (Apr 20, 2026)
-Biometric integration, workflow-driven leave approvals, and payroll enhancements.
-
-| Area | File(s) | Change |
-|:---|:---|:---|
-| **Biometric Integration** | `device-sync/index.ts` [NEW] | Supabase Edge Function webhook for ZKTeco-style biometric devices — API key auth, auto punch IN/OUT with duration calc |
-| **Biometric Settings** | `SettingsModule.tsx` | Device Integration Hub UI — webhook endpoint display, API key generation, enable/disable toggle |
-| **Leave Approvals** | `ESSP.tsx`, `WorkflowEngine.ts` | Leave requests now route through unified `WorkflowEngine` with multi-step approval and audit logging |
-| **Attendance Sub-tabs** | `AttendanceModule.tsx` | 5 sub-tabs: Overview, Daily, Monthly, Shifts, Duty Roster |
-| **ESSP AI Assistant** | `ESSP.tsx` | "Super Agent" chat interface for leave/salary/career queries |
-| **ESSP Skills & Growth** | `ESSP.tsx` | Skills dashboard with gap analysis, readiness score, and Career Timeline |
-| **DB Migration** | `phase21_enterprise_hrms_upgrades.sql` | Schema for workflow instances, action logs, biometric settings, attendance periods |
-
-### v2.0 — Go-Live Stabilization (Mar-Apr 2026)
-Critical fixes and feature completions for production deployment.
-
-| Area | File(s) | Change |
-|:---|:---|:---|
-| **5 Critical Fixes** | Multiple | Fixed biometric RLS policies, resolved report builder duplication in attendance, implemented inventory reports tab, configured leave policy settings CRUD, updated system currency to QAR |
-| **Attendance Overhaul** | `AttendanceModule.tsx` | Complete rewrite with 3→5 sub-tabs, monthly calendar view, missed punch requests, configurable off-days (company → shift → roster hierarchy) |
-| **Configurable Off-Days** | `AttendanceModule.tsx`, `SettingsModule.tsx` | `default_weekly_off_days` on `org_attendance_settings`, `weekly_off_days` on `org_shift_timings` — replaces hardcoded Fri/Sat weekends |
-| **Device Integration Hub** | `SettingsModule.tsx` | Camera barcode scanning (WebRTC + BarcodeDetector API) for Inventory, biometric webhook configuration |
-| **Warehouse Customization** | Inventory module | 11 warehouse customization features including zone/bin management enhancements |
-| **Vercel Analytics** | `App.tsx` | Vercel Web Analytics integration for production monitoring |
-| **QAR Currency** | CRM, Inventory, Dashboards | Replaced KSA/INR/KES with QAR across all modules |
-
-### v1.5 — Employee & Infrastructure Hardening (Feb-Mar 2026)
-Production hardening, employee profile expansion, and infrastructure stabilization.
-
-| Area | File(s) | Change |
-|:---|:---|:---|
-| **Employee Profiles** | `EmployeeFormModal.tsx`, `EmployeeDetailModal.tsx` | Added DoB, Age (auto-calc), nationality (from `org_nationalities` dropdown), memo, remarks, air ticket, position column |
-| **Immigration Tab** | `EmployeeFormModal.tsx` | New tab for visa/passport/Hamad Card details with `user_permissions` migration |
-| **Documents Tab** | `EmployeeDocuments.tsx` | Now fetches from DB with view/download and dark mode support |
-| **ESSPContext** | `ESSPContext.tsx` [NEW] | Dedicated context resolving employee profile, manager, and role flags from auth user |
-| **Branded Login** | `Login.tsx` | ERP-style splash screen with client logo, 3-second loading animation |
-| **Keep-Alive** | `App.tsx` | Session persistence with Super Admin role wildcard logic |
-| **User Creation** | `Organisation.tsx` | Secure RPCs for user creation, permission matrix in Org users modal |
-| **RLS Audit** | Multiple SQL files | Fixed `company_id` synchronization across all insert operations, recursive RLS policy fix |
-| **Production Hardening** | Multiple | 100% stability audit, data isolation fixes in HRMS/Dashboard, branding verification |
-
-### v1.4 — Hardcoded Values Audit (Feb 12, 2026)
-A full codebase audit to eliminate hardcoded values and ensure data dynamism.
-
-| Area | File | Change |
-|:---|:---|:---|
-| **Leave Balance** | `ESSP.tsx` | Replaced hardcoded `defaultBalance = 22` with dynamic sum from `org_leave_types` master table |
-| **Leave Types** | `ESSP.tsx` | Leave type dropdown now loads dynamically from `org_leave_types`; falls back to defaults only if none configured |
-| **Currency (Payroll)** | `PayrollDashboard.tsx` | Currency fetched from `companies.currency` instead of hardcoded `'USD'` |
-| **Currency (Reports)** | `FinancialReports.tsx` | Same dynamic currency fetch with `'USD'` fallback |
-| **Company Defaults** | `Organisation.tsx` | Removed hardcoded `'KES'`/`'Kenya'` fallback — new companies start with empty settings |
-| **CRM Dashboard** | `CRM.tsx` | Metrics (`$267K`, `42%`, `14`, `18 Days`) now computed from actual `deals[]` state |
-| **CRM Pipeline** | `CRM.tsx` | Funnel chart computed dynamically from `stages[]` + `deals[]` |
-| **CRM Task Board** | `CRM.tsx` | Uses `taskStatuses[]` state instead of hardcoded `'To Do'/'In Progress'/'Done'` |
-| **CRM Schedule** | `CRM.tsx` | Replaced fake events (`'Skyline Inc.'`, `'Sarah Connor'`) with proper empty state |
-| **CRM Workflows** | `CRM.tsx` | Replaced static workflow cards with empty state |
-| **CRM Updates** | `CRM.tsx` | Replaced fake activity feed with empty state |
-| **CRM Documents** | `CRM.tsx` | Replaced fake document list with empty state |
-
-### v1.3 — Multi-Module Bug Fixes (Feb 12, 2026)
-Critical fixes across ESSP and Organisation modules.
-
-| Area | File | Change |
-|:---|:---|:---|
-| **Leave Bug (Critical)** | `ESSP.tsx` | Fixed table mismatch: dashboard now queries `leaves` instead of `leave_applications` |
-| **MyProfile** | `ESSP.tsx` | Replaced hardcoded profile values with actual `employeeProfile` data |
-| **User Creation** | `Organisation.tsx` | Replaced `alert('coming soon')` with actual `supabase.auth.signUp()` + profile creation |
-| **Reports Tab** | `ESSP.tsx` | Added `ReportsListView` import and `REPORTS` tab to ESSP sidebar |
-| **Workflow Deletion** | `Organisation.tsx` | Added `handleDeleteWorkflow` with cascade deletion of levels |
-| **User Deletion** | `Organisation.tsx` | Added `handleDeleteUser` with safety check against self-deletion |
-| **RESIGNATION Trigger** | `Organisation.tsx` | Added `RESIGNATION` and `DOCUMENT_APPROVAL` to workflow trigger types |
-| **Leave Error Handling** | `ESSP.tsx` | Added try/catch with user-friendly error messages for leave submission |
-
-### v1.2 — Password Management (Feb 10-11, 2026)
-- Admin Reset Password feature for administrators/HR to reset employee passwords to default
-- Change Password feature for employees via top-right menu
-
-### v1.1 — System Review & Security (Feb 8-9, 2026)
-- Comprehensive RLS policy audit across all tables
-- Gemini AI Edge Function authentication fix
-- Employee UUID type mismatch fix
-- Supabase 406 error fixes (unsafe `.single()` calls)
+| **Leave Type Master Seeding** | DB Migration | Seeded master leave types directly from Excel specification |
+| **Leave Balances Schema Fix** | DB Migration | Fixed `employee_leave_balances` column types for `leave_type_id` compatibility |
+| **Enterprise Schema Upgrades** | DB Migration | Schema additions for enterprise workflow and audit enhancements |
 
 ---
-*Last Updated: April 25, 2026 — Generated by KAA ERP Documentation Agent*
+*Last Updated: July 29, 2026 — Generated by KAA ERP Documentation Agent*
