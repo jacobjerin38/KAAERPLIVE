@@ -46,6 +46,19 @@ const AppContent: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
+  const [visitedPaths, setVisitedPaths] = useState<Set<string>>(() => new Set([location.pathname]));
+
+  useEffect(() => {
+    if (location.pathname) {
+      setVisitedPaths(prev => {
+        if (prev.has(location.pathname)) return prev;
+        const next = new Set(prev);
+        next.add(location.pathname);
+        return next;
+      });
+    }
+  }, [location.pathname]);
+
   // Initial Theme Check
   useEffect(() => {
     if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
@@ -189,6 +202,9 @@ const AppContent: React.FC = () => {
           style={{ display: KEEPALIVE_MODULES.some(m => m.path === location.pathname) ? 'block' : 'none' }}
         >
           {KEEPALIVE_MODULES.map((module) => {
+            const isVisited = visitedPaths.has(module.path);
+            if (!isVisited) return null;
+
             const requiredPerm = getModulePermission(module.path);
             const hasAccess = !requiredPerm || hasPermission(requiredPerm) || hasPermission('*');
 
