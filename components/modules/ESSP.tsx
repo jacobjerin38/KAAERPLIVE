@@ -317,9 +317,11 @@ export const ESSP: React.FC = () => {
     const getCurrentLocationCoords = (): Promise<{ lat: number; lng: number } | null> => {
         return new Promise((resolve) => {
             if (!navigator.geolocation) {
+                alert("Geolocation is not supported by your browser or environment.");
                 resolve(null);
                 return;
             }
+            // First attempt with high accuracy
             navigator.geolocation.getCurrentPosition(
                 (position) => {
                     resolve({
@@ -327,7 +329,34 @@ export const ESSP: React.FC = () => {
                         lng: position.coords.longitude
                     });
                 },
-                () => resolve(null),
+                (error) => {
+                    console.warn("High accuracy geolocation failed, trying fallback:", error);
+                    // Fallback attempt without high accuracy (faster / less strict on devices)
+                    navigator.geolocation.getCurrentPosition(
+                        (fallbackPos) => {
+                            resolve({
+                                lat: fallbackPos.coords.latitude,
+                                lng: fallbackPos.coords.longitude
+                            });
+                        },
+                        (fallbackError) => {
+                            console.error("Geolocation failed completely:", fallbackError);
+                            let msg = "Could not retrieve your location. ";
+                            if (fallbackError.code === fallbackError.PERMISSION_DENIED) {
+                                msg += "Location permission was denied. Please allow location access in your browser settings.";
+                            } else if (fallbackError.code === fallbackError.POSITION_UNAVAILABLE) {
+                                msg += "Position unavailable. Please ensure GPS/Location service is turned on.";
+                            } else if (fallbackError.code === fallbackError.TIMEOUT) {
+                                msg += "Location request timed out. Please try again.";
+                            } else {
+                                msg += fallbackError.message || "Please check your location settings.";
+                            }
+                            alert(msg);
+                            resolve(null);
+                        },
+                        { timeout: 15000, enableHighAccuracy: false }
+                    );
+                },
                 { timeout: 10000, enableHighAccuracy: true }
             );
         });
@@ -346,35 +375,38 @@ export const ESSP: React.FC = () => {
     };
 
     const handlePunch = async () => {
-        if (!currentEmployee) return;
-        setPunchLoading(true);
-
-        // 1. Fetch current employee config
-        const { data: empRecord } = await (supabase as any)
-            .from('employees')
-            .select('punch_mode, gps_punch_enabled, geo_latitude, geo_longitude, geofence_radius_meters')
-            .eq('id', currentEmployee.id)
-            .maybeSingle();
-
-        const punchMode = empRecord?.punch_mode || (currentEmployee as any).punch_mode || 'BOTH';
-        const gpsEnabled = empRecord?.gps_punch_enabled ?? (currentEmployee as any).gps_punch_enabled ?? true;
-
-        // Validation 1: Punch Mode check
-        if (punchMode === 'DEVICE') {
-            alert("You are configured for Biometric Device punch only. Web punch is disabled.");
-            setPunchLoading(false);
+        if (!currentEmployee) {
+            alert("Employee profile not loaded yet. Please wait a moment or refresh.");
             return;
         }
+        setPunchLoading(true);
 
-        // Validation 2: GPS check
-        let coords: { lat: number; lng: number } | null = null;
-        if (gpsEnabled !== false) {
-            coords = await getCurrentLocationCoords();
-            if (!coords) {
-                alert("Location access is required for GPS punch. Please enable location services.");
+        try {
+            // 1. Fetch current employee config
+            const { data: empRecord } = await (supabase as any)
+                .from('employees')
+                .select('punch_mode, gps_punch_enabled, geo_latitude, geo_longitude, geofence_radius_meters')
+                .eq('id', currentEmployee.id)
+                .maybeSingle();
+
+            const punchMode = empRecord?.punch_mode || (currentEmployee as any).punch_mode || 'BOTH';
+            const gpsEnabled = empRecord?.gps_punch_enabled ?? (currentEmployee as any).gps_punch_enabled ?? true;
+
+            // Validation 1: Punch Mode check
+            if (punchMode === 'DEVICE') {
+                alert("You are configured for Biometric Device punch only. Web punch is disabled.");
                 setPunchLoading(false);
                 return;
             }
+
+            // Validation 2: GPS check
+            let coords: { lat: number; lng: number } | null = null;
+            if (gpsEnabled !== false) {
+                coords = await getCurrentLocationCoords();
+                if (!coords) {
+                    setPunchLoading(false);
+                    return;
+                }
 
             // Fetch employee's mapped locations
             const { data: mappedLocs } = await (supabase as any)
@@ -478,7 +510,12 @@ export const ESSP: React.FC = () => {
         }
 
         refreshDashboard(currentEmployee.id, currentEmployee.company_id);
-        setPunchLoading(false);
+        } catch (err: any) {
+            console.error("Punch execution error:", err);
+            alert("An unexpected error occurred while processing punch: " + (err.message || String(err)));
+        } finally {
+            setPunchLoading(false);
+        }
     };
 
     const performPunchOut = async (
