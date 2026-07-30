@@ -46,18 +46,19 @@ const AppContent: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const [visitedPaths, setVisitedPaths] = useState<Set<string>>(() => new Set([location.pathname]));
+  const normalizedPath = (location.pathname === '/dashboard' || location.pathname === '') ? '/' : location.pathname;
+  const [visitedPaths, setVisitedPaths] = useState<Set<string>>(() => new Set([normalizedPath]));
 
   useEffect(() => {
-    if (location.pathname) {
+    if (normalizedPath) {
       setVisitedPaths(prev => {
-        if (prev.has(location.pathname)) return prev;
+        if (prev.has(normalizedPath)) return prev;
         const next = new Set(prev);
-        next.add(location.pathname);
+        next.add(normalizedPath);
         return next;
       });
     }
-  }, [location.pathname]);
+  }, [normalizedPath]);
 
   // Initial Theme Check
   useEffect(() => {
@@ -99,7 +100,7 @@ const AppContent: React.FC = () => {
 
   // Determine current view for header
   const getCurrentView = (): AppView => {
-    const path = location.pathname.substring(1).toLowerCase();
+    const path = normalizedPath.substring(1).toLowerCase();
     if (path === '' || path === 'dashboard') return AppView.DASHBOARD;
     if (path === 'employees') return AppView.EMPLOYEES;
     if (path === 'attendance') return AppView.ATTENDANCE;
@@ -187,7 +188,7 @@ const AppContent: React.FC = () => {
       {!initialDataLoaded && <FullScreenLoader />}
       <GlobalHeader currentView={getCurrentView()} />
       <main className="flex-1 overflow-hidden relative">
-        {location.pathname !== '/' && location.pathname !== '/essp' && (
+        {normalizedPath !== '/' && normalizedPath !== '/essp' && (
           <button
             onClick={() => navigate('/')}
             className="absolute top-4 left-4 z-40 p-2 bg-white/50 dark:bg-black/50 backdrop-blur-md rounded-full hover:bg-white dark:hover:bg-zinc-800 transition-all shadow-sm border border-white/20"
@@ -199,7 +200,7 @@ const AppContent: React.FC = () => {
         {/* Keep-Alive Modules Container */}
         <div 
           className="w-full h-full relative"
-          style={{ display: KEEPALIVE_MODULES.some(m => m.path === location.pathname) ? 'block' : 'none' }}
+          style={{ display: KEEPALIVE_MODULES.some(m => m.path === normalizedPath) ? 'block' : 'none' }}
         >
           {KEEPALIVE_MODULES.map((module) => {
             const isVisited = visitedPaths.has(module.path);
@@ -213,8 +214,8 @@ const AppContent: React.FC = () => {
                 key={module.id}
                 className="absolute inset-0 w-full h-full overflow-auto"
                 style={{ 
-                  display: location.pathname === module.path ? 'block' : 'none',
-                  visibility: location.pathname === module.path ? 'visible' : 'hidden' 
+                  display: normalizedPath === module.path ? 'block' : 'none',
+                  visibility: normalizedPath === module.path ? 'visible' : 'hidden' 
                 }}
               >
                 {hasAccess ? (
