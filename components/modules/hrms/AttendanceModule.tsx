@@ -1924,7 +1924,8 @@ export const LocationMappingTab: React.FC<{ employees: Employee[]; companyId: st
             location_name: locModalName.trim(),
             latitude: lat,
             longitude: lng,
-            radius_meters: radius
+            radius_meters: radius,
+            geofence_radius_meters: radius
         };
 
         if (editingLocId) {
