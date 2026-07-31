@@ -1913,10 +1913,24 @@ export const LocationMappingTab: React.FC<{ employees: Employee[]; companyId: st
             return;
         }
 
-        setLocSaving(true);
         const lat = parseFloat(locModalLat);
         const lng = parseFloat(locModalLng);
         const radius = parseInt(locModalRadius) || 500;
+
+        if (isNaN(lat) || lat < -90 || lat > 90) {
+            alert('Latitude must be a valid number between -90 and 90.');
+            return;
+        }
+        if (isNaN(lng) || lng < -180 || lng > 180) {
+            alert('Longitude must be a valid number between -180 and 180.');
+            return;
+        }
+        if (isNaN(radius) || radius <= 0) {
+            alert('Geofence radius must be a positive number in meters (default 500).');
+            return;
+        }
+
+        setLocSaving(true);
 
         const payload = {
             company_id: companyId,

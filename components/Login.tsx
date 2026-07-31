@@ -95,10 +95,13 @@ export const Login: React.FC = () => {
                 });
                 if (error) throw error;
 
-                // Show branded splash for 3 seconds
+                // Brief smooth splash transition
                 setShowSplash(true);
                 setProgress(0);
-                return; // Let the splash handle the rest
+                setTimeout(() => {
+                    setShowSplash(false);
+                }, 300);
+                return;
             }
         } catch (err: any) {
             console.error("Auth Error:", err);
@@ -107,8 +110,6 @@ export const Login: React.FC = () => {
                 msg = "Invalid email or password. If you haven't created an account yet, switch to 'Register Company'.";
             }
             setError(msg);
-
-            // Add shake animation logic here if ref was used, but simple error state is fine for now
         } finally {
             setIsLoading(false);
         }
@@ -121,9 +122,9 @@ export const Login: React.FC = () => {
         const interval = setInterval(() => {
             setProgress(p => {
                 if (p >= 100) { clearInterval(interval); return 100; }
-                return p + (100 / 30);
+                return p + 25;
             });
-        }, 100);
+        }, 50);
         return () => clearInterval(interval);
     }, [showSplash]);
 

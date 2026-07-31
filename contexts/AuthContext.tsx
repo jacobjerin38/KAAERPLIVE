@@ -166,36 +166,23 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setCurrentCompanyId(companyId);
         localStorage.setItem('app.current_company', companyId);
 
-        // Re-fetch role for the selected company context
-        if (user) {
-            await fetchUserRoleAndPermissions(user.id);
-        }
-
-        // 1. Update Profile in DB (Source of Truth for RLS Fallback)
-        if (user) {
-            await supabase.from('profiles').update({ company_id: companyId }).eq('id', user.id);
-        }
-
-        // 2. Update Supabase Global Headers (Optimization for RLS)
+        // Update Supabase Global Headers (Optimization for RLS)
         // @ts-ignore
         if (supabase.rest) supabase.rest.headers['x-company-id'] = companyId;
 
-        // 3. Force token refresh to ensure claims (if using custom claims later) are updated
-        await supabase.auth.refreshSession();
-
-        // 4. Log LOGIN activity
         if (user) {
-            try {
-                await supabase.from('activity_logs' as any).insert({
-                    company_id: companyId,
-                    user_id: user.id,
-                    user_email: user.email,
-                    action: 'LOGIN',
-                    description: `User session activated: ${user.email}`
-                });
-            } catch (err) {
-                console.error('Failed to log login activity:', err);
-            }
+            // Re-fetch permissions for selected company
+            fetchUserRoleAndPermissions(user.id);
+
+            // Update Profile & Log activity asynchronously
+            supabase.from('profiles').update({ company_id: companyId }).eq('id', user.id).catch(err => console.error(err));
+            supabase.from('activity_logs' as any).insert({
+                company_id: companyId,
+                user_id: user.id,
+                user_email: user.email,
+                action: 'LOGIN',
+                description: `User session activated: ${user.email}`
+            }).catch(err => console.error(err));
         }
     };
 
