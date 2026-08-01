@@ -1125,6 +1125,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                                             <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Geofence Radius (Meters)</label>
                                             <input
                                                 type="number"
+                                                step="any"
                                                 name="geofence_radius_meters"
                                                 placeholder="500"
                                                 value={formData.geofence_radius_meters}

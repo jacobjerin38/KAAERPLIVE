@@ -12,7 +12,7 @@ const GlobalLoadingContext = createContext<GlobalLoadingContextType | undefined>
 
 export const GlobalLoadingProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [isGlobalLoading, setIsGlobalLoading] = useState(false);
-    const [initialDataLoaded, setInitialDataLoaded] = useState(false);
+    const [initialDataLoaded, setInitialDataLoaded] = useState(true);
 
     const showLoader = () => setIsGlobalLoading(true);
     const hideLoader = () => setIsGlobalLoading(false);

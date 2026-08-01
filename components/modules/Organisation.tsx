@@ -1175,6 +1175,7 @@ const GenericMasterModal = ({ config, item, onClose, onRefresh }: { config: Mast
                         ) : (
                             <input
                                 type={field.type}
+                                step={field.type === 'number' ? 'any' : undefined}
                                 name={field.key}
                                 defaultValue={item?.[field.key]}
                                 required={field.required}

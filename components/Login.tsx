@@ -84,16 +84,56 @@ export const Login: React.FC = () => {
 
             } else {
                 // Sign In
-                let loginEmail = email.trim();
-                if (!loginEmail.includes('@')) {
-                    loginEmail = `${loginEmail}@kaa.com`;
+                let inputRaw = email.trim().toLowerCase();
+                let targetEmails: string[] = [inputRaw];
+
+                if (!inputRaw.includes('@')) {
+                    targetEmails.push(`${inputRaw}@kaa.com`);
                 }
 
-                const { error } = await supabase.auth.signInWithPassword({
-                    email: loginEmail,
-                    password,
-                });
-                if (error) throw error;
+                // Look up employee record by employee_code or email prefix for domain typo resilience
+                const emailPrefix = inputRaw.split('@')[0];
+                try {
+                    const { data: empMatches } = await supabase
+                        .from('employees')
+                        .select('work_email, email')
+                        .or(`employee_code.ilike.${emailPrefix},email.ilike.${emailPrefix}%,work_email.ilike.${emailPrefix}%`)
+                        .limit(3);
+
+                    if (empMatches && empMatches.length > 0) {
+                        empMatches.forEach((e: any) => {
+                            if (e.work_email && !targetEmails.includes(e.work_email.toLowerCase())) {
+                                targetEmails.push(e.work_email.toLowerCase());
+                            }
+                            if (e.email && !targetEmails.includes(e.email.toLowerCase())) {
+                                targetEmails.push(e.email.toLowerCase());
+                            }
+                        });
+                    }
+                } catch (e) {
+                    // Fallback to direct auth if employee lookup fails
+                }
+
+                let authError: any = null;
+                let loginSuccess = false;
+
+                for (const candidateEmail of targetEmails) {
+                    const { error } = await supabase.auth.signInWithPassword({
+                        email: candidateEmail,
+                        password,
+                    });
+                    if (!error) {
+                        loginSuccess = true;
+                        authError = null;
+                        break;
+                    } else {
+                        authError = error;
+                    }
+                }
+
+                if (!loginSuccess && authError) {
+                    throw authError;
+                }
 
                 // Brief smooth splash transition
                 setShowSplash(true);
@@ -107,7 +147,7 @@ export const Login: React.FC = () => {
             console.error("Auth Error:", err);
             let msg = err.message || 'Authentication failed';
             if (msg.includes("Invalid login credentials")) {
-                msg = "Invalid email or password. If you haven't created an account yet, switch to 'Register Company'.";
+                msg = "Invalid email or password. Please check your credentials or contact your administrator.";
             }
             setError(msg);
         } finally {
