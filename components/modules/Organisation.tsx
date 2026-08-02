@@ -828,9 +828,10 @@ export const MASTER_CONFIG: Record<string, MasterTableConfig> = {
             { key: 'start_time', label: 'Start Time', type: 'time', required: true },
             { key: 'end_time', label: 'End Time', type: 'time', required: true },
             { key: 'grace_period_minutes', label: 'Grace Period (mins)', type: 'number' },
+            { key: 'break_minutes', label: 'Break Duration (mins)', type: 'number' },
             { key: 'weekly_off_days', label: 'Weekly Off Days (0=Sun,1=Mon,...6=Sat)', type: 'text', placeholder: 'e.g. 5,6 for Fri+Sat' }
         ],
-        columns: [{ key: 'name', label: 'Name' }, { key: 'start_time', label: 'Start' }, { key: 'end_time', label: 'End' }, { key: 'weekly_off_days', label: 'Off Days' }]
+        columns: [{ key: 'name', label: 'Name' }, { key: 'start_time', label: 'Start' }, { key: 'end_time', label: 'End' }, { key: 'break_minutes', label: 'Break (m)' }, { key: 'weekly_off_days', label: 'Off Days' }]
     },
     'LEAVE_TYPES': {
         tableName: 'org_leave_types',

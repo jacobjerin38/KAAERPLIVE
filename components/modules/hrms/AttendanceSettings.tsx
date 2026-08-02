@@ -7,6 +7,7 @@ interface AttendanceConfig {
     grace_minutes_late: number;
     grace_minutes_early: number;
     standard_hours: number;
+    break_minutes: number;
     ot_threshold_hours: number;
     ot_multiplier: number;
     half_day_hours: number;
@@ -19,6 +20,7 @@ export const AttendanceSettings: React.FC = () => {
         grace_minutes_late: 15,
         grace_minutes_early: 15,
         standard_hours: 8,
+        break_minutes: 60,
         ot_threshold_hours: 8,
         ot_multiplier: 1.5,
         half_day_hours: 4,
@@ -44,6 +46,7 @@ export const AttendanceSettings: React.FC = () => {
                 grace_minutes_late: data.grace_minutes_late || 15,
                 grace_minutes_early: data.grace_minutes_early || 15,
                 standard_hours: data.standard_hours || 8,
+                break_minutes: data.break_minutes ?? 60,
                 ot_threshold_hours: data.ot_threshold_hours || 8,
                 ot_multiplier: data.ot_multiplier || 1.5,
                 half_day_hours: data.half_day_hours || 4,
@@ -138,7 +141,7 @@ export const AttendanceSettings: React.FC = () => {
                 <h4 className="font-bold text-slate-700 dark:text-slate-200 mb-4 flex items-center gap-2">
                     <Clock className="w-4 h-4 text-slate-400" /> Working Hours
                 </h4>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                     <div>
                         <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Standard Hours / Day</label>
                         <input
@@ -147,6 +150,16 @@ export const AttendanceSettings: React.FC = () => {
                             onChange={e => setConfig({...config, standard_hours: Number(e.target.value)})}
                             className="w-full p-3 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
                         />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Break Duration (minutes)</label>
+                        <input
+                            type="number" step="5" min="0" max="240"
+                            value={config.break_minutes}
+                            onChange={e => setConfig({...config, break_minutes: Number(e.target.value)})}
+                            className="w-full p-3 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
+                        />
+                        <p className="text-xs text-slate-400 mt-1">Deducted from gross duration</p>
                     </div>
                     <div>
                         <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Half Day Threshold (hours)</label>
