@@ -84,27 +84,17 @@ const processingStatusBadge = (status: string) => {
 // ─── Main Component ─────────────────────────────────────────────────────
 export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ employees }) => {
     const [subTab, setSubTab] = useState<SubTab>('OVERVIEW');
-    const { user } = useAuth();
-    const [companyId, setCompanyId] = useState<string>('');
+    const [companyOffDays, setCompanyOffDays] = useState<number[]>([5, 6]);
 
     useEffect(() => {
-        const fetchCompanyId = async () => {
-            if (!user) return;
-            const { data } = await supabase.from('profiles').select('company_id').eq('id', user.id).maybeSingle();
-            if (data) setCompanyId(data.company_id);
-        };
-        fetchCompanyId();
-    }, [user]);
+        if (currentCompanyId) setCompanyId(currentCompanyId);
+    }, [currentCompanyId]);
 
-    // Fetch company-level default off days
-    const [companyOffDays, setCompanyOffDays] = useState<number[]>([5, 6]);
     useEffect(() => {
         if (!companyId) return;
         const fetchOffDays = async () => {
-            const { data } = await supabase.from('org_attendance_settings')
-                .select('default_weekly_off_days')
-                .eq('company_id', companyId)
-                .maybeSingle();
+            const { data } = await supabase.from('attendance_settings')
+                .select('default_weekly_off_days').eq('company_id', companyId).maybeSingle();
             if (data?.default_weekly_off_days) {
                 setCompanyOffDays(data.default_weekly_off_days.split(',').map(Number).filter((n: number) => !isNaN(n)));
             }
@@ -123,6 +113,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ employees })
         { id: 'DUTY_ROSTER', label: 'Duty Roster', icon: ClipboardList },
         { id: 'LOCATION_MAPPING', label: 'Location Mapping', icon: MapPin },
         { id: 'OUTDOOR_REPORT', label: 'Outdoor Report', icon: ClipboardList },
+        { id: 'SETTINGS', label: 'Settings', icon: AlertCircle },
     ];
 
     return (
@@ -131,7 +122,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ employees })
                 <div>
                     <h2 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Attendance</h2>
                     <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mt-1">
-                        Manage and monitor employee attendance
+                        Manage and monitor employee attendance, shifts & rules
                     </p>
                 </div>
                 <div className="bg-slate-100 dark:bg-zinc-800 p-1 rounded-2xl flex gap-1 overflow-x-auto">
@@ -141,7 +132,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ employees })
                             onClick={() => setSubTab(t.id)}
                             className={`px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap ${subTab === t.id
                                 ? 'bg-white dark:bg-zinc-700 text-indigo-600 dark:text-white shadow-sm'
-                                : 'text-slate-500 dark:text-slate-400 hover:text-indigo-500'
+                                : 'text-slate-500 dark:bg-zinc-800 dark:text-slate-400 hover:text-indigo-500'
                                 }`}
                         >
                             <t.icon className="w-4 h-4" /> {t.label}
@@ -158,6 +149,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ employees })
                 {subTab === 'DUTY_ROSTER' && <DutyRosterTab employees={activeEmployees} companyId={companyId} companyOffDays={companyOffDays} />}
                 {subTab === 'LOCATION_MAPPING' && <LocationMappingTab employees={activeEmployees} companyId={companyId} />}
                 {subTab === 'OUTDOOR_REPORT' && <OutdoorReportTab employees={activeEmployees} companyId={companyId} />}
+                {subTab === 'SETTINGS' && <AttendanceSettings />}
             </div>
         </div>
     );
