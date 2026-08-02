@@ -373,12 +373,14 @@ export const getDeals = async (userId?: string, userRole?: string | null): Promi
       title: opp.title || opp.name || 'Opportunity',
       value: Number(opp.amount || opp.value || 0),
       company: opp.customer?.name || opp.company || 'N/A',
+      company_id: opp.company_id || '',
+      currency: opp.currency || 'QAR',
       stage: opp.stage?.name || (opp.stage_id === '10000000-0000-0000-0000-000000000004' ? 'Won' : 'Qualification'),
       stage_id: opp.stage_id,
       owner_id: opp.owner_id,
       created_by: opp.created_by,
       created_at: opp.created_at,
-      status: opp.status || 'Open'
+      status: opp.status || 'Active'
     }));
 
     return [...oppDeals, ...legacyDealsRes];

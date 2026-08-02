@@ -208,6 +208,7 @@ export interface Employee {
   age?: number;
 
   // Extended Profile
+  ot_applicable?: boolean;
   skills?: string[];
   documents?: {
     name: string;
@@ -222,10 +223,17 @@ export interface AttendanceRecord {
   date: string;
   checkIn: string | null;
   checkOut: string | null;
+  check_in?: string | null;
+  check_out?: string | null;
   status: string; // Mapped name
   attendanceStatusId?: number;
   duration: number;
   source?: string; // 'punch' | 'manual' | 'missed_punch_approval' | 'bulk_import'
+  is_late?: boolean;
+  late_minutes?: number;
+  is_early_leaving?: boolean;
+  early_minutes?: number;
+  ot_hours?: number;
   edited_by?: string;
   edited_at?: string;
   edit_reason?: string;

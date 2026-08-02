@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Clock, Calendar, Fingerprint, Plus, SwitchCamera, Save, Trash2, Key, Wallet } from 'lucide-react';
+import { Settings, Clock, Calendar, Fingerprint, Plus, SwitchCamera, Save, Trash2, Key, Wallet, Shield } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
 import { HolidayCalendar } from './HolidayCalendar';

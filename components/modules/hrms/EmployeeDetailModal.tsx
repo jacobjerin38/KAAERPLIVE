@@ -340,9 +340,16 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
                         <img src={emp.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(emp.name)}&background=random`} className="w-32 h-32 rounded-full border-[6px] border-white dark:border-zinc-800 shadow-xl relative z-10 object-cover" alt="" />
                     </div>
                     <h2 className="text-xl font-bold text-slate-800 dark:text-white text-center tracking-tight mb-1">{emp.name}</h2>
-                    <p className="text-slate-500 dark:text-slate-400 text-sm text-center mb-8 font-medium">
+                    <p className="text-slate-500 dark:text-slate-400 text-sm text-center mb-2 font-medium">
                         {roles.find(r => r.id === emp.role_id)?.name || emp.role || 'No Role'}
                     </p>
+                    <div className="flex justify-center mb-6">
+                        {(emp as any).ot_applicable !== false ? (
+                            <span className="px-2 py-1 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 rounded-lg text-[10px] font-bold uppercase tracking-wide">OT Applicable</span>
+                        ) : (
+                            <span className="px-2 py-1 bg-slate-100 text-slate-500 dark:bg-zinc-800 dark:text-slate-400 rounded-lg text-[10px] font-bold uppercase tracking-wide">No OT</span>
+                        )}
+                    </div>
                     <div className="w-full space-y-3">
                         {[
                             { id: 'PROFILE', label: 'Overview', icon: Users },
@@ -514,6 +521,7 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
                                 <ViewField label="Bank Name" value={emp.bank_name || '-'} />
                                 <ViewField label="Account Number" value={emp.account_number || '-'} />
                                 <ViewField label="IFSC Code" value={emp.ifsc_code || '-'} />
+                                <ViewField label="OT Applicable" value={(emp as any).ot_applicable !== false ? 'Yes' : 'No'} />
                             </div>
 
                             <hr className="border-slate-100 dark:border-zinc-800 my-6" />

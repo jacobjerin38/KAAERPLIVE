@@ -512,9 +512,14 @@ export const PayrollDashboard: React.FC = () => {
                                     <div className="space-y-3">
                                         <div className="flex justify-between text-sm">
                                             <span className="text-slate-600 dark:text-slate-300">Basic Salary</span>
-                                            <span className="font-mono font-bold">{formatCurrency(selectedPayslip.base_salary)}</span>
+                                            <span className="font-mono font-bold">{formatCurrency(selectedPayslip.base_salary || (selectedPayslip as any).basic_salary || 0)}</span>
                                         </div>
-                                        {/* Dynamic components if any in breakdown */}
+                                        {((selectedPayslip as any).ot_amount > 0) && (
+                                            <div className="flex justify-between text-sm">
+                                                <span className="text-slate-600 dark:text-slate-300">Overtime ({(selectedPayslip as any).ot_hours || 0} hrs)</span>
+                                                <span className="font-mono font-bold text-emerald-600">+{formatCurrency((selectedPayslip as any).ot_amount)}</span>
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="mt-4 pt-3 border-t border-slate-100 dark:border-zinc-800 flex justify-between font-bold text-slate-800 dark:text-white">
                                         <span>Total Earnings</span>
@@ -525,8 +530,27 @@ export const PayrollDashboard: React.FC = () => {
                                 <div>
                                     <h4 className="font-bold text-rose-600 dark:text-rose-400 mb-4 text-sm uppercase tracking-wider">Deductions</h4>
                                     <div className="space-y-3">
-                                        {/* Dynamic deductions */}
-                                        <p className="text-xs text-slate-400 italic">No deductions</p>
+                                        {((selectedPayslip as any).late_deduction > 0) && (
+                                            <div className="flex justify-between text-sm">
+                                                <span className="text-slate-600 dark:text-slate-300">Late Deductions ({(selectedPayslip as any).late_count || 0} lates)</span>
+                                                <span className="font-mono font-bold text-rose-500">-{formatCurrency((selectedPayslip as any).late_deduction)}</span>
+                                            </div>
+                                        )}
+                                        {((selectedPayslip as any).early_deduction > 0) && (
+                                            <div className="flex justify-between text-sm">
+                                                <span className="text-slate-600 dark:text-slate-300">Early Leaving ({(selectedPayslip as any).early_count || 0} times)</span>
+                                                <span className="font-mono font-bold text-rose-500">-{formatCurrency((selectedPayslip as any).early_deduction)}</span>
+                                            </div>
+                                        )}
+                                        {((selectedPayslip as any).loan_deduction > 0) && (
+                                            <div className="flex justify-between text-sm">
+                                                <span className="text-slate-600 dark:text-slate-300">Loan Repayment</span>
+                                                <span className="font-mono font-bold text-rose-500">-{formatCurrency((selectedPayslip as any).loan_deduction)}</span>
+                                            </div>
+                                        )}
+                                        {!((selectedPayslip as any).late_deduction > 0) && !((selectedPayslip as any).early_deduction > 0) && !((selectedPayslip as any).loan_deduction > 0) && (
+                                            <p className="text-xs text-slate-400 italic">No deductions</p>
+                                        )}
                                     </div>
                                     <div className="mt-4 pt-3 border-t border-slate-100 dark:border-zinc-800 flex justify-between font-bold text-slate-800 dark:text-white">
                                         <span>Total Deductions</span>

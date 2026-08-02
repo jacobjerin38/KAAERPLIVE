@@ -1595,6 +1595,7 @@ const GenericWorkflowsView = ({
                                 <option value="PRO_SERVICE_REQUEST">PRO & Govt Service Request</option>
                                 <option value="DEAL_APPROVAL">Deal Approval</option>
                                 <option value="DOCUMENT_APPROVAL">Document Approval</option>
+                                <option value="OVERTIME_REQUEST">Overtime Request</option>
                             </select>
                         </div>
                         <div>
@@ -3129,6 +3130,7 @@ export const Organisation: React.FC = () => {
                         <option value="EXPENSE_CLAIM">Expense Claim</option>
                         <option value="PRO_SERVICE_REQUEST">PRO & Govt Service Request</option>
                         <option value="DEAL_APPROVAL">New Deal Approval</option>
+                        <option value="OVERTIME_REQUEST">Overtime Request</option>
                     </select>
                 </div>
                 <button className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold">Create Workflow</button>

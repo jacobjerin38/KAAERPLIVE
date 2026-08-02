@@ -17,7 +17,12 @@ export const EditAttendanceModal: React.FC<EditAttendanceModalProps> = ({ record
         checkIn: '',
         checkOut: '',
         status: '',
-        reason: ''
+        reason: '',
+        isLate: false,
+        lateMinutes: 0,
+        isEarlyLeaving: false,
+        earlyMinutes: 0,
+        otHours: 0
     });
 
     useEffect(() => {
@@ -25,15 +30,21 @@ export const EditAttendanceModal: React.FC<EditAttendanceModalProps> = ({ record
     }, [recordId]);
 
     const fetchRecord = async () => {
-        const { data, error } = await supabase.from('attendance').select('*').eq('id', recordId).single();
+        const { data, error } = await (supabase as any).from('attendance').select('*').eq('id', recordId).single();
         if (data) {
+            const d = data as any;
             setFormData({
-                checkIn: data.check_in || '',
-                checkOut: data.check_out || '',
-                status: data.status || 'Present',
-                reason: ''
+                checkIn: d.check_in || '',
+                checkOut: d.check_out || '',
+                status: d.status || 'Present',
+                reason: '',
+                isLate: d.is_late || false,
+                lateMinutes: d.late_minutes || 0,
+                isEarlyLeaving: d.is_early_leaving || false,
+                earlyMinutes: d.early_minutes || 0,
+                otHours: d.ot_hours || 0
             });
-            setIsProcessed(data.is_processed === true);
+            setIsProcessed(d.is_processed === true);
         }
         setFetching(false);
     };
@@ -96,6 +107,25 @@ export const EditAttendanceModal: React.FC<EditAttendanceModalProps> = ({ record
                                 <p className="text-sm font-bold text-amber-700 dark:text-amber-400">This record is processed & locked</p>
                                 <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">To edit, unprocess the day first from the Daily Attendance tab.</p>
                             </div>
+                        </div>
+                    )}
+                    {(formData.isLate || formData.isEarlyLeaving || formData.otHours > 0) && (
+                        <div className="flex flex-wrap gap-2">
+                            {formData.isLate && (
+                                <span className="px-2.5 py-1 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 rounded-lg text-xs font-bold flex items-center gap-1">
+                                    Late ({formData.lateMinutes} min)
+                                </span>
+                            )}
+                            {formData.isEarlyLeaving && (
+                                <span className="px-2.5 py-1 bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400 rounded-lg text-xs font-bold flex items-center gap-1">
+                                    Early Leaving ({formData.earlyMinutes} min)
+                                </span>
+                            )}
+                            {formData.otHours > 0 && (
+                                <span className="px-2.5 py-1 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 rounded-lg text-xs font-bold flex items-center gap-1">
+                                    OT: {formData.otHours}h
+                                </span>
+                            )}
                         </div>
                     )}
                     <div className="grid grid-cols-2 gap-4">

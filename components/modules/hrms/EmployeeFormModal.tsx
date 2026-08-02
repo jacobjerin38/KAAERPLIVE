@@ -117,6 +117,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
         remarks: (initialData as any)?.remarks || '',
         // Attendance & Location Settings
         punch_mode: (initialData as any)?.punch_mode || 'BOTH',
+        ot_applicable: (initialData as any)?.ot_applicable ?? true,
         gps_punch_enabled: (initialData as any)?.gps_punch_enabled ?? true,
         geo_latitude: (initialData as any)?.geo_latitude?.toString() || '',
         geo_longitude: (initialData as any)?.geo_longitude?.toString() || '',
@@ -374,6 +375,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                 remarks: formData.remarks || null,
                 // Attendance & Location Settings
                 punch_mode: formData.punch_mode || 'BOTH',
+                ot_applicable: formData.ot_applicable,
                 gps_punch_enabled: formData.gps_punch_enabled !== false && String(formData.gps_punch_enabled) !== 'false',
                 geo_latitude: (() => {
                     const str = String(formData.geo_latitude || '').trim();
@@ -864,6 +866,18 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                                             </select>
                                         </div>
                                     </div>
+
+                                    <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl mt-4">
+                                        <div>
+                                            <p className="text-sm font-bold text-slate-800 dark:text-white">Overtime Applicable</p>
+                                            <p className="text-xs text-slate-500">Enable if this employee is eligible for OT.</p>
+                                        </div>
+                                        <label className="relative inline-flex items-center cursor-pointer">
+                                            <input type="checkbox" className="sr-only peer" checked={formData.ot_applicable} onChange={e => setFormData({ ...formData, ot_applicable: e.target.checked })} />
+                                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                                        </label>
+                                    </div>
+
                                     <div className="p-6 bg-slate-100 dark:bg-zinc-900 rounded-2xl space-y-4">
                                         <h4 className="font-bold text-slate-700 dark:text-slate-300 text-sm">Bank Details</h4>
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

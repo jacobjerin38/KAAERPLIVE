@@ -7,9 +7,10 @@ import {
 } from 'lucide-react';
 import { Employee } from '../../hrms/types';
 import { supabase } from '../../../lib/supabase';
+import { AttendanceSettings } from './AttendanceSettings';
 import { useAuth } from '../../../contexts/AuthContext';
 
-type SubTab = 'OVERVIEW' | 'DAILY' | 'MONTHLY' | 'SHIFTS' | 'DUTY_ROSTER' | 'LOCATION_MAPPING' | 'OUTDOOR_REPORT';
+type SubTab = 'OVERVIEW' | 'DAILY' | 'MONTHLY' | 'SHIFTS' | 'DUTY_ROSTER' | 'LOCATION_MAPPING' | 'OUTDOOR_REPORT' | 'SETTINGS';
 
 interface AttendanceModuleProps {
     employees: Employee[];
@@ -83,20 +84,18 @@ const processingStatusBadge = (status: string) => {
 
 // ─── Main Component ─────────────────────────────────────────────────────
 export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ employees }) => {
+    const { currentCompanyId } = useAuth();
+    const companyId = currentCompanyId || '';
     const [subTab, setSubTab] = useState<SubTab>('OVERVIEW');
     const [companyOffDays, setCompanyOffDays] = useState<number[]>([5, 6]);
 
     useEffect(() => {
-        if (currentCompanyId) setCompanyId(currentCompanyId);
-    }, [currentCompanyId]);
-
-    useEffect(() => {
         if (!companyId) return;
         const fetchOffDays = async () => {
-            const { data } = await supabase.from('attendance_settings')
-                .select('default_weekly_off_days').eq('company_id', companyId).maybeSingle();
-            if (data?.default_weekly_off_days) {
-                setCompanyOffDays(data.default_weekly_off_days.split(',').map(Number).filter((n: number) => !isNaN(n)));
+            const { data } = await (supabase as any).from('attendance_settings')
+                .select('*').eq('company_id', companyId).maybeSingle();
+            if ((data as any)?.default_weekly_off_days) {
+                setCompanyOffDays((data as any).default_weekly_off_days.split(',').map(Number).filter((n: number) => !isNaN(n)));
             }
         };
         fetchOffDays();

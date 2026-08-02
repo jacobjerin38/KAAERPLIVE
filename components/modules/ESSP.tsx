@@ -772,6 +772,7 @@ export const ESSP: React.FC = () => {
         const getTriggerLabel = (type: string) => {
             const labels: Record<string, string> = {
                 'LEAVE_REQUEST': 'Leave Request',
+                'OVERTIME_REQUEST': 'Overtime Request',
                 'RESIGNATION': 'Resignation',
                 'MISSED_PUNCH': 'Missed Punch',
                 'SUPPORT_TICKET': 'Support Ticket',
@@ -785,6 +786,7 @@ export const ESSP: React.FC = () => {
         const getTriggerColor = (type: string) => {
             const colors: Record<string, string> = {
                 'LEAVE_REQUEST': 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+                'OVERTIME_REQUEST': 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
                 'RESIGNATION': 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400',
                 'MISSED_PUNCH': 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
                 'SUPPORT_TICKET': 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
@@ -807,6 +809,17 @@ export const ESSP: React.FC = () => {
                             <span className="flex items-center gap-1">
                                 <Calendar className="w-3 h-3" />
                                 {new Date(d.start_date).toLocaleDateString()} — {new Date(d.end_date).toLocaleDateString()}
+                            </span>
+                        )}
+                        {req.trigger_type === 'OVERTIME_REQUEST' && d.request_date && (
+                            <span className="flex items-center gap-1">
+                                <Calendar className="w-3 h-3" />
+                                {new Date(d.request_date).toLocaleDateString()}
+                            </span>
+                        )}
+                        {req.trigger_type === 'OVERTIME_REQUEST' && d.ot_hours && (
+                            <span className="flex items-center gap-1 font-semibold text-orange-600">
+                                ⏱ {d.ot_hours}h requested
                             </span>
                         )}
                         {req.trigger_type === 'MISSED_PUNCH' && d.request_date && (
@@ -1378,10 +1391,21 @@ export const ESSP: React.FC = () => {
         const [submittingMissed, setSubmittingMissed] = useState(false);
         const [missedRequests, setMissedRequests] = useState<any[]>([]);
 
+        // OT Request
+        const [showOTRequest, setShowOTRequest] = useState(false);
+        const [otForm, setOTForm] = useState({
+            request_date: new Date().toISOString().split('T')[0],
+            ot_hours: 1,
+            reason: ''
+        });
+        const [submittingOT, setSubmittingOT] = useState(false);
+        const [otRequests, setOtRequests] = useState<any[]>([]);
+
         useEffect(() => {
             if (currentEmployee) {
                 fetchAttendance();
                 fetchMissedRequests();
+                fetchOTRequests();
             }
         }, [currentEmployee, filterDate]);
 
@@ -1418,6 +1442,16 @@ export const ESSP: React.FC = () => {
                 .limit(10);
             if (data) setMissedRequests(data);
         };
+
+        const fetchOTRequests = async () => {
+            const { data } = await (supabase as any).from('overtime_requests')
+                .select('*')
+                .eq('employee_id', currentEmployee.id)
+                .order('created_at', { ascending: false })
+                .limit(10);
+            if (data) setOtRequests(data);
+        };
+
 
         const handleSubmitMissedPunch = async () => {
             if (!missedPunchForm.requested_time || !missedPunchForm.reason.trim()) {
@@ -1465,6 +1499,56 @@ export const ESSP: React.FC = () => {
             setSubmittingMissed(false);
         };
 
+        const handleSubmitOT = async () => {
+            if (currentEmployee.ot_applicable === false) {
+                alert('Overtime requests are not applicable for your role.');
+                return;
+            }
+            if (!otForm.reason.trim()) {
+                alert('Please provide a reason for the overtime.');
+                return;
+            }
+            if (otForm.ot_hours < 0.5 || otForm.ot_hours > 12) {
+                alert('OT hours must be between 0.5 and 12.');
+                return;
+            }
+            setSubmittingOT(true);
+            try {
+                const { data, error } = await (supabase as any).from('overtime_requests').insert([{
+                    company_id: currentEmployee.company_id,
+                    employee_id: currentEmployee.id,
+                    request_date: otForm.request_date,
+                    ot_hours: otForm.ot_hours,
+                    reason: otForm.reason,
+                    status: 'Pending'
+                }]).select();
+
+                if (error) throw error;
+
+                if (data && data[0] && currentEmployee) {
+                    try {
+                        await WorkflowEngine.startWorkflow(
+                            currentEmployee.company_id,
+                            'OVERTIME_REQUEST',
+                            data[0].id,
+                            currentEmployee.id,
+                            'HRMS'
+                        );
+                    } catch (wfErr) {
+                        console.warn('Workflow trigger failed:', wfErr);
+                    }
+                }
+
+                setShowOTRequest(false);
+                setOTForm({ request_date: new Date().toISOString().split('T')[0], ot_hours: 1, reason: '' });
+                fetchOTRequests();
+            } catch (err: any) {
+                alert('Failed to submit OT request: ' + err.message);
+            }
+            setSubmittingOT(false);
+        };
+
+
         const fmtTime = (val: string | null) => {
             if (!val) return '--:--';
             try {
@@ -1480,6 +1564,7 @@ export const ESSP: React.FC = () => {
         };
 
         const pendingCount = missedRequests.filter(r => r.status === 'Pending').length;
+        const pendingOTCount = otRequests.filter(r => r.status === 'Pending').length;
 
         return (
             <div className="p-8 h-full overflow-y-auto animate-page-enter">
@@ -1497,6 +1582,16 @@ export const ESSP: React.FC = () => {
                             Request Missed Punch
                             {pendingCount > 0 && (
                                 <span className="ml-1 bg-white text-amber-600 text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center">{pendingCount}</span>
+                            )}
+                        </button>
+                        <button
+                            onClick={() => setShowOTRequest(true)}
+                            className="px-4 py-2.5 bg-orange-500 text-white rounded-2xl text-sm font-bold shadow-lg shadow-orange-500/20 hover:bg-orange-600 transition-all flex items-center gap-2"
+                        >
+                            <Clock className="w-4 h-4" />
+                            Request Overtime
+                            {pendingOTCount > 0 && (
+                                <span className="ml-1 bg-white text-orange-600 text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center">{pendingOTCount}</span>
                             )}
                         </button>
                         <input
@@ -1545,6 +1640,37 @@ export const ESSP: React.FC = () => {
                                     </div>
                                     <span className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide ${
                                         req.status === 'Pending' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+                                        req.status === 'Approved' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                                        'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400'
+                                    }`}>{req.status}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Pending OT Requests */}
+                {otRequests.length > 0 && (
+                    <div className="mb-8 bg-orange-50 dark:bg-orange-900/10 rounded-2xl border border-orange-100 dark:border-orange-900/30 overflow-hidden">
+                        <div className="px-6 py-3 border-b border-orange-100 dark:border-orange-800/30 flex items-center gap-2">
+                            <Clock className="w-4 h-4 text-orange-600" />
+                            <h3 className="text-sm font-bold text-orange-800 dark:text-orange-400">Overtime Requests</h3>
+                        </div>
+                        <div className="divide-y divide-orange-100 dark:divide-orange-800/20">
+                            {otRequests.slice(0, 5).map(req => (
+                                <div key={req.id} className="px-6 py-3 flex items-center justify-between">
+                                    <div className="flex items-center gap-4">
+                                        <div>
+                                            <p className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                                                {new Date(req.request_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} — {req.ot_hours}h
+                                            </p>
+                                            <p className="text-xs text-slate-500">
+                                                "{req.reason}"
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <span className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide ${
+                                        req.status === 'Pending' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' :
                                         req.status === 'Approved' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
                                         'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400'
                                     }`}>{req.status}</span>
@@ -1664,6 +1790,66 @@ export const ESSP: React.FC = () => {
                                     className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-500/30 hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-70"
                                 >
                                     {submittingMissed ? 'Submitting...' : <><Calendar className="w-5 h-5" /> Submit Request</>}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* OT Request Modal */}
+                {showOTRequest && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/30 backdrop-blur-md animate-fade-in" onClick={() => setShowOTRequest(false)}>
+                        <div className="bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl w-full max-w-md rounded-[2rem] shadow-2xl overflow-hidden border border-white/50 dark:border-zinc-800 animate-slide-up flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+                            <div className="p-6 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center flex-shrink-0">
+                                <div>
+                                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">Request Overtime</h3>
+                                    <p className="text-xs text-slate-500 mt-1">Submit an overtime request for approval</p>
+                                </div>
+                                <button onClick={() => setShowOTRequest(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-xl">
+                                    <X className="w-5 h-5 text-slate-500" />
+                                </button>
+                            </div>
+                            <div className="p-6 space-y-5 overflow-y-auto flex-1">
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Date</label>
+                                    <input
+                                        type="date"
+                                        value={otForm.request_date}
+                                        onChange={e => setOTForm({ ...otForm, request_date: e.target.value })}
+                                        max={new Date().toISOString().split('T')[0]}
+                                        className="w-full p-3 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm outline-none text-slate-900 dark:text-white"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">OT Hours</label>
+                                    <input
+                                        type="number"
+                                        min="0.5"
+                                        max="12"
+                                        step="0.5"
+                                        value={otForm.ot_hours}
+                                        onChange={e => setOTForm({ ...otForm, ot_hours: parseFloat(e.target.value) })}
+                                        className="w-full p-3 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm outline-none text-slate-900 dark:text-white"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                                        Reason <span className="text-rose-500">*</span>
+                                    </label>
+                                    <textarea
+                                        required
+                                        value={otForm.reason}
+                                        onChange={e => setOTForm({ ...otForm, reason: e.target.value })}
+                                        placeholder="e.g., Working late for project deadline..."
+                                        className="w-full p-3 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm outline-none h-24 resize-none text-slate-900 dark:text-white"
+                                    />
+                                </div>
+                                <button
+                                    onClick={handleSubmitOT}
+                                    disabled={submittingOT}
+                                    className="w-full py-4 bg-orange-600 text-white rounded-2xl font-bold shadow-lg shadow-orange-500/30 hover:bg-orange-700 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-70"
+                                >
+                                    {submittingOT ? 'Submitting...' : <><Clock className="w-5 h-5" /> Submit OT Request</>}
                                 </button>
                             </div>
                         </div>

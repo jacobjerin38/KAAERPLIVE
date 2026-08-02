@@ -284,6 +284,21 @@ export class WorkflowEngine {
                 amount: data.amount,
                 status: data.status
             };
+        } else if (triggerType === 'OVERTIME_REQUEST') {
+            const { data } = await (supabase as any).from('overtime_requests')
+                .select('*, employee:employees!employee_id(name)')
+                .eq('id', entityId)
+                .maybeSingle();
+            if (!data) return null;
+            return {
+                reason: data.reason,
+                request_date: data.request_date,
+                ot_hours: data.ot_hours,
+                approved_hours: data.approved_hours,
+                employee_name: data.employee?.name,
+                type_label: 'Overtime Request',
+                status: data.status
+            };
         }
         return null;
     }
@@ -507,6 +522,21 @@ export class WorkflowEngine {
                     created_by_role: 'SYSTEM'
                 }]);
             }
+        } else if (type === 'OVERTIME_REQUEST') {
+            // Get the original request to know the requested hours
+            const { data: otReq } = await (supabase as any).from('overtime_requests')
+                .select('ot_hours')
+                .eq('id', entityId)
+                .maybeSingle();
+            
+            const updateData: any = {
+                status: dbStatus,
+                approved_at: new Date().toISOString()
+            };
+            if (dbStatus === 'Approved') {
+                updateData.approved_hours = otReq?.ot_hours || 0;
+            }
+            await (supabase as any).from('overtime_requests').update(updateData).eq('id', entityId);
         }
     }
 }
