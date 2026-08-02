@@ -4,11 +4,10 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-api-key',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS'
+  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS'
 }
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -23,54 +22,123 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-    // Check API Key
-    const apiKey = req.headers.get('x-api-key')
+    // Check API Key (from header or URL query parameter ?api_key=...)
+    const url = new URL(req.url)
+    const apiKey = req.headers.get('x-api-key') || url.searchParams.get('api_key')
     if (!apiKey) {
-      return new Response(JSON.stringify({ error: 'Missing x-api-key header' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      return new Response(JSON.stringify({ error: 'Missing x-api-key header or api_key query param' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
-    // Verify API Key
-    const { data: settingsData, error: settingsError } = await supabase
+    // Verify API Key against company settings or device integration key
+    const { data: settingsData } = await supabase
       .from('org_attendance_settings')
       .select('company_id')
       .eq('enable_biometric', true)
       .eq('biometric_api_key', apiKey)
       .maybeSingle()
 
-    if (settingsError || !settingsData) {
+    let companyId = settingsData?.company_id
+
+    if (!companyId) {
+      // Check device_integrations table for device-specific API key
+      const { data: deviceData } = await supabase
+        .from('device_integrations')
+        .select('company_id')
+        .eq('api_key', apiKey)
+        .maybeSingle()
+
+      if (deviceData) {
+        companyId = deviceData.company_id
+      }
+    }
+
+    if (!companyId) {
       return new Response(JSON.stringify({ error: 'Invalid API Key or Biometric sync disabled' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
-    const companyId = settingsData.company_id
-
-    // Parse the payload (expecting JSON body from the Biometric terminal)
-    // Payload format: { type: 'PUNCH', data: { employee_code: '1234', timestamp: '2023-10-27T08:00:00Z', punch_type: 'IN' } }
-    const payload = await req.json()
-
-    if (payload.type !== 'PUNCH' || !payload.data) {
-      return new Response(JSON.stringify({ error: 'Invalid payload type' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    // Parse Payload (Supports Hikvision iVMS-4200, ZKTeco BioTime 9.0+, and Generic Webhook)
+    const rawBody = await req.text()
+    let payload: any = {}
+    try {
+      payload = JSON.parse(rawBody)
+    } catch (_e) {
+      payload = {}
     }
 
-    const { employee_code, timestamp, punch_type } = payload.data
-    
-    // Find the employee ID
+    let empCode = ''
+    let timestamp = ''
+    let punchType = 'IN'
+
+    // 1. Hikvision iVMS-4200 / HikCentral / DS-K Series (ISAPI / Event Push)
+    if (payload.AccessControlEvent || payload.event_log) {
+      const acEvent = payload.AccessControlEvent || payload.event_log
+      empCode = acEvent.employeeNoString || acEvent.employeeNo || acEvent.cardNo || ''
+      timestamp = acEvent.eventTime || acEvent.time || new Date().toISOString()
+      const subType = acEvent.subEventType || acEvent.eventType
+      punchType = (subType === 21 || subType === 'checkIn' || subType === 1) ? 'IN' : 'OUT'
+
+    // 2. ZKTeco BioTime 8.5 / 9.0+ / BioTime Cloud / ADMS
+    } else if (payload.emp_code || payload.pin || (Array.isArray(payload.data) && payload.data[0]?.emp_code)) {
+      const item = Array.isArray(payload.data) ? payload.data[0] : payload
+      empCode = item.emp_code || item.pin || item.user_id || ''
+      timestamp = item.punch_time || item.timestamp || item.att_time || new Date().toISOString()
+      const state = item.punch_state ?? item.state ?? item.status
+      punchType = (state === 0 || state === '0' || state === 'IN' || state === 'Check-In' || state === '01') ? 'IN' : 'OUT'
+
+    // 3. Generic PUNCH Wrapper Format
+    } else if (payload.type === 'PUNCH' && payload.data) {
+      empCode = payload.data.employee_code || payload.data.employee_id || ''
+      timestamp = payload.data.timestamp || new Date().toISOString()
+      punchType = (payload.data.punch_type || 'IN').toUpperCase()
+
+    // 4. Flat Standard JSON
+    } else {
+      empCode = payload.employee_code || payload.employeeNo || payload.emp_code || payload.user_id || ''
+      timestamp = payload.timestamp || payload.punch_time || payload.eventTime || new Date().toISOString()
+      punchType = (payload.punch_type || payload.type || 'IN').toUpperCase().includes('OUT') ? 'OUT' : 'IN'
+    }
+
+    if (!empCode) {
+      return new Response(JSON.stringify({ error: 'Could not extract employee code from payload' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+
+    // Find Employee ID
     const { data: employeeData, error: employeeError } = await supabase
       .from('employees')
-      .select('id')
+      .select('id, name')
       .eq('company_id', companyId)
-      .eq('employee_code', employee_code)
+      .or(`employee_code.eq.${empCode},id.eq.${empCode}`)
       .maybeSingle()
 
     if (employeeError || !employeeData) {
-      return new Response(JSON.stringify({ error: 'Employee not found' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      // Log raw device attempt in device_attendance_logs for debugging
+      await supabase.from('device_attendance_logs').insert({
+        company_id: companyId,
+        employee_identifier: empCode,
+        punch_time: new Date(timestamp).toISOString(),
+        punch_type: punchType,
+        sync_status: 'failed',
+        sync_error: `Employee code '${empCode}' not found`
+      })
+
+      return new Response(JSON.stringify({ error: `Employee '${empCode}' not found in company` }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
     const employeeId = employeeData.id
-
-    // Check for existing attendance record for today
     const dateStr = new Date(timestamp).toISOString().split('T')[0]
 
-    const { data: attendanceData, error: attendanceError } = await supabase
+    // Log raw punch
+    await supabase.from('device_attendance_logs').insert({
+      company_id: companyId,
+      employee_id: employeeId,
+      employee_identifier: empCode,
+      punch_time: new Date(timestamp).toISOString(),
+      punch_type: punchType,
+      sync_status: 'synced'
+    })
+
+    // Upsert into main attendance table
+    const { data: attendanceData } = await supabase
       .from('attendance')
       .select('id, check_in, check_out')
       .eq('company_id', companyId)
@@ -78,67 +146,57 @@ serve(async (req) => {
       .eq('date', dateStr)
       .maybeSingle()
 
-    if (attendanceError && attendanceError.code !== 'PGRST116') {
-      throw attendanceError
-    }
-
     let result;
     if (attendanceData) {
-      // Update existing record
       const updateData: any = {}
-      if (punch_type === 'IN') {
-          // Generally we don't overwrite check-in with a later IN punch unless it's null
-          if (!attendanceData.check_in) updateData.check_in = timestamp
-      } else if (punch_type === 'OUT') {
-          updateData.check_out = timestamp
+      if (punchType === 'IN' && !attendanceData.check_in) {
+        updateData.check_in = new Date(timestamp).toISOString()
+      } else if (punchType === 'OUT') {
+        updateData.check_out = new Date(timestamp).toISOString()
+      }
+
+      if (updateData.check_out && (updateData.check_in || attendanceData.check_in)) {
+        const inTime = new Date(updateData.check_in || attendanceData.check_in).getTime()
+        const outTime = new Date(updateData.check_out).getTime()
+        updateData.duration = Math.max(0, (outTime - inTime) / (1000 * 60 * 60))
       }
 
       if (Object.keys(updateData).length > 0) {
-        // Calculate duration if check_out is provided
-        if (updateData.check_out && attendanceData.check_in) {
-            const durationMs = new Date(updateData.check_out).getTime() - new Date(attendanceData.check_in).getTime()
-            updateData.duration = durationMs / (1000 * 60 * 60) // convert to hours
-        } else if (updateData.check_out && updateData.check_in) {
-             const durationMs = new Date(updateData.check_out).getTime() - new Date(updateData.check_in).getTime()
-             updateData.duration = durationMs / (1000 * 60 * 60) // convert to hours
-        }
-
-        const { data: updatedRecord, error: updateError } = await supabase
-            .from('attendance')
-            .update(updateData)
-            .eq('id', attendanceData.id)
-            .select()
-
-        if (updateError) throw updateError
+        const { data: updatedRecord } = await supabase
+          .from('attendance')
+          .update(updateData)
+          .eq('id', attendanceData.id)
+          .select()
         result = updatedRecord
       } else {
-        result = attendanceData // No changes made
+        result = attendanceData
       }
-
     } else {
-      // Create new record
       const insertData: any = {
-          company_id: companyId,
-          employee_id: employeeId,
-          date: dateStr,
-          status: 'Present' // Default status
+        company_id: companyId,
+        employee_id: employeeId,
+        date: dateStr,
+        status: 'Present',
+        source: 'device'
       }
-      if (punch_type === 'IN') {
-          insertData.check_in = timestamp
-      } else if (punch_type === 'OUT') {
-          insertData.check_out = timestamp
+      if (punchType === 'IN') {
+        insertData.check_in = new Date(timestamp).toISOString()
+      } else {
+        insertData.check_out = new Date(timestamp).toISOString()
       }
 
-      const { data: insertedRecord, error: insertError } = await supabase
-          .from('attendance')
-          .insert([insertData])
-          .select()
-
-      if (insertError) throw insertError
+      const { data: insertedRecord } = await supabase
+        .from('attendance')
+        .insert([insertData])
+        .select()
       result = insertedRecord
     }
 
-    return new Response(JSON.stringify({ success: true, data: result }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    return new Response(JSON.stringify({
+      success: true,
+      message: `Punch recorded for ${employeeData.name} (${empCode})`,
+      data: result
+    }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 
   } catch (error: any) {
     console.error('Error processing device-sync request:', error)
