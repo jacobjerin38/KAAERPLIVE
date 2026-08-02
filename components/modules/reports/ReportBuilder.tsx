@@ -43,6 +43,7 @@ interface ReportBuilderProps {
     companyId?: string;
     initialModule?: string;
     editReport?: any;
+    moduleFilter?: string;
 }
 
 const CHART_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#06b6d4', '#f97316', '#ef4444'];
@@ -56,11 +57,40 @@ const AGG_LABELS: Record<string, string> = {
     NONE: '\u2014', SUM: '\u03A3 Sum', COUNT: '# Count', AVG: 'x\u0304 Avg', MIN: '\u2193 Min', MAX: '\u2191 Max'
 };
 
-export const ReportBuilder: React.FC<ReportBuilderProps> = ({ onBack, companyId, initialModule, editReport }) => {
+const TABLE_LABELS: Record<string, string> = {
+    vw_hr_payroll_reports: 'Payroll Summary & Payslips',
+    payroll_loans: 'Employee Loans & Deductions',
+    attendance: 'Daily Attendance Logs',
+    missed_punch_requests: 'Missed Punch Requests',
+    leaves: 'Leave Applications & Requests',
+    employee_leave_balances: 'Employee Leave Balances',
+    employees: 'Employee Profiles & Master',
+    crm_deals: 'Deals & Opportunities',
+    crm_leads: 'Leads & Prospects',
+    customers: 'Customers & Contacts',
+    sales_orders: 'Sales Orders',
+    customer_invoices: 'Customer Invoices & AR',
+    accounting_moves: 'Journal Entries & Transactions',
+    accounting_move_lines: 'General Ledger Account Lines',
+    purchase_orders: 'Purchase Orders',
+    vendors: 'Vendors & Suppliers',
+    inventory_items: 'Inventory Stock & Valuation',
+    stock_movements: 'Stock Movements & Ledger',
+    pro_applications: 'PRO Service Applications',
+    pro_tasks: 'PRO Field Tasks & Reminders',
+    fixed_assets: 'Fixed Assets Register',
+    tickets: 'Helpdesk Support Tickets',
+    production_orders: 'Manufacturing Production Orders'
+};
+
+export const ReportBuilder: React.FC<ReportBuilderProps> = ({ onBack, companyId, initialModule, editReport, moduleFilter }) => {
+    const activeModuleConstraint = editReport?.module || initialModule || moduleFilter;
+
     const [modules, setModules] = useState<string[]>([]);
-    const [selectedModule, setSelectedModule] = useState(initialModule || '');
+    const [selectedModule, setSelectedModule] = useState(activeModuleConstraint || '');
+    const [availableTables, setAvailableTables] = useState<string[]>([]);
+    const [sourceTable, setSourceTable] = useState(editReport?.config?.sourceTable || '');
     const [availableFields, setAvailableFields] = useState<SchemaField[]>([]);
-    const [sourceTable, setSourceTable] = useState('');
 
     const [reportName, setReportName] = useState(editReport?.name || '');
     const [selectedColumns, setSelectedColumns] = useState<SelectedColumn[]>([]);
@@ -76,36 +106,78 @@ export const ReportBuilder: React.FC<ReportBuilderProps> = ({ onBack, companyId,
 
     const printRef = useRef<HTMLDivElement>(null);
 
+    // 1. Load Modules
     useEffect(() => {
         const loadModules = async () => {
             const { data } = await (supabase as any).from('report_schema_registry').select('module').order('module');
             if (data) {
-                const unique = [...new Set((data as any[]).map(d => d.module))];
-                setModules(unique as string[]);
-                if (!selectedModule && unique.length > 0) setSelectedModule(unique[0] as string);
+                let unique = [...new Set((data as any[]).map(d => d.module))] as string[];
+                if (activeModuleConstraint) {
+                    const match = unique.find(m => m.toUpperCase() === activeModuleConstraint.toUpperCase());
+                    if (match) unique = [match];
+                    else unique = [activeModuleConstraint.toUpperCase()];
+                }
+                setModules(unique);
+                if (!selectedModule || !unique.includes(selectedModule)) {
+                    setSelectedModule(unique[0] || '');
+                }
             }
         };
         loadModules();
-    }, []);
+    }, [activeModuleConstraint]);
 
+    // 2. Load Tables for Selected Module
     useEffect(() => {
         if (!selectedModule) return;
+        const loadTables = async () => {
+            const { data } = await (supabase as any)
+                .from('report_schema_registry')
+                .select('source_table')
+                .eq('module', selectedModule);
+            if (data) {
+                const uniqueTables = [...new Set((data as any[]).map(d => d.source_table))] as string[];
+                setAvailableTables(uniqueTables);
+                // Set default source table if current is not in table list
+                if (!sourceTable || !uniqueTables.includes(sourceTable)) {
+                    if (editReport?.config?.sourceTable && uniqueTables.includes(editReport.config.sourceTable)) {
+                        setSourceTable(editReport.config.sourceTable);
+                    } else if (uniqueTables.length > 0) {
+                        setSourceTable(uniqueTables[0]);
+                    }
+                }
+            }
+        };
+        loadTables();
+    }, [selectedModule]);
+
+    // 3. Load Fields for Selected Module & Table
+    useEffect(() => {
+        if (!selectedModule || !sourceTable) return;
         const loadFields = async () => {
-            const { data } = await (supabase as any).from('report_schema_registry').select('*').eq('module', selectedModule).order('field_label');
+            const { data } = await (supabase as any)
+                .from('report_schema_registry')
+                .select('*')
+                .eq('module', selectedModule)
+                .eq('source_table', sourceTable)
+                .order('field_label');
+
             if (data && data.length > 0) {
-                // @ts-ignore
-                setAvailableFields(data);
-                // @ts-ignore
-                setSourceTable(data[0].source_table);
-                setSelectedColumns([]);
-                setFilters([]);
-                setSortConfig(null);
-                setGroupByField('');
-                setPreviewData([]);
+                setAvailableFields(data as SchemaField[]);
+            } else {
+                setAvailableFields([]);
             }
         };
         loadFields();
-    }, [selectedModule]);
+    }, [selectedModule, sourceTable]);
+
+    const handleTableChange = (tbl: string) => {
+        setSourceTable(tbl);
+        setSelectedColumns([]);
+        setFilters([]);
+        setSortConfig(null);
+        setGroupByField('');
+        setPreviewData([]);
+    };
 
     useEffect(() => {
         if (editReport?.config && availableFields.length > 0) {
@@ -348,12 +420,21 @@ export const ReportBuilder: React.FC<ReportBuilderProps> = ({ onBack, companyId,
             <div className="flex-1 flex overflow-hidden">
                 {/* Left Sidebar */}
                 <div className="w-[300px] shrink-0 bg-white dark:bg-zinc-900 border-r border-slate-200 dark:border-zinc-800 flex flex-col overflow-hidden">
-                    <div className="p-4 border-b border-slate-100 dark:border-zinc-800">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">Data Source</label>
-                        <select value={selectedModule} onChange={e => setSelectedModule(e.target.value)}
-                            className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 rounded-xl border border-slate-200 dark:border-zinc-700 font-bold text-sm text-slate-700 dark:text-slate-300 outline-none focus:ring-2 focus:ring-indigo-500/20">
-                            {modules.map(m => <option key={m} value={m}>{moduleLabel(m)}</option>)}
-                        </select>
+                    <div className="p-4 border-b border-slate-100 dark:border-zinc-800 space-y-3">
+                        <div>
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">Module</label>
+                            <select value={selectedModule} onChange={e => setSelectedModule(e.target.value)} disabled={!!activeModuleConstraint && modules.length <= 1}
+                                className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 rounded-xl border border-slate-200 dark:border-zinc-700 font-bold text-sm text-slate-700 dark:text-slate-300 outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-75">
+                                {modules.map(m => <option key={m} value={m}>{moduleLabel(m)}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">Table / Dataset</label>
+                            <select value={sourceTable} onChange={e => handleTableChange(e.target.value)}
+                                className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 rounded-xl border border-slate-200 dark:border-zinc-700 font-bold text-sm text-indigo-600 dark:text-indigo-400 outline-none focus:ring-2 focus:ring-indigo-500/20">
+                                {availableTables.map(t => <option key={t} value={t}>{TABLE_LABELS[t] || t}</option>)}
+                            </select>
+                        </div>
                     </div>
 
                     <div className="flex border-b border-slate-100 dark:border-zinc-800">

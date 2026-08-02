@@ -110,8 +110,9 @@ export const ReportsListView: React.FC<ReportsListViewProps> = ({ moduleFilter, 
             <ReportBuilder
                 onBack={() => { setView('LIST'); setEditReport(null); }}
                 companyId={companyId || undefined}
-                initialModule={editReport?.module}
+                initialModule={editReport?.module || moduleFilter}
                 editReport={view === 'RUN' || view === 'BUILDER' ? editReport : undefined}
+                moduleFilter={moduleFilter}
             />
         );
     }
