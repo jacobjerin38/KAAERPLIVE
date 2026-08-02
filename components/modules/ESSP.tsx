@@ -255,40 +255,53 @@ export const ESSP: React.FC = () => {
             .select('*').eq('employee_id', empId).order('date', { ascending: false }).limit(3);
         if (recentLogs) setAttendanceLog(recentLogs);
 
-        // 3. Leave Balance (Calculated from org_leave_types default_balance - Approved Leaves)
-        // Fetch leave types from master for dynamic balance and dropdown
-        let totalDefaultBalance = 22; // Ultimate fallback
+        // 3. Leave Balance (Real DB query from employee_leave_balances & org_leave_types)
         if (companyId) {
             const { data: ltData } = await supabase.from('org_leave_types')
                 .select('*').eq('company_id', companyId);
             if (ltData && ltData.length > 0) {
                 setLeaveTypes(ltData);
-                totalDefaultBalance = ltData.reduce((sum: number, lt: any) => sum + (lt.default_balance || 0), 0);
             }
         }
-        const currentYear = new Date().getFullYear();
-        const { data: approvedLeaves } = await supabase.from('leaves')
-            .select('start_date, end_date')
-            .eq('employee_id', empId)
-            .eq('status', 'Approved')
-            .gte('start_date', `${currentYear}-01-01`);
 
-        let approvedDays = 0;
-        if (approvedLeaves) {
-            approvedLeaves.forEach((l: any) => {
-                if (l.start_date && l.end_date) {
-                    const start = new Date(l.start_date);
-                    const end = new Date(l.end_date);
-                    if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
-                        const diffMs = end.getTime() - start.getTime();
-                        const days = Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1;
-                        if (days > 0) approvedDays += days;
+        const { data: empBalData } = await supabase.from('employee_leave_balances')
+            .select('*')
+            .eq('employee_id', empId);
+
+        if (empBalData && empBalData.length > 0) {
+            const totalRemaining = empBalData.reduce((sum: number, b: any) => {
+                const rem = b.remaining != null ? Number(b.remaining) : ((Number(b.total_balance) || 0) - (Number(b.used) || 0));
+                return sum + Math.max(0, rem);
+            }, 0);
+            setLeaveBalance(totalRemaining);
+        } else {
+            let totalDefaultBalance = 22;
+            if (leaveTypes && leaveTypes.length > 0) {
+                totalDefaultBalance = leaveTypes.reduce((sum: number, lt: any) => sum + (lt.default_balance || 0), 0);
+            }
+            const currentYear = new Date().getFullYear();
+            const { data: approvedLeaves } = await supabase.from('leaves')
+                .select('start_date, end_date')
+                .eq('employee_id', empId)
+                .eq('status', 'Approved')
+                .gte('start_date', `${currentYear}-01-01`);
+
+            let approvedDays = 0;
+            if (approvedLeaves) {
+                approvedLeaves.forEach((l: any) => {
+                    if (l.start_date && l.end_date) {
+                        const start = new Date(l.start_date);
+                        const end = new Date(l.end_date);
+                        if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+                            const diffMs = end.getTime() - start.getTime();
+                            const days = Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1;
+                            if (days > 0) approvedDays += days;
+                        }
                     }
-                }
-            });
+                });
+            }
+            setLeaveBalance(Math.max(0, totalDefaultBalance - approvedDays));
         }
-
-        setLeaveBalance(totalDefaultBalance - approvedDays);
 
         // 4. Last Pay (Locked/Paid only)
         // Using 'payroll_records' as per types.ts
@@ -989,24 +1002,24 @@ export const ESSP: React.FC = () => {
             setInput('');
             setThinking(true);
 
-            // Mock Response Logic for V1.2 Prototype
+            // AI Assistant Response Logic
             setTimeout(() => {
                 let response = "I'm processing that request...";
                 const q = input.toLowerCase();
 
                 if (q.includes('leave') || q.includes('balance')) {
-                    response = `You have ${leaveBalance} annual leaves remaining. Your last leave was taken in December.`;
+                    response = `You have ${leaveBalance} leave days available in your balance.`;
                 } else if (q.includes('salary') || q.includes('pay')) {
-                    response = `Your last net pay was $${lastSalary?.toLocaleString()}. This is consistent with your average over the last 3 months.`;
+                    response = lastSalary ? `Your latest net pay on record is QAR ${lastSalary.toLocaleString()}.` : `Your salary details are being processed.`;
                 } else if (q.includes('skill') || q.includes('career')) {
-                    response = "You are currently tracked as 'Software Engineer'. You need to improve 'System Design' to progress to Senior Engineer.";
+                    response = `Your current position is '${currentEmployee?.designation || 'Team Member'}'.`;
                 } else {
-                    response = "I can help with attendance, leaves, payroll, and skill queries. Try asking 'How many leaves do I have?'";
+                    response = "I can help with attendance, leaves, payroll, and profile queries. Try asking 'How many leaves do I have?'";
                 }
 
                 setMessages([...newMsgs as any, { role: 'ai', text: response }]);
                 setThinking(false);
-            }, 1000);
+            }, 500);
         };
 
         return (

@@ -15,9 +15,12 @@ export const AttendanceReports: React.FC<AttendanceReportsProps> = ({ attendance
         const present = attendance.filter(a => a.status === 'Present').length;
         const absent = attendance.filter(a => a.status === 'Absent').length;
         const late = attendance.filter(a => {
-            if (!a.checkIn) return false;
-            const hour = parseInt(a.checkIn.split(':')[0]);
-            return hour >= 10; // Late after 10 AM (Mock rule)
+            const checkInTime = a.check_in || a.checkIn;
+            if (!checkInTime) return false;
+            const timeParts = checkInTime.includes('T') ? checkInTime.split('T')[1] : checkInTime;
+            const hour = parseInt(timeParts.split(':')[0] || '0', 10);
+            const mins = parseInt(timeParts.split(':')[1] || '0', 10);
+            return (hour > 9) || (hour === 9 && mins > 15);
         }).length;
         const onLeave = attendance.filter(a => a.status === 'On Leave').length;
 
