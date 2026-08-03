@@ -167,15 +167,25 @@ export class WorkflowEngine {
      * Fetch pending approvals for a specific employee/user.
      * Enriches each request with entity details from the source table.
      */
-    static async getMyApprovals(userId: string) {
-        const { data: requests, error } = await supabase.from('workflow_instances')
+    static async getMyApprovals(userId: string, companyId?: string, isHRorAdmin: boolean = false) {
+        let query = supabase.from('workflow_instances')
             .select(`
                 *,
                 workflow:workflows(name),
                 requester:employees!requester_id(id, name, profile_photo_url, designation, department)
             `)
-            .eq('status', 'PENDING')
-            .or(`assigned_to_user_id.eq.${userId}`);
+            .eq('status', 'PENDING');
+
+        if (isHRorAdmin && companyId) {
+            query = query.eq('company_id', companyId);
+        } else {
+            const { data: emp } = await supabase.from('employees').select('id, profile_id').or(`id.eq.${userId},profile_id.eq.${userId}`).maybeSingle();
+            const empId = emp?.id || userId;
+            const profId = emp?.profile_id || userId;
+            query = query.or(`assigned_to_user_id.eq.${empId},assigned_to_user_id.eq.${profId}`);
+        }
+
+        const { data: requests, error } = await query.order('created_at', { ascending: false });
 
         if (error) {
             console.error("Error fetching approvals:", error);
@@ -467,6 +477,55 @@ export class WorkflowEngine {
                 status: dbStatus,
                 reviewed_at: new Date().toISOString()
             }).eq('id', entityId);
+
+            if (status === 'APPROVED') {
+                const { data: mpReq } = await (supabase as any).from('missed_punch_requests')
+                    .select('*')
+                    .eq('id', entityId)
+                    .maybeSingle();
+
+                if (mpReq && mpReq.employee_id && mpReq.request_date) {
+                    const reqTime = mpReq.requested_time || new Date().toISOString();
+                    const { data: existingAtt } = await (supabase as any).from('attendance')
+                        .select('id, check_in, check_out')
+                        .eq('employee_id', mpReq.employee_id)
+                        .eq('date', mpReq.request_date)
+                        .maybeSingle();
+
+                    if (existingAtt) {
+                        const updatePayload: any = {};
+                        if (mpReq.punch_type === 'check_in') {
+                            updatePayload.check_in = reqTime;
+                        } else {
+                            updatePayload.check_out = reqTime;
+                        }
+
+                        const cin = mpReq.punch_type === 'check_in' ? new Date(reqTime) : (existingAtt.check_in ? new Date(existingAtt.check_in) : null);
+                        const cout = mpReq.punch_type === 'check_out' ? new Date(reqTime) : (existingAtt.check_out ? new Date(existingAtt.check_out) : null);
+                        if (cin && cout && !isNaN(cin.getTime()) && !isNaN(cout.getTime())) {
+                            const diffMs = cout.getTime() - cin.getTime();
+                            updatePayload.total_hours = Math.max(0, parseFloat((diffMs / (1000 * 60 * 60)).toFixed(2)));
+                        }
+
+                        await (supabase as any).from('attendance').update(updatePayload).eq('id', existingAtt.id);
+                    } else {
+                        const insertPayload: any = {
+                            company_id: mpReq.company_id,
+                            employee_id: mpReq.employee_id,
+                            date: mpReq.request_date,
+                            status: 'Present',
+                            source: 'manual',
+                            punch_method: 'ONLINE'
+                        };
+                        if (mpReq.punch_type === 'check_in') {
+                            insertPayload.check_in = reqTime;
+                        } else {
+                            insertPayload.check_out = reqTime;
+                        }
+                        await (supabase as any).from('attendance').insert([insertPayload]);
+                    }
+                }
+            }
         } else if (type === 'SUPPORT_TICKET') {
             // Map: Approved → Resolved, Rejected → Closed
             const ticketStatus = status === 'APPROVED' ? 'Resolved' : status === 'REJECTED' ? 'Closed' : dbStatus;

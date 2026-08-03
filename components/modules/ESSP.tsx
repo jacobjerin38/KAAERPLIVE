@@ -733,11 +733,9 @@ export const ESSP: React.FC = () => {
         const fetchApprovals = async () => {
             setLoading(true);
             try {
-                if (currentEmployee) {
-                    // Use Unified Engine — returns enriched data with entity_details
-                    const results = await WorkflowEngine.getMyApprovals(currentEmployee.id);
+                    const isHRorAdmin = roleFlags.isHR || roleFlags.isManager || roleFlags.isApprover || (currentEmployee as any)?.role === 'SUPER ADMIN' || (currentEmployee as any)?.role === 'Admin';
+                    const results = await WorkflowEngine.getMyApprovals(currentEmployee.id, currentEmployee.company_id, isHRorAdmin);
                     setRequests(results || []);
-                }
             } catch (error) {
                 console.error("Error fetching approvals:", error);
             }
