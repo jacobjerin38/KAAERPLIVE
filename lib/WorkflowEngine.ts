@@ -14,17 +14,36 @@ export class WorkflowEngine {
      * Helper to get the employee leave authority or manager hierarchy for a given employee.
      * Used as fallback when no workflow_levels are configured for a workflow.
      */
-    static async getEmployeeApprovers(companyId: string, employeeId: string): Promise<ApproverSequence> {
-        // 1. Check employee_leave_authority table for active mapping
-        const { data: auth } = await (supabase as any).from('employee_leave_authority')
-            .select('approver_level_1, approver_level_2, approver_level_3')
-            .eq('company_id', companyId)
-            .eq('employee_id', employeeId)
-            .eq('is_active', true)
-            .lte('effective_from', new Date().toISOString().split('T')[0])
-            .maybeSingle();
+    static async getEmployeeApprovers(companyId: string, employeeId: string, triggerType?: string): Promise<ApproverSequence> {
+        let auth: any = null;
 
-        // 2. Fetch employee manager as default fallback
+        // 1. Check trigger-specific authority mapping
+        if (triggerType === 'OVERTIME_REQUEST') {
+            const { data: otAuth } = await (supabase as any).from('employee_ot_authority')
+                .select('approver_level_1, approver_level_2, approver_level_3')
+                .eq('company_id', companyId)
+                .eq('employee_id', employeeId)
+                .eq('is_active', true)
+                .lte('effective_from', new Date().toISOString().split('T')[0])
+                .maybeSingle();
+
+            if (otAuth) auth = otAuth;
+        }
+
+        // 2. Fallback to employee_leave_authority mapping
+        if (!auth) {
+            const { data: leaveAuth } = await (supabase as any).from('employee_leave_authority')
+                .select('approver_level_1, approver_level_2, approver_level_3')
+                .eq('company_id', companyId)
+                .eq('employee_id', employeeId)
+                .eq('is_active', true)
+                .lte('effective_from', new Date().toISOString().split('T')[0])
+                .maybeSingle();
+            
+            if (leaveAuth) auth = leaveAuth;
+        }
+
+        // 3. Fetch employee manager as default fallback
         const { data: emp } = await supabase.from('employees')
             .select('manager_id')
             .eq('id', employeeId)
@@ -120,9 +139,9 @@ export class WorkflowEngine {
             }
         }
 
-        // Strategy 2: Fallback to employee_leave_authority / manager hierarchy
+        // Strategy 2: Fallback to employee authority / manager hierarchy
         if (!initialApprover) {
-            const approvers = await this.getEmployeeApprovers(companyId, requesterId);
+            const approvers = await this.getEmployeeApprovers(companyId, requesterId, triggerType);
             initialApprover = approvers.level1 || approvers.level2 || approvers.level3;
 
             // Also try workflow_steps as legacy fallback
@@ -336,9 +355,9 @@ export class WorkflowEngine {
             advanced = await this.advanceThroughLevels(instance, instanceId);
         }
 
-        // Fallback: advance through employee_leave_authority hierarchy
+        // Fallback: advance through employee authority hierarchy
         if (!advanced) {
-            const approvers = await this.getEmployeeApprovers(instance.company_id, instance.requester_id);
+            const approvers = await this.getEmployeeApprovers(instance.company_id, instance.requester_id, instance.trigger_type);
 
             let nextApprover: string | null = null;
             if (instance.assigned_to_user_id === approvers.level1 && approvers.level2) {

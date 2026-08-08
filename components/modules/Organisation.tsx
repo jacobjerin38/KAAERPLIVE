@@ -821,17 +821,31 @@ export const MASTER_CONFIG: Record<string, MasterTableConfig> = {
     'SHIFT_TIMINGS': {
         tableName: 'org_shift_timings',
         displayName: 'Shift Timing',
-        description: 'Work shift schedules',
+        description: 'Work shift schedules and threshold calculations',
         fields: [
             { key: 'name', label: 'Shift Name', type: 'text', required: true },
             { key: 'code', label: 'Code', type: 'text', required: true },
             { key: 'start_time', label: 'Start Time', type: 'time', required: true },
             { key: 'end_time', label: 'End Time', type: 'time', required: true },
+            { key: 'full_day_hours', label: 'Full Day Work Hours (e.g. 8.0)', type: 'number' },
+            { key: 'half_day_hours', label: 'Half Day Threshold Hours (e.g. 4.0)', type: 'number' },
+            { key: 'min_present_hours', label: 'Min Hours for Present (PR) (e.g. 4.0)', type: 'number' },
+            { key: 'ot_threshold_hours', label: 'OT Starts After (Hours, e.g. 8.0)', type: 'number' },
+            { key: 'ot_multiplier', label: 'OT Multiplier (e.g. 1.5)', type: 'number' },
             { key: 'grace_period_minutes', label: 'Grace Period (mins)', type: 'number' },
             { key: 'break_minutes', label: 'Break Duration (mins)', type: 'number' },
             { key: 'weekly_off_days', label: 'Weekly Off Days (0=Sun,1=Mon,...6=Sat)', type: 'text', placeholder: 'e.g. 5,6 for Fri+Sat' }
         ],
-        columns: [{ key: 'name', label: 'Name' }, { key: 'start_time', label: 'Start' }, { key: 'end_time', label: 'End' }, { key: 'break_minutes', label: 'Break (m)' }, { key: 'weekly_off_days', label: 'Off Days' }]
+        columns: [
+            { key: 'name', label: 'Name' }, 
+            { key: 'start_time', label: 'Start' }, 
+            { key: 'end_time', label: 'End' }, 
+            { key: 'full_day_hours', label: 'Full Day (h)' },
+            { key: 'half_day_hours', label: 'Half Day (h)' },
+            { key: 'min_present_hours', label: 'Min PR (h)' },
+            { key: 'ot_threshold_hours', label: 'OT Starts (h)' },
+            { key: 'break_minutes', label: 'Break (m)' }
+        ]
     },
     'LEAVE_TYPES': {
         tableName: 'org_leave_types',

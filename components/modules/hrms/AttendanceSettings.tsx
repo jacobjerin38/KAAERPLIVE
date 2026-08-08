@@ -10,6 +10,10 @@ interface AttendanceConfig {
     break_minutes: number;
     ot_threshold_hours: number;
     ot_multiplier: number;
+    weekend_ot_multiplier?: number;
+    holiday_ot_multiplier?: number;
+    max_ot_hours_per_day?: number;
+    ot_approval_required?: boolean;
     half_day_hours: number;
     auto_absent_if_no_punch: boolean;
     late_deduction_enabled?: boolean;
@@ -31,6 +35,10 @@ export const AttendanceSettings: React.FC = () => {
         break_minutes: 60,
         ot_threshold_hours: 8,
         ot_multiplier: 1.5,
+        weekend_ot_multiplier: 2.0,
+        holiday_ot_multiplier: 2.0,
+        max_ot_hours_per_day: 4.0,
+        ot_approval_required: true,
         half_day_hours: 4,
         auto_absent_if_no_punch: true,
         late_deduction_enabled: false,
@@ -42,13 +50,52 @@ export const AttendanceSettings: React.FC = () => {
         early_deduction_type: 'per_instance',
         early_deduction_amount: 0
     });
+
+    // OT Authority Mapping State
+    const [employees, setEmployees] = useState<any[]>([]);
+    const [otAuthorities, setOtAuthorities] = useState<any[]>([]);
+    const [selectedEmpId, setSelectedEmpId] = useState('');
+    const [level1, setLevel1] = useState('');
+    const [level2, setLevel2] = useState('');
+    const [level3, setLevel3] = useState('');
+    const [savingOtAuth, setSavingOtAuth] = useState(false);
+
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
 
     useEffect(() => {
-        if (currentCompanyId) fetchSettings();
+        if (currentCompanyId) {
+            fetchSettings();
+            fetchOtAuthorities();
+            fetchEmployees();
+        }
     }, [currentCompanyId]);
+
+    const fetchEmployees = async () => {
+        const { data } = await supabase
+            .from('employees')
+            .select('id, name, employee_code, designation')
+            .eq('company_id', currentCompanyId)
+            .eq('status', 'Active')
+            .order('name');
+        setEmployees(data || []);
+    };
+
+    const fetchOtAuthorities = async () => {
+        const { data } = await (supabase as any)
+            .from('employee_ot_authority')
+            .select(`
+                *,
+                employee:employees!employee_id(name, employee_code),
+                l1:employees!approver_level_1(name),
+                l2:employees!approver_level_2(name),
+                l3:employees!approver_level_3(name)
+            `)
+            .eq('company_id', currentCompanyId)
+            .eq('is_active', true);
+        setOtAuthorities(data || []);
+    };
 
     const fetchSettings = async () => {
         setLoading(true);
@@ -66,6 +113,10 @@ export const AttendanceSettings: React.FC = () => {
                 break_minutes: d.break_minutes ?? 60,
                 ot_threshold_hours: d.ot_threshold_hours || 8,
                 ot_multiplier: d.ot_multiplier || 1.5,
+                weekend_ot_multiplier: d.weekend_ot_multiplier || 2.0,
+                holiday_ot_multiplier: d.holiday_ot_multiplier || 2.0,
+                max_ot_hours_per_day: d.max_ot_hours_per_day || 4.0,
+                ot_approval_required: d.ot_approval_required ?? true,
                 half_day_hours: d.half_day_hours || 4,
                 auto_absent_if_no_punch: d.auto_absent_if_no_punch ?? true,
                 late_deduction_enabled: d.late_deduction_enabled || false,
@@ -100,6 +151,40 @@ export const AttendanceSettings: React.FC = () => {
         setSaving(false);
     };
 
+    const handleSaveOtAuthority = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!selectedEmpId || !level1) {
+            alert('Please select Employee and Level 1 Approver.');
+            return;
+        }
+        setSavingOtAuth(true);
+
+        const payload = {
+            company_id: currentCompanyId,
+            employee_id: selectedEmpId,
+            approver_level_1: level1 || null,
+            approver_level_2: level2 || null,
+            approver_level_3: level3 || null,
+            is_active: true
+        };
+
+        const { error } = await (supabase as any)
+            .from('employee_ot_authority')
+            .upsert(payload, { onConflict: 'company_id,employee_id' });
+
+        if (error) {
+            alert('Failed to save Overtime Authority Mapping: ' + error.message);
+        } else {
+            alert('Overtime Authority Mapping Saved!');
+            setSelectedEmpId('');
+            setLevel1('');
+            setLevel2('');
+            setLevel3('');
+            fetchOtAuthorities();
+        }
+        setSavingOtAuth(false);
+    };
+
     if (loading) {
         return <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 text-indigo-500 animate-spin" /></div>;
     }
@@ -109,9 +194,9 @@ export const AttendanceSettings: React.FC = () => {
             <div className="flex justify-between items-center">
                 <div>
                     <h3 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                        <Clock className="w-6 h-6 text-indigo-500" /> Attendance Configuration
+                        <Clock className="w-6 h-6 text-indigo-500" /> Attendance & Overtime Configuration
                     </h3>
-                    <p className="text-sm text-slate-500 mt-1">Configure grace timing, overtime thresholds, and punch rules</p>
+                    <p className="text-sm text-slate-500 mt-1">Configure grace timing, overtime thresholds, multipliers, and OT approval authorities</p>
                 </div>
                 <button
                     onClick={handleSave}
@@ -164,7 +249,7 @@ export const AttendanceSettings: React.FC = () => {
             {/* Working Hours */}
             <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-800 p-6">
                 <h4 className="font-bold text-slate-700 dark:text-slate-200 mb-4 flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-slate-400" /> Working Hours
+                    <Clock className="w-4 h-4 text-slate-400" /> Working Hours Calculation
                 </h4>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                     <div>
@@ -213,12 +298,12 @@ export const AttendanceSettings: React.FC = () => {
                 </div>
             </div>
 
-            {/* Overtime */}
+            {/* Overtime Settings */}
             <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-800 p-6">
                 <h4 className="font-bold text-slate-700 dark:text-slate-200 mb-4 flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 text-amber-500" /> Overtime Rules
+                    <AlertCircle className="w-4 h-4 text-amber-500" /> Overtime Settings & Multipliers
                 </h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                     <div>
                         <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">OT Starts After (hours)</label>
                         <input
@@ -227,23 +312,143 @@ export const AttendanceSettings: React.FC = () => {
                             onChange={e => setConfig({...config, ot_threshold_hours: Number(e.target.value)})}
                             className="w-full p-3 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
                         />
-                        <p className="text-xs text-slate-400 mt-1">Hours worked beyond this = Overtime</p>
+                        <p className="text-xs text-slate-400 mt-1">Hours beyond standard day</p>
                     </div>
                     <div>
-                        <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">OT Multiplier</label>
-                        <div className="flex items-center gap-3">
-                            <input
-                                type="range" min="1" max="3" step="0.25"
-                                value={config.ot_multiplier}
-                                onChange={e => setConfig({...config, ot_multiplier: Number(e.target.value)})}
-                                className="flex-1 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-amber-600"
-                            />
-                            <span className="px-3 py-1.5 bg-amber-50 dark:bg-amber-900/20 text-amber-600 rounded-lg text-sm font-black min-w-[60px] text-center">
-                                {config.ot_multiplier}x
-                            </span>
-                        </div>
-                        <p className="text-xs text-slate-400 mt-1">Standard = 1.5x, Double = 2x</p>
+                        <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Normal Day OT Multiplier</label>
+                        <input
+                            type="number" step="0.25" min="1" max="4"
+                            value={config.ot_multiplier}
+                            onChange={e => setConfig({...config, ot_multiplier: Number(e.target.value)})}
+                            className="w-full p-3 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
+                        />
+                        <p className="text-xs text-slate-400 mt-1">Default 1.5x</p>
                     </div>
+                    <div>
+                        <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Weekend OT Multiplier</label>
+                        <input
+                            type="number" step="0.25" min="1" max="4"
+                            value={config.weekend_ot_multiplier || 2.0}
+                            onChange={e => setConfig({...config, weekend_ot_multiplier: Number(e.target.value)})}
+                            className="w-full p-3 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
+                        />
+                        <p className="text-xs text-slate-400 mt-1">Off-day multiplier (e.g. 2.0x)</p>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Max OT / Day (hours)</label>
+                        <input
+                            type="number" step="0.5" min="1" max="16"
+                            value={config.max_ot_hours_per_day || 4.0}
+                            onChange={e => setConfig({...config, max_ot_hours_per_day: Number(e.target.value)})}
+                            className="w-full p-3 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
+                        />
+                        <p className="text-xs text-slate-400 mt-1">Max allowed per day</p>
+                    </div>
+                </div>
+            </div>
+
+            {/* Overtime Approval Authority Mapping */}
+            <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-800 p-6">
+                <h4 className="font-bold text-slate-700 dark:text-slate-200 mb-2 flex items-center gap-2">
+                    <Settings className="w-4 h-4 text-orange-500" /> Overtime Approval Authority Mapping
+                </h4>
+                <p className="text-sm text-slate-500 mb-6">Map 3-level approval hierarchy for employee Overtime Requests.</p>
+
+                <form onSubmit={handleSaveOtAuthority} className="bg-slate-50 dark:bg-zinc-800/50 p-4 rounded-xl border border-slate-200 dark:border-zinc-700 mb-6">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Employee</label>
+                            <select
+                                required
+                                value={selectedEmpId}
+                                onChange={e => setSelectedEmpId(e.target.value)}
+                                className="w-full p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm"
+                            >
+                                <option value="">Select Employee</option>
+                                {employees.map(emp => (
+                                    <option key={emp.id} value={emp.id}>{emp.name} ({emp.employee_code})</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Level 1 Approver</label>
+                            <select
+                                required
+                                value={level1}
+                                onChange={e => setLevel1(e.target.value)}
+                                className="w-full p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm"
+                            >
+                                <option value="">Select Level 1 Approver</option>
+                                {employees.map(emp => (
+                                    <option key={emp.id} value={emp.id}>{emp.name} ({emp.employee_code})</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Level 2 Approver (Optional)</label>
+                            <select
+                                value={level2}
+                                onChange={e => setLevel2(e.target.value)}
+                                className="w-full p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm"
+                            >
+                                <option value="">Select Level 2 Approver</option>
+                                {employees.map(emp => (
+                                    <option key={emp.id} value={emp.id}>{emp.name} ({emp.employee_code})</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Level 3 Approver (Optional)</label>
+                            <select
+                                value={level3}
+                                onChange={e => setLevel3(e.target.value)}
+                                className="w-full p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm"
+                            >
+                                <option value="">Select Level 3 Approver</option>
+                                {employees.map(emp => (
+                                    <option key={emp.id} value={emp.id}>{emp.name} ({emp.employee_code})</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+                    <div className="mt-4 flex justify-end">
+                        <button
+                            type="submit"
+                            disabled={savingOtAuth}
+                            className="px-5 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-bold transition-all flex items-center gap-2"
+                        >
+                            {savingOtAuth ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                            Save OT Authority Mapping
+                        </button>
+                    </div>
+                </form>
+
+                {/* OT Authority List Table */}
+                <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-zinc-800">
+                    <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-50 dark:bg-zinc-800 text-slate-500 uppercase font-bold">
+                            <tr>
+                                <th className="p-3">Employee</th>
+                                <th className="p-3">Level 1 Approver</th>
+                                <th className="p-3">Level 2 Approver</th>
+                                <th className="p-3">Level 3 Approver</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
+                            {otAuthorities.length === 0 ? (
+                                <tr>
+                                    <td colSpan={4} className="p-4 text-center text-slate-400">No custom OT approval authorities mapped yet. (Defaulting to manager hierarchy)</td>
+                                </tr>
+                            ) : otAuthorities.map(auth => (
+                                <tr key={auth.id} className="hover:bg-slate-50 dark:hover:bg-zinc-800/50">
+                                    <td className="p-3 font-bold text-slate-800 dark:text-slate-200">{auth.employee?.name} ({auth.employee?.employee_code})</td>
+                                    <td className="p-3 font-semibold text-emerald-600">{auth.l1?.name || '—'}</td>
+                                    <td className="p-3 font-semibold text-indigo-600">{auth.l2?.name || '—'}</td>
+                                    <td className="p-3 font-semibold text-purple-600">{auth.l3?.name || '—'}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
                 </div>
             </div>
 

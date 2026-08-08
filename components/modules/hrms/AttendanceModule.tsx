@@ -9,8 +9,9 @@ import { Employee } from '../../hrms/types';
 import { supabase } from '../../../lib/supabase';
 import { AttendanceSettings } from './AttendanceSettings';
 import { useAuth } from '../../../contexts/AuthContext';
+import { WorkflowEngine } from '../../../lib/WorkflowEngine';
 
-type SubTab = 'OVERVIEW' | 'DAILY' | 'MONTHLY' | 'SHIFTS' | 'DUTY_ROSTER' | 'LOCATION_MAPPING' | 'OUTDOOR_REPORT' | 'SETTINGS';
+type SubTab = 'OVERVIEW' | 'DAILY' | 'MONTHLY' | 'MISSED_PUNCH' | 'SHIFTS' | 'DUTY_ROSTER' | 'LOCATION_MAPPING' | 'OUTDOOR_REPORT' | 'SETTINGS';
 
 interface AttendanceModuleProps {
     employees: Employee[];
@@ -108,6 +109,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ employees })
         { id: 'OVERVIEW', label: 'Overview', icon: BarChart3 },
         { id: 'DAILY', label: 'Daily', icon: Clock },
         { id: 'MONTHLY', label: 'Monthly', icon: Calendar },
+        { id: 'MISSED_PUNCH', label: 'Missed Punch Applications', icon: AlertTriangle },
         { id: 'SHIFTS', label: 'Shifts', icon: Layers },
         { id: 'DUTY_ROSTER', label: 'Duty Roster', icon: ClipboardList },
         { id: 'LOCATION_MAPPING', label: 'Location Mapping', icon: MapPin },
@@ -144,6 +146,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ employees })
                 {subTab === 'OVERVIEW' && <OverviewTab employees={activeEmployees} companyId={companyId} />}
                 {subTab === 'DAILY' && <DailyTab employees={activeEmployees} companyId={companyId} />}
                 {subTab === 'MONTHLY' && <MonthlyTab employees={activeEmployees} companyId={companyId} companyOffDays={companyOffDays} />}
+                {subTab === 'MISSED_PUNCH' && <MissedPunchTab employees={activeEmployees} companyId={companyId} />}
                 {subTab === 'SHIFTS' && <ShiftsTab companyId={companyId} />}
                 {subTab === 'DUTY_ROSTER' && <DutyRosterTab employees={activeEmployees} companyId={companyId} companyOffDays={companyOffDays} />}
                 {subTab === 'LOCATION_MAPPING' && <LocationMappingTab employees={activeEmployees} companyId={companyId} />}
@@ -2587,6 +2590,344 @@ export const OutdoorReportTab: React.FC<{ employees: Employee[]; companyId: stri
                     </table>
                 </div>
             </div>
+        </div>
+    );
+};
+
+// ═══════════════════════════════════════════════════════════════════════
+// SUB-TAB: MISSED PUNCH APPLICATIONS (HRMS ONLY)
+// ═══════════════════════════════════════════════════════════════════════
+export const MissedPunchTab: React.FC<{ employees: Employee[]; companyId: string }> = ({ employees, companyId }) => {
+    const [requests, setRequests] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [statusFilter, setStatusFilter] = useState('ALL');
+
+    // Create Modal State
+    const [showModal, setShowModal] = useState(false);
+    const [selectedEmpId, setSelectedEmpId] = useState('');
+    const [requestDate, setRequestDate] = useState(todayStr());
+    const [punchType, setPunchType] = useState('CHECK_IN');
+    const [requestedTime, setRequestedTime] = useState('08:00');
+    const [reason, setReason] = useState('');
+    const [submitting, setSubmitting] = useState(false);
+    const [processingId, setProcessingId] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (companyId) fetchRequests();
+    }, [companyId]);
+
+    const fetchRequests = async () => {
+        setLoading(true);
+        const { data, error } = await (supabase as any)
+            .from('missed_punch_requests')
+            .select(`
+                *,
+                employee:employees!employee_id(name, employee_code, department)
+            `)
+            .eq('company_id', companyId)
+            .order('created_at', { ascending: false });
+
+        if (error) console.error('Fetch missed punch requests error:', error);
+        else setRequests(data || []);
+        setLoading(false);
+    };
+
+    const handleCreateRequest = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!selectedEmpId || !requestDate || !requestedTime || !reason.trim()) {
+            alert('Please complete all required fields.');
+            return;
+        }
+
+        setSubmitting(true);
+        try {
+            const timeISO = `${requestDate}T${requestedTime}:00`;
+
+            // Insert into missed_punch_requests
+            const { data: newReq, error } = await (supabase as any)
+                .from('missed_punch_requests')
+                .insert([{
+                    company_id: companyId,
+                    employee_id: selectedEmpId,
+                    request_date: requestDate,
+                    punch_type: punchType,
+                    requested_time: timeISO,
+                    reason: reason.trim(),
+                    status: 'Approved' // HR direct entry is auto-approved
+                }])
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            // Auto-finalize attendance record via WorkflowEngine
+            if (newReq?.id) {
+                await WorkflowEngine.finalizeEntity('MISSED_PUNCH', newReq.id, 'Approved');
+            }
+
+            alert('Missed Punch Request created and attendance updated!');
+            setShowModal(false);
+            setSelectedEmpId('');
+            setReason('');
+            fetchRequests();
+        } catch (err: any) {
+            console.error(err);
+            alert('Error saving request: ' + err.message);
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const handleApprove = async (reqId: string) => {
+        if (!confirm('Confirm approve this missed punch request? This will update the employee attendance record.')) return;
+        setProcessingId(reqId);
+        try {
+            await WorkflowEngine.finalizeEntity('MISSED_PUNCH', reqId, 'Approved');
+            alert('Missed Punch approved successfully!');
+            fetchRequests();
+        } catch (err: any) {
+            console.error(err);
+            alert('Error approving request: ' + err.message);
+        } finally {
+            setProcessingId(null);
+        }
+    };
+
+    const handleReject = async (reqId: string) => {
+        if (!confirm('Reject this missed punch request?')) return;
+        setProcessingId(reqId);
+        try {
+            await WorkflowEngine.finalizeEntity('MISSED_PUNCH', reqId, 'Rejected');
+            alert('Request rejected.');
+            fetchRequests();
+        } catch (err: any) {
+            console.error(err);
+            alert('Error rejecting request: ' + err.message);
+        } finally {
+            setProcessingId(null);
+        }
+    };
+
+    const filteredRequests = useMemo(() => {
+        return requests.filter(r => {
+            const empName = r.employee?.name?.toLowerCase() || '';
+            const empCode = r.employee?.employee_code?.toLowerCase() || '';
+            const matchesSearch = empName.includes(searchTerm.toLowerCase()) || empCode.includes(searchTerm.toLowerCase());
+            const matchesStatus = statusFilter === 'ALL' || r.status?.toUpperCase() === statusFilter.toUpperCase();
+            return matchesSearch && matchesStatus;
+        });
+    }, [requests, searchTerm, statusFilter]);
+
+    return (
+        <div className="h-full flex flex-col space-y-4 overflow-y-auto pr-2">
+            {/* Header & Controls */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-zinc-900 p-4 rounded-2xl border border-slate-200 dark:border-zinc-800">
+                <div>
+                    <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                        <AlertTriangle className="w-5 h-5 text-amber-500" /> Missed Punch Applications
+                    </h3>
+                    <p className="text-xs text-slate-500">Manage and regularize employee missed punches (HRMS Exclusive)</p>
+                </div>
+                <div className="flex items-center gap-3 w-full md:w-auto">
+                    <div className="relative flex-1 md:flex-initial">
+                        <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                        <input
+                            type="text"
+                            placeholder="Search employee..."
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                            className="pl-9 pr-4 py-2 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500/20"
+                        />
+                    </div>
+                    <select
+                        value={statusFilter}
+                        onChange={e => setStatusFilter(e.target.value)}
+                        className="px-3 py-2 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-bold outline-none"
+                    >
+                        <option value="ALL">All Status</option>
+                        <option value="PENDING">Pending</option>
+                        <option value="APPROVED">Approved</option>
+                        <option value="REJECTED">Rejected</option>
+                    </select>
+                    <button
+                        onClick={() => setShowModal(true)}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-500/20 transition-all flex items-center gap-1.5 whitespace-nowrap"
+                    >
+                        <Plus className="w-4 h-4" /> New Application
+                    </button>
+                </div>
+            </div>
+
+            {/* Applications Table */}
+            <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-800 overflow-hidden">
+                <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 dark:bg-zinc-800 text-slate-500 font-bold uppercase border-b border-slate-100 dark:border-zinc-800">
+                        <tr>
+                            <th className="p-4">Employee</th>
+                            <th className="p-4">Request Date</th>
+                            <th className="p-4">Punch Type</th>
+                            <th className="p-4">Requested Time</th>
+                            <th className="p-4">Reason</th>
+                            <th className="p-4">Status</th>
+                            <th className="p-4 text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
+                        {loading ? (
+                            <tr><td colSpan={7} className="p-8 text-center text-slate-400">Loading missed punch applications...</td></tr>
+                        ) : filteredRequests.length === 0 ? (
+                            <tr><td colSpan={7} className="p-8 text-center text-slate-400">No missed punch requests found.</td></tr>
+                        ) : filteredRequests.map(req => (
+                            <tr key={req.id} className="hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-colors">
+                                <td className="p-4">
+                                    <div className="font-bold text-slate-800 dark:text-white">{req.employee?.name}</div>
+                                    <div className="text-[10px] text-slate-400">{req.employee?.employee_code} • {req.employee?.department}</div>
+                                </td>
+                                <td className="p-4 font-semibold text-slate-700 dark:text-slate-300">{req.request_date}</td>
+                                <td className="p-4">
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${req.punch_type === 'CHECK_IN' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}`}>
+                                        {req.punch_type === 'CHECK_IN' ? 'Check In' : 'Check Out'}
+                                    </span>
+                                </td>
+                                <td className="p-4 font-mono font-bold text-slate-800 dark:text-slate-200">
+                                    {formatTime(req.requested_time)}
+                                </td>
+                                <td className="p-4 max-w-xs truncate text-slate-600 dark:text-slate-400" title={req.reason}>
+                                    {req.reason}
+                                </td>
+                                <td className="p-4">
+                                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                                        req.status === 'Approved' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                                        req.status === 'Rejected' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400' :
+                                        'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                                    }`}>
+                                        {req.status || 'Pending'}
+                                    </span>
+                                </td>
+                                <td className="p-4 text-center">
+                                    {req.status === 'Pending' || !req.status ? (
+                                        <div className="flex justify-center gap-2">
+                                            <button
+                                                onClick={() => handleApprove(req.id)}
+                                                disabled={processingId === req.id}
+                                                className="px-2.5 py-1 bg-emerald-600 text-white rounded-lg text-[11px] font-bold hover:bg-emerald-700 transition-colors flex items-center gap-1"
+                                            >
+                                                <Check className="w-3 h-3" /> Approve
+                                            </button>
+                                            <button
+                                                onClick={() => handleReject(req.id)}
+                                                disabled={processingId === req.id}
+                                                className="px-2.5 py-1 bg-rose-600 text-white rounded-lg text-[11px] font-bold hover:bg-rose-700 transition-colors flex items-center gap-1"
+                                            >
+                                                <X className="w-3 h-3" /> Reject
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <span className="text-xs text-slate-400 font-medium">Completed</span>
+                                    )}
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+
+            {/* Create Modal */}
+            {showModal && (
+                <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-800 w-full max-w-md p-6 space-y-4 shadow-2xl">
+                        <div className="flex justify-between items-center pb-2 border-b border-slate-100 dark:border-zinc-800">
+                            <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                                <Clock className="w-5 h-5 text-indigo-500" /> Apply Missed Punch (HRMS)
+                            </h3>
+                            <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+                        </div>
+
+                        <form onSubmit={handleCreateRequest} className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Employee *</label>
+                                <select
+                                    required
+                                    value={selectedEmpId}
+                                    onChange={e => setSelectedEmpId(e.target.value)}
+                                    className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm"
+                                >
+                                    <option value="">Select Employee</option>
+                                    {employees.map(emp => (
+                                        <option key={emp.id} value={emp.id}>{emp.name} ({emp.employee_code})</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Date *</label>
+                                    <input
+                                        type="date"
+                                        required
+                                        value={requestDate}
+                                        onChange={e => setRequestDate(e.target.value)}
+                                        className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Punch Type *</label>
+                                    <select
+                                        value={punchType}
+                                        onChange={e => setPunchType(e.target.value)}
+                                        className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm"
+                                    >
+                                        <option value="CHECK_IN">Check In</option>
+                                        <option value="CHECK_OUT">Check Out</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Requested Time *</label>
+                                <input
+                                    type="time"
+                                    required
+                                    value={requestedTime}
+                                    onChange={e => setRequestedTime(e.target.value)}
+                                    className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Reason / Justification *</label>
+                                <textarea
+                                    required
+                                    rows={3}
+                                    value={reason}
+                                    onChange={e => setReason(e.target.value)}
+                                    placeholder="State reason for missed punch..."
+                                    className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm"
+                                />
+                            </div>
+
+                            <div className="pt-3 flex justify-end gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowModal(false)}
+                                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={submitting}
+                                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
+                                >
+                                    {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                                    Submit & Regularize
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
