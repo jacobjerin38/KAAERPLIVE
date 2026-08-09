@@ -16,6 +16,7 @@ export const Payments: React.FC = () => {
     const [partners, setPartners] = useState<any[]>([]);
     const [journals, setJournals] = useState<any[]>([]); // Bank/Cash Journals
     const [accounts, setAccounts] = useState<any[]>([]); // Chart of accounts ledgers
+    const [bankConfigs, setBankConfigs] = useState<any[]>([]); // Org Bank Configurations
 
     // Form State
     const [paymentCategory, setPaymentCategory] = useState<'partner' | 'direct_account'>('partner'); // partner, direct_account
@@ -25,6 +26,8 @@ export const Payments: React.FC = () => {
     const [amount, setAmount] = useState('');
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [selectedJournal, setSelectedJournal] = useState('');
+    const [selectedBank, setSelectedBank] = useState('');
+    const [selectedBankAccount, setSelectedBankAccount] = useState('');
     const [notes, setNotes] = useState('');
 
     // Edit/View State
@@ -48,7 +51,7 @@ export const Payments: React.FC = () => {
                 *,
                 partner:accounting_partners(name),
                 account:accounting_chart_of_accounts!account_id(code, name, type),
-                journal:accounting_journals!accounting_journal_id(code)
+                journal:accounting_journals!accounting_journal_id(code, name, type)
             `)
             .eq('company_id', currentCompanyId)
             .order('date', { ascending: false });
@@ -76,6 +79,13 @@ export const Payments: React.FC = () => {
             .eq('is_active', true)
             .order('code', { ascending: true });
         setAccounts(aData || []);
+
+        // Fetch Org Bank Configs
+        const { data: bData } = await supabase
+            .from('org_bank_configs')
+            .select('id, name, bank_name, code')
+            .eq('company_id', currentCompanyId);
+        setBankConfigs(bData || []);
     };
 
     const handleOpenModal = (pay?: any, readonly = false) => {
@@ -88,6 +98,8 @@ export const Payments: React.FC = () => {
             setAmount(String(pay.amount || ''));
             setDate(pay.date || '');
             setSelectedJournal(pay.accounting_journal_id || '');
+            setSelectedBank(pay.bank_name || '');
+            setSelectedBankAccount(pay.bank_account || '');
             setNotes(pay.notes || '');
             setEditMode(!readonly);
             setViewMode(readonly);
@@ -101,6 +113,8 @@ export const Payments: React.FC = () => {
             setAmount('');
             setDate(new Date().toISOString().split('T')[0]);
             if (journals.length > 0) setSelectedJournal(journals[0].id);
+            setSelectedBank('');
+            setSelectedBankAccount('');
             setNotes('');
             setEditMode(false);
             setViewMode(false);
@@ -125,6 +139,16 @@ export const Payments: React.FC = () => {
                 throw new Error('Please select an Account/Expense Ledger for Direct Payment');
             }
 
+            const selectedJournalObj = journals.find(j => j.id === selectedJournal);
+            const isBankJournal = selectedJournalObj ? (selectedJournalObj.type === 'Bank' || (selectedJournalObj.name || '').toLowerCase().includes('bank')) : false;
+
+            if (isBankJournal && !selectedBank) {
+                throw new Error('Please select a Bank for Bank Payment');
+            }
+            if (isBankJournal && !selectedBankAccount) {
+                throw new Error('Please select a Bank Account');
+            }
+
             const payload = {
                 company_id: currentCompanyId,
                 payment_category: paymentCategory,
@@ -135,6 +159,8 @@ export const Payments: React.FC = () => {
                 amount: Number(amount),
                 date: date,
                 accounting_journal_id: selectedJournal,
+                bank_name: isBankJournal ? selectedBank : null,
+                bank_account: isBankJournal ? selectedBankAccount : null,
                 notes: notes,
                 state: 'draft'
             };
@@ -151,6 +177,8 @@ export const Payments: React.FC = () => {
                         amount: Number(amount),
                         date: date,
                         accounting_journal_id: selectedJournal,
+                        bank_name: isBankJournal ? selectedBank : null,
+                        bank_account: isBankJournal ? selectedBankAccount : null,
                         notes: notes
                     })
                     .eq('id', editingPaymentId);
@@ -200,6 +228,31 @@ export const Payments: React.FC = () => {
         if (error) alert('Error posting: ' + error.message);
         else fetchPayments();
     };
+
+    const selectedJournalObj = journals.find(j => j.id === selectedJournal);
+    const isBankJournal = selectedJournalObj ? (selectedJournalObj.type === 'Bank' || (selectedJournalObj.name || '').toLowerCase().includes('bank')) : false;
+
+    const presetBanks = [
+        'QNB (Qatar National Bank)',
+        'CBQ (Commercial Bank of Qatar)',
+        'QIB (Qatar Islamic Bank)',
+        'Doha Bank',
+        'Masraf Al Rayan',
+        'Dukhan Bank',
+        'Ahlibank',
+        'HSBC Bank Qatar',
+        'International Bank of Qatar (IBQ)',
+        'Qatar International Islamic Bank (QIIB)'
+    ];
+
+    const availableBankNames = Array.from(
+        new Set([
+            ...bankConfigs.map(b => b.bank_name || b.name).filter(Boolean),
+            ...presetBanks
+        ])
+    );
+
+    const bankAccountsFromCOA = accounts.filter(a => a.subtype === 'Bank' || (a.name || '').toLowerCase().includes('bank'));
 
     return (
         <div className="space-y-6">
@@ -265,7 +318,17 @@ export const Payments: React.FC = () => {
                                         {displayName}
                                         {partnerSubtext && <span className="text-xs text-slate-400 font-normal">{partnerSubtext}</span>}
                                     </td>
-                                    <td className="px-6 py-4 text-slate-500">{pay.journal?.code || 'Bank/Cash'}</td>
+                                    <td className="px-6 py-4 text-slate-500">
+                                        <div className="font-medium text-slate-700 dark:text-slate-300">
+                                            {pay.journal?.code || 'Bank/Cash'}
+                                        </div>
+                                        {pay.bank_name && (
+                                            <div className="text-xs text-blue-600 dark:text-blue-400 font-normal mt-0.5 flex items-center gap-1">
+                                                <span>🏦</span>
+                                                <span>{pay.bank_name}{pay.bank_account ? ` (${pay.bank_account})` : ''}</span>
+                                            </div>
+                                        )}
+                                    </td>
                                     <td className={`px-6 py-4 text-right font-bold ${pay.payment_type === 'inbound' ? 'text-emerald-600' : 'text-slate-700 dark:text-slate-300'}`}>
                                         <div className="flex items-center justify-end gap-1">
                                             {pay.payment_type === 'inbound' ? <ArrowDownLeft className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}
@@ -450,12 +513,64 @@ export const Payments: React.FC = () => {
                                     value={selectedJournal}
                                     onChange={e => setSelectedJournal(e.target.value)}
                                     disabled={viewMode}
-                                    className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm"
+                                    className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm font-medium"
                                 >
                                     <option value="">Select Journal</option>
                                     {journals.map(j => <option key={j.id} value={j.id}>{j.name} ({j.type})</option>)}
                                 </select>
                             </div>
+
+                            {/* Bank and Bank Account Dropdowns (shown when Bank Journal is selected) */}
+                            {isBankJournal && (
+                                <div className="col-span-2 grid grid-cols-2 gap-4 p-3.5 bg-blue-50/60 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/30 rounded-xl">
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 uppercase mb-1">
+                                            Bank <span className="text-rose-500">*</span>
+                                        </label>
+                                        <select
+                                            required={isBankJournal}
+                                            value={selectedBank}
+                                            onChange={e => setSelectedBank(e.target.value)}
+                                            disabled={viewMode}
+                                            className="w-full p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm font-medium focus:ring-2 focus:ring-indigo-500"
+                                        >
+                                            <option value="">Select Bank</option>
+                                            {availableBankNames.map(b => (
+                                                <option key={b} value={b}>{b}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 uppercase mb-1">
+                                            Bank Account <span className="text-rose-500">*</span>
+                                        </label>
+                                        <select
+                                            required={isBankJournal}
+                                            value={selectedBankAccount}
+                                            onChange={e => setSelectedBankAccount(e.target.value)}
+                                            disabled={viewMode}
+                                            className="w-full p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm font-medium focus:ring-2 focus:ring-indigo-500"
+                                        >
+                                            <option value="">Select Bank Account</option>
+                                            {bankAccountsFromCOA.map(acc => (
+                                                <option key={acc.id} value={`${acc.code} - ${acc.name}`}>
+                                                    {acc.code} - {acc.name}
+                                                </option>
+                                            ))}
+                                            {bankConfigs.map(b => (
+                                                <option key={`cfg-${b.id}`} value={`${b.name} (${b.code})`}>
+                                                    {b.name} ({b.code})
+                                                </option>
+                                            ))}
+                                            {selectedBankAccount &&
+                                                !bankAccountsFromCOA.some(a => `${a.code} - ${a.name}` === selectedBankAccount) &&
+                                                !bankConfigs.some(b => `${b.name} (${b.code})` === selectedBankAccount) && (
+                                                    <option value={selectedBankAccount}>{selectedBankAccount}</option>
+                                                )}
+                                        </select>
+                                    </div>
+                                </div>
+                            )}
 
                             <div className="col-span-2">
                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Memo / Notes</label>
