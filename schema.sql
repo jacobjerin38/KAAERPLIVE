@@ -5039,6 +5039,10 @@ CREATE TABLE IF NOT EXISTS public.accounting_payments (
     notes text,
     accounting_journal_id uuid,
     accounting_entry_id uuid,
+    payment_category text,
+    account_id uuid,
+    bank_name text,
+    bank_account text,
     CONSTRAINT accounting_payments_amount_check CHECK ((amount > (0)::numeric)),
     CONSTRAINT accounting_payments_pkey PRIMARY KEY (id)
 );
@@ -5161,6 +5165,7 @@ CREATE TABLE IF NOT EXISTS public.attendance (
     check_out timestamp with time zone,
     status text DEFAULT 'Present'::text,
     total_hours numeric DEFAULT 0,
+    duration numeric DEFAULT 0,
     notes text,
     edited_by uuid,
     edited_at timestamp with time zone,
@@ -5171,6 +5176,12 @@ CREATE TABLE IF NOT EXISTS public.attendance (
     is_processed boolean DEFAULT false,
     check_in_location text,
     check_out_location text,
+    check_in_lat numeric,
+    check_in_lng numeric,
+    check_out_lat numeric,
+    check_out_lng numeric,
+    punch_method text DEFAULT 'web'::text,
+    attendance_status_id bigint,
     CONSTRAINT attendance_pkey PRIMARY KEY (id)
 );
 
@@ -5394,6 +5405,7 @@ CREATE TABLE IF NOT EXISTS public.crm_contacts (
     notes text,
     last_contact timestamp with time zone,
     owner_id uuid,
+    created_by uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
     CONSTRAINT crm_contacts_pkey PRIMARY KEY (id)
 );
 
@@ -5891,6 +5903,12 @@ CREATE TABLE IF NOT EXISTS public.employees (
     employee_status_id bigint,
     leave_plan_id bigint,
     ticket_frequency text,
+    punch_mode text DEFAULT 'Any'::text,
+    ot_applicable boolean DEFAULT true,
+    gps_punch_enabled boolean DEFAULT false,
+    geo_latitude numeric,
+    geo_longitude numeric,
+    geofence_radius_meters numeric DEFAULT 100,
     CONSTRAINT employees_pkey PRIMARY KEY (id)
 );
 

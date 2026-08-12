@@ -72,6 +72,7 @@ export const EditAttendanceModal: React.FC<EditAttendanceModalProps> = ({ record
             check_in: formData.checkIn || null,
             check_out: formData.checkOut || null,
             status: formData.status,
+            total_hours: duration,
             duration: duration,
             edited_by: user?.id,
             edited_at: new Date().toISOString(),
