@@ -3010,6 +3010,7 @@ export const Organisation: React.FC = () => {
             { label: 'Accounting / Finance', perms: ['finance.dashboard.view', 'finance.payroll.manage'] },
             { label: 'Manufacturing', perms: ['manufacturing.view'] },
             { label: 'Procurement', perms: ['procurement.view'] },
+            { label: 'PRO (Mandoob)', perms: ['pro.view', 'pro.requests.view', 'pro.tasks.manage'] },
         ];
         const [grantedPerms, setGrantedPerms] = React.useState<string[]>([]);
         const [showPerms, setShowPerms] = React.useState(false);
