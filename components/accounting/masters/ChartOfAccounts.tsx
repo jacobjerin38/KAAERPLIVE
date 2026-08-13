@@ -106,13 +106,31 @@ export const ChartOfAccounts: React.FC = () => {
         };
 
         try {
+            let err: any = null;
             if (editing) { 
-                const { error } = await supabase.from('accounting_chart_of_accounts').update(payload).eq('id', editing.id); 
-                if (error) throw error; 
+                const res = await supabase.from('accounting_chart_of_accounts').update(payload).eq('id', editing.id); 
+                err = res.error;
             } else { 
-                const { error } = await supabase.from('accounting_chart_of_accounts').insert([payload]); 
-                if (error) throw error; 
+                const res = await supabase.from('accounting_chart_of_accounts').insert([payload]); 
+                err = res.error;
             }
+
+            if (err && (err.message?.includes('description') || err.message?.includes('parent_id') || err.message?.includes('schema cache'))) {
+                const safePayload = { ...payload };
+                delete safePayload.description;
+                delete safePayload.parent_id;
+                
+                if (editing) {
+                    const res2 = await supabase.from('accounting_chart_of_accounts').update(safePayload).eq('id', editing.id);
+                    err = res2.error;
+                } else {
+                    const res2 = await supabase.from('accounting_chart_of_accounts').insert([safePayload]);
+                    err = res2.error;
+                }
+            }
+
+            if (err) throw err;
+
             setIsModalOpen(false); 
             fetch_();
         } catch (err: any) { alert('Error: ' + err.message); }

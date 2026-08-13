@@ -4806,6 +4806,8 @@ CREATE TABLE IF NOT EXISTS public.accounting_chart_of_accounts (
     subtype text,
     account_group_id uuid,
     currency_id uuid,
+    parent_id uuid REFERENCES public.accounting_chart_of_accounts(id) ON DELETE SET NULL,
+    description text,
     is_reconcilable boolean DEFAULT false,
     is_active boolean DEFAULT true,
     created_at timestamp with time zone NOT NULL DEFAULT timezone('utc'::text, now()),
