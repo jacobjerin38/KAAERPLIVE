@@ -29,11 +29,11 @@ const TI: Record<string, string> = { Asset:'🏦', Liability:'📋', Equity:'�
 
 const getCategoryOptions = (type: string) => {
     switch(type) {
-        case 'Asset': return ['Cash', 'Bank', 'Receivable', 'Other'];
-        case 'Liability': return ['Payable', 'Other'];
-        case 'Equity': return ['Other'];
-        case 'Income': return ['Revenue', 'Other'];
-        case 'Expense': return ['COGS', 'Other'];
+        case 'Asset': return ['Current Assets', 'Fixed Assets', 'Cash', 'Bank', 'Receivable', 'Other'];
+        case 'Liability': return ['Current Liabilities', 'Long-term Liabilities', 'Payable', 'Other'];
+        case 'Equity': return ['Owner\'s Equity', 'Retained Earnings', 'Equity', 'Other'];
+        case 'Income': return ['Operating Revenue', 'Non-Operating Revenue', 'Revenue', 'Other'];
+        case 'Expense': return ['Direct Expenses', 'Indirect Expenses', 'COGS', 'Other'];
         default: return ['Other'];
     }
 };
@@ -189,44 +189,83 @@ export const ChartOfAccounts: React.FC = () => {
             }
 
             const accountsToInsert = jsonData.map(row => {
-                const typeVal = String(row['Type'] || 'Asset').trim();
+                // Flexible Column Aliases
+                const rawCode = row['Account Code'] || row['AccountCode'] || row['Code'] || row['code'] || '';
+                const rawName = row['Account Name'] || row['AccountName'] || row['Name'] || row['name'] || '';
+                let rawType = String(row['Type'] || row['type'] || row['Account Type'] || 'Asset').trim();
+                
+                // Normalize Type string (e.g. Assets -> Asset, Liabilities -> Liability)
+                if (rawType.toLowerCase().startsWith('asset')) rawType = 'Asset';
+                else if (rawType.toLowerCase().startsWith('liabilit')) rawType = 'Liability';
+                else if (rawType.toLowerCase().startsWith('equit')) rawType = 'Equity';
+                else if (rawType.toLowerCase().startsWith('incom') || rawType.toLowerCase().startsWith('revenu')) rawType = 'Income';
+                else if (rawType.toLowerCase().startsWith('expens') || rawType.toLowerCase().startsWith('cost')) rawType = 'Expense';
+
                 const type: 'Asset' | 'Liability' | 'Equity' | 'Income' | 'Expense' = 
-                    ['Asset', 'Liability', 'Equity', 'Income', 'Expense'].includes(typeVal)
-                        ? (typeVal as any)
+                    ['Asset', 'Liability', 'Equity', 'Income', 'Expense'].includes(rawType)
+                        ? (rawType as any)
                         : 'Asset';
                         
-                const categoryVal = String(row['Category'] || getCategoryOptions(type)[0]).trim();
+                const categoryVal = String(row['Category'] || row['category'] || row['Subtype'] || row['subtype'] || getCategoryOptions(type)[0]).trim();
 
                 const isActive = row['Is Active'] !== undefined 
                     ? (String(row['Is Active']).toLowerCase() === 'true' || row['Is Active'] === 1 || row['Is Active'] === true)
                     : true;
 
+                const parentIdentifier = String(row['Parent Account'] || row['ParentAccount'] || row['Parent Account Code'] || row['Parent'] || '').trim();
+
                 return {
                     company_id: currentCompanyId,
-                    code: String(row['Code'] || '').trim(),
-                    name: String(row['Name'] || '').trim(),
+                    code: String(rawCode).trim(),
+                    name: String(rawName).trim(),
                     type: type,
                     subtype: categoryVal,
-                    description: String(row['Description'] || '').trim(),
-                    is_active: isActive
+                    description: String(row['Description'] || row['description'] || '').trim(),
+                    is_active: isActive,
+                    parent_identifier: parentIdentifier
                 };
             }).filter(a => a.code && a.name);
 
             if (accountsToInsert.length === 0) {
-                alert('No valid accounts found. Ensure the "Code" and "Name" columns are populated.');
+                alert('No valid accounts found. Ensure the "Account Code" / "Code" and "Account Name" / "Name" columns are populated.');
                 setImporting(false);
                 return;
             }
 
-            const { error: insertError } = await supabase
+            // Map Parent Account IDs if Parent Account column is provided
+            const existingAccounts = [...accounts];
+            const finalPayloads = accountsToInsert.map(acc => {
+                let parentId: string | null = null;
+                if (acc.parent_identifier) {
+                    const match = existingAccounts.find(e => 
+                        e.code.toLowerCase() === acc.parent_identifier.toLowerCase() || 
+                        e.name.toLowerCase() === acc.parent_identifier.toLowerCase()
+                    );
+                    if (match) parentId = match.id;
+                }
+                const { parent_identifier, ...cleanPayload } = acc;
+                return { ...cleanPayload, parent_id: parentId };
+            });
+
+            // Resilient insertion: try inserting with description and parent_id, fallback without if DB columns pending
+            let { error: insertError } = await supabase
                 .from('accounting_chart_of_accounts')
-                .insert(accountsToInsert);
+                .insert(finalPayloads);
+
+            if (insertError && (insertError.message?.includes('description') || insertError.message?.includes('parent_id') || insertError.message?.includes('schema cache'))) {
+                const safePayloads = finalPayloads.map(p => {
+                    const { description, parent_id, ...rest } = p as any;
+                    return rest;
+                });
+                const res2 = await supabase.from('accounting_chart_of_accounts').insert(safePayloads);
+                insertError = res2.error;
+            }
 
             if (insertError) {
                 throw insertError;
             }
 
-            alert(`Successfully imported ${accountsToInsert.length} accounts.`);
+            alert(`Successfully imported ${finalPayloads.length} accounts from Excel.`);
             setShowImportModal(false);
             fetch_();
         } catch (error: any) {
