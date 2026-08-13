@@ -2048,6 +2048,15 @@ const GenericRemindersView = ({
 // --- Constants ---
 
 const ALL_PERMISSIONS = {
+    'PRO (Mandoob)': [
+        { id: 'pro.view', label: 'Access PRO (Mandoob) Module' },
+        { id: 'pro.requests.create', label: 'Create PRO Requests (HR/CEO)' },
+        { id: 'pro.requests.view', label: 'View All PRO Requests' },
+        { id: 'pro.tasks.manage', label: 'PRO Agent Task Management' },
+        { id: 'pro.documents.manage', label: 'Upload & Manage Documents' },
+        { id: 'pro.renewals.view', label: 'View Renewal Tracker' },
+        { id: 'pro.reports.view', label: 'Access PRO Reports' }
+    ],
     HRMS: [
         { id: 'hrms.employees.view', label: 'View Employees' },
         { id: 'hrms.employees.manage', label: 'Manage Employees' },
@@ -2140,20 +2149,12 @@ const ALL_PERMISSIONS = {
     TRAVEL: [
         { id: 'travel.view', label: 'View Travel & Expenses' },
         { id: 'travel.manage', label: 'Manage Travel' }
-    ],
-    PRO: [
-        { id: 'pro.view', label: 'Access PRO (Mandoob) Module' },
-        { id: 'pro.requests.create', label: 'Create PRO Requests (HR/CEO)' },
-        { id: 'pro.requests.view', label: 'View All PRO Requests' },
-        { id: 'pro.tasks.manage', label: 'PRO Agent Task Management' },
-        { id: 'pro.documents.manage', label: 'Upload & Manage Documents' },
-        { id: 'pro.renewals.view', label: 'View Renewal Tracker' },
-        { id: 'pro.reports.view', label: 'Access PRO Reports' }
     ]
 };
 
 const RolePermissionEditor = ({ selectedPermissions, onChange }: { selectedPermissions: string[], onChange: (perms: string[]) => void }) => {
     const [activeModule, setActiveModule] = useState<string>(Object.keys(ALL_PERMISSIONS)[0]);
+    const [permSearch, setPermSearch] = useState('');
 
     const togglePermission = (id: string) => {
         if (selectedPermissions.includes(id)) {
@@ -2192,79 +2193,102 @@ const RolePermissionEditor = ({ selectedPermissions, onChange }: { selectedPermi
             case 'LOANS': return DollarSign;
             case 'PERFORMANCE': return Award;
             case 'TRAVEL': return Plane;
-            case 'PRO': return ShieldCheck;
+            case 'PRO (Mandoob)': case 'PRO': return ShieldCheck;
             case 'ESSP': return UserCircle;
             default: return Shield;
         }
     };
 
-    return (
-        <div className="flex h-[500px] border border-slate-200 dark:border-zinc-700 rounded-2xl overflow-hidden bg-slate-50 dark:bg-zinc-900">
-            {/* Sidebar */}
-            <div className="w-1/3 border-r border-slate-200 dark:border-zinc-700 overflow-y-auto bg-white dark:bg-zinc-900 p-2 space-y-1">
-                {Object.entries(ALL_PERMISSIONS).map(([module, permissions]) => {
-                    const count = permissions.filter(p => selectedPermissions.includes(p.id)).length;
-                    const total = permissions.length;
-                    const Icon = getModuleIcon(module);
+    const filteredModules = Object.entries(ALL_PERMISSIONS).filter(([module, perms]) => {
+        if (!permSearch) return true;
+        const s = permSearch.toLowerCase();
+        return module.toLowerCase().includes(s) || perms.some(p => p.label.toLowerCase().includes(s) || p.id.toLowerCase().includes(s));
+    });
 
-                    return (
-                        <button
-                            key={module}
-                            type="button"
-                            onClick={() => setActiveModule(module)}
-                            className={`w-full text-left px-4 py-3 rounded-xl flex items-center justify-between transition-all ${activeModule === module
-                                ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 shadow-sm ring-1 ring-blue-200 dark:ring-blue-800'
-                                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-zinc-800'}`}
-                        >
-                            <div className="flex items-center gap-3">
-                                <Icon className="w-4 h-4 flex-shrink-0" />
-                                <span className="font-bold text-sm tracking-wide">{module}</span>
-                            </div>
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${count > 0 ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-zinc-800 text-slate-400'}`}>
-                                {count}/{total}
-                            </span>
-                        </button>
-                    );
-                })}
+    return (
+        <div className="flex flex-col h-[520px] border border-slate-200 dark:border-zinc-700 rounded-2xl overflow-hidden bg-slate-50 dark:bg-zinc-900">
+            {/* Quick Search Header */}
+            <div className="p-3 bg-white dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-700 flex items-center gap-2">
+                <Search className="w-4 h-4 text-slate-400" />
+                <input 
+                    type="text" 
+                    placeholder="Search permissions or modules (e.g. PRO, Mandoob, Sales, Leave)..." 
+                    value={permSearch}
+                    onChange={e => setPermSearch(e.target.value)}
+                    className="w-full text-xs bg-transparent border-none focus:outline-none text-slate-900 dark:text-white"
+                />
+                {permSearch && (
+                    <button onClick={() => setPermSearch('')} className="text-xs text-slate-400 hover:text-slate-600">Clear</button>
+                )}
             </div>
 
-            {/* Content Area */}
-            <div className="flex-1 flex flex-col h-full bg-slate-50/50 dark:bg-zinc-800/20">
-                <div className="p-4 border-b border-slate-200 dark:border-zinc-700 flex justify-between items-center bg-white dark:bg-zinc-900/50">
-                    <div>
-                        <h4 className="font-bold text-slate-900 dark:text-white text-lg">{activeModule} Permissions</h4>
-                        <p className="text-xs text-slate-500">Manage access levels for {activeModule} module.</p>
-                    </div>
-                    <button
-                        type="button"
-                        onClick={() => toggleModule(activeModule, (ALL_PERMISSIONS as any)[activeModule])}
-                        className="text-xs bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-700 dark:text-slate-300 px-3 py-1.5 rounded-lg font-bold transition-colors"
-                    >
-                        Toggle All
-                    </button>
+            <div className="flex flex-1 overflow-hidden">
+                {/* Sidebar */}
+                <div className="w-1/3 border-r border-slate-200 dark:border-zinc-700 overflow-y-auto bg-white dark:bg-zinc-900 p-2 space-y-1">
+                    {filteredModules.map(([module, permissions]) => {
+                        const count = permissions.filter(p => selectedPermissions.includes(p.id)).length;
+                        const total = permissions.length;
+                        const Icon = getModuleIcon(module);
+
+                        return (
+                            <button
+                                key={module}
+                                type="button"
+                                onClick={() => setActiveModule(module)}
+                                className={`w-full text-left px-4 py-3 rounded-xl flex items-center justify-between transition-all ${activeModule === module
+                                    ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 shadow-sm ring-1 ring-blue-200 dark:ring-blue-800'
+                                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-zinc-800'}`}
+                            >
+                                <div className="flex items-center gap-3">
+                                    <Icon className="w-4 h-4 flex-shrink-0" />
+                                    <span className="font-bold text-sm tracking-wide">{module}</span>
+                                </div>
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${count > 0 ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-zinc-800 text-slate-400'}`}>
+                                    {count}/{total}
+                                </span>
+                            </button>
+                        );
+                    })}
                 </div>
 
-                <div className="p-4 overflow-y-auto flex-1">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {(ALL_PERMISSIONS as any)[activeModule].map((perm: any) => (
-                            <label key={perm.id} className={`flex items-start gap-3 cursor-pointer p-3 rounded-xl border transition-all ${selectedPermissions.includes(perm.id)
-                                ? 'bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800 shadow-sm'
-                                : 'bg-white dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 hover:border-slate-300'}`}>
-                                <div className={`mt-0.5 w-5 h-5 rounded-md border flex items-center justify-center transition-colors ${selectedPermissions.includes(perm.id) ? 'bg-blue-600 border-blue-600' : 'bg-white border-slate-300'}`}>
-                                    {selectedPermissions.includes(perm.id) && <Check className="w-3.5 h-3.5 text-white" />}
-                                </div>
-                                <input
-                                    type="checkbox"
-                                    checked={selectedPermissions.includes(perm.id)}
-                                    onChange={() => togglePermission(perm.id)}
-                                    className="sr-only"
-                                />
-                                <div>
-                                    <p className={`text-sm font-bold ${selectedPermissions.includes(perm.id) ? 'text-blue-700 dark:text-blue-300' : 'text-slate-700 dark:text-slate-300'}`}>{perm.label}</p>
-                                    <p className="text-[10px] text-slate-400 font-mono mt-0.5">{perm.id}</p>
-                                </div>
-                            </label>
-                        ))}
+                {/* Content Area */}
+                <div className="flex-1 flex flex-col h-full bg-slate-50/50 dark:bg-zinc-800/20">
+                    <div className="p-4 border-b border-slate-200 dark:border-zinc-700 flex justify-between items-center bg-white dark:bg-zinc-900/50">
+                        <div>
+                            <h4 className="font-bold text-slate-900 dark:text-white text-lg">{activeModule} Permissions</h4>
+                            <p className="text-xs text-slate-500">Manage access levels for {activeModule} module.</p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => toggleModule(activeModule, (ALL_PERMISSIONS as any)[activeModule])}
+                            className="text-xs bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-700 dark:text-slate-300 px-3 py-1.5 rounded-lg font-bold transition-colors"
+                        >
+                            Toggle All
+                        </button>
+                    </div>
+
+                    <div className="p-4 overflow-y-auto flex-1">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {((ALL_PERMISSIONS as any)[activeModule] || []).map((perm: any) => (
+                                <label key={perm.id} className={`flex items-start gap-3 cursor-pointer p-3 rounded-xl border transition-all ${selectedPermissions.includes(perm.id)
+                                    ? 'bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800 shadow-sm'
+                                    : 'bg-white dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 hover:border-slate-300'}`}>
+                                    <div className={`mt-0.5 w-5 h-5 rounded-md border flex items-center justify-center transition-colors ${selectedPermissions.includes(perm.id) ? 'bg-blue-600 border-blue-600' : 'bg-white border-slate-300'}`}>
+                                        {selectedPermissions.includes(perm.id) && <Check className="w-3.5 h-3.5 text-white" />}
+                                    </div>
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedPermissions.includes(perm.id)}
+                                        onChange={() => togglePermission(perm.id)}
+                                        className="sr-only"
+                                    />
+                                    <div>
+                                        <p className={`text-sm font-bold ${selectedPermissions.includes(perm.id) ? 'text-blue-700 dark:text-blue-300' : 'text-slate-700 dark:text-slate-300'}`}>{perm.label}</p>
+                                        <p className="text-[10px] text-slate-400 font-mono mt-0.5">{perm.id}</p>
+                                    </div>
+                                </label>
+                            ))}
+                        </div>
                     </div>
                 </div>
             </div>
