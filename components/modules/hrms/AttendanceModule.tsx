@@ -1502,16 +1502,27 @@ export const DutyRosterTab: React.FC<{ employees: Employee[]; companyId: string;
                                     {weekDates.map(date => {
                                         const entry = getRosterEntry(emp.id, date);
                                         const isWE = isOffDay(new Date(date), companyOffDays);
+                                        const selShift = shifts.find(s => s.id?.toString() === entry?.shift_id?.toString());
+                                        const isNight = selShift ? (selShift.is_overnight || selShift.shift_type === 'NIGHT' || (selShift.start_time > selShift.end_time)) : false;
+                                        
+                                        const selectStyle = entry 
+                                            ? (isNight 
+                                                ? 'bg-indigo-100 dark:bg-indigo-900/40 border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 font-bold' 
+                                                : 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 font-bold')
+                                            : 'bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-400';
+
                                         return (
                                             <td key={date} className={`px-1 py-1.5 text-center ${isWE ? 'bg-rose-50/30 dark:bg-rose-900/5' : ''}`}>
                                                 <select
                                                     value={entry?.shift_id?.toString() || ''}
                                                     onChange={e => handleAssignShift(emp.id, date, e.target.value)}
-                                                    className={`w-full px-1.5 py-1.5 rounded-lg text-[10px] font-bold border outline-none transition-all cursor-pointer ${entry ? 'bg-violet-50 dark:bg-violet-900/20 border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-400' : 'bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-400'}`}
+                                                    className={`w-full px-1.5 py-1.5 rounded-lg text-[10px] outline-none transition-all cursor-pointer ${selectStyle}`}
                                                 >
                                                     <option value="">—</option>
                                                     {shifts.map(s => (
-                                                        <option key={s.id} value={s.id}>{s.name}</option>
+                                                        <option key={s.id} value={s.id}>
+                                                            {s.name} {(s.is_overnight || s.shift_type === 'NIGHT' || s.start_time > s.end_time) ? '🌙' : '☀️'}
+                                                        </option>
                                                     ))}
                                                 </select>
                                             </td>

@@ -59,11 +59,15 @@ export const EditAttendanceModal: React.FC<EditAttendanceModalProps> = ({ record
         setLoading(true);
         const { data: { user } } = await supabase.auth.getUser();
 
-        // Calculate duration if both check-in and check-out exist
+        // Calculate duration if both check-in and check-out exist (supports Night Shift cross-midnight)
         let duration = 0;
         if (formData.checkIn && formData.checkOut) {
             const inDate = new Date(`2000-01-01T${formData.checkIn}`);
-            const outDate = new Date(`2000-01-01T${formData.checkOut}`);
+            let outDate = new Date(`2000-01-01T${formData.checkOut}`);
+            if (outDate <= inDate) {
+                // Crosses midnight (Night Shift)
+                outDate = new Date(outDate.getTime() + 24 * 60 * 60 * 1000);
+            }
             const diffMs = outDate.getTime() - inDate.getTime();
             duration = Math.max(0, parseFloat((diffMs / (1000 * 60 * 60)).toFixed(2)));
         }

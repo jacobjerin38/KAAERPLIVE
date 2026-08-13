@@ -473,7 +473,7 @@ export class WorkflowEngine {
      * Helper to update the entity record status after workflow completes.
      * Supports: Leaves, Resignations, Expenses, Missed Punch, Support Tickets.
      */
-    private static async finalizeEntity(type: string, entityId: string, status: string) {
+    public static async finalizeEntity(type: string, entityId: string, status: string) {
         const dbStatus = status === 'APPROVED' ? 'Approved' : status === 'REJECTED' ? 'Rejected' : status;
 
         if (type === 'LEAVE_REQUEST') {

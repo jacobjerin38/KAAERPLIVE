@@ -821,10 +821,12 @@ export const MASTER_CONFIG: Record<string, MasterTableConfig> = {
     'SHIFT_TIMINGS': {
         tableName: 'org_shift_timings',
         displayName: 'Shift Timing',
-        description: 'Work shift schedules and threshold calculations',
+        description: 'Work shift schedules, day/night shift types, and threshold calculations',
         fields: [
             { key: 'name', label: 'Shift Name', type: 'text', required: true },
             { key: 'code', label: 'Code', type: 'text', required: true },
+            { key: 'shift_type', label: 'Shift Type', type: 'select', options: [{ label: 'Day Shift', value: 'DAY' }, { label: 'Night Shift (Overnight)', value: 'NIGHT' }], required: true },
+            { key: 'is_overnight', label: 'Spans Across Midnight (Overnight)', type: 'boolean' },
             { key: 'start_time', label: 'Start Time', type: 'time', required: true },
             { key: 'end_time', label: 'End Time', type: 'time', required: true },
             { key: 'full_day_hours', label: 'Full Day Work Hours (e.g. 8.0)', type: 'number' },
@@ -838,6 +840,7 @@ export const MASTER_CONFIG: Record<string, MasterTableConfig> = {
         ],
         columns: [
             { key: 'name', label: 'Name' }, 
+            { key: 'shift_type', label: 'Type' }, 
             { key: 'start_time', label: 'Start' }, 
             { key: 'end_time', label: 'End' }, 
             { key: 'full_day_hours', label: 'Full Day (h)' },
@@ -1116,6 +1119,13 @@ const GenericMasterModal = ({ config, item, onClose, onRefresh }: { config: Mast
         });
 
 
+
+        if (config.tableName === 'org_shift_timings') {
+            if (payload.start_time && payload.end_time && payload.start_time > payload.end_time) {
+                payload.is_overnight = true;
+                payload.shift_type = 'NIGHT';
+            }
+        }
 
         if (currentCompanyId) {
             payload.company_id = currentCompanyId;

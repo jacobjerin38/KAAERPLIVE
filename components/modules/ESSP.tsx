@@ -233,14 +233,15 @@ export const ESSP: React.FC = () => {
     }, [currentEmployee]);
 
     const refreshDashboard = async (empId: string, companyId: string) => {
-        // 1. Attendance Status (Today)
-        const today = new Date().toISOString().split('T')[0];
-        const { data: activePunch } = await supabase.from('attendance')
+        // 1. Attendance Status (Look for active open punch across dates to support Night Shift)
+        const { data: activePunches } = await supabase.from('attendance')
             .select('*')
             .eq('employee_id', empId)
-            .eq('date', today)
             .is('check_out', null) // Only find open sessions
-            .maybeSingle();
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+        const activePunch = activePunches && activePunches.length > 0 ? activePunches[0] : null;
 
         if (activePunch) {
             setPunchStatus('In');

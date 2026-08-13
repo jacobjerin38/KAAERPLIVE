@@ -138,13 +138,34 @@ serve(async (req) => {
     })
 
     // Upsert into main attendance table
-    const { data: attendanceData } = await supabase
-      .from('attendance')
-      .select('id, check_in, check_out')
-      .eq('company_id', companyId)
-      .eq('employee_id', employeeId)
-      .eq('date', dateStr)
-      .maybeSingle()
+    // For OUT punches, check if there's an active open punch (check_out IS NULL) in the last 16 hours (supports night shifts)
+    let openPunch: any = null;
+    if (punchType === 'OUT') {
+      const sixteenHoursAgo = new Date(new Date(timestamp).getTime() - 16 * 60 * 60 * 1000).toISOString()
+      const { data: openPunches } = await supabase
+        .from('attendance')
+        .select('id, check_in, check_out, date')
+        .eq('company_id', companyId)
+        .eq('employee_id', employeeId)
+        .is('check_out', null)
+        .gte('check_in', sixteenHoursAgo)
+        .order('check_in', { ascending: false })
+        .limit(1)
+
+      if (openPunches && openPunches.length > 0) {
+        openPunch = openPunches[0]
+      }
+    }
+
+    const { data: attendanceData } = openPunch
+      ? { data: openPunch }
+      : await supabase
+          .from('attendance')
+          .select('id, check_in, check_out, date')
+          .eq('company_id', companyId)
+          .eq('employee_id', employeeId)
+          .eq('date', dateStr)
+          .maybeSingle()
 
     let result;
     if (attendanceData) {
@@ -158,7 +179,10 @@ serve(async (req) => {
       if (updateData.check_out && (updateData.check_in || attendanceData.check_in)) {
         const inTime = new Date(updateData.check_in || attendanceData.check_in).getTime()
         const outTime = new Date(updateData.check_out).getTime()
-        updateData.duration = Math.max(0, (outTime - inTime) / (1000 * 60 * 60))
+        const durHours = Math.max(0, parseFloat(((outTime - inTime) / (1000 * 60 * 60)).toFixed(2)))
+        updateData.total_hours = durHours
+        updateData.duration = durHours
+        updateData.status = 'Present'
       }
 
       if (Object.keys(updateData).length > 0) {

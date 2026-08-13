@@ -6891,6 +6891,8 @@ CREATE TABLE IF NOT EXISTS public.org_shift_timings (
     grace_period_minutes integer DEFAULT 0,
     status text DEFAULT 'Active'::text,
     weekly_off_days text DEFAULT '5,6'::text,
+    shift_type text DEFAULT 'DAY'::text,
+    is_overnight boolean DEFAULT false,
     CONSTRAINT org_shift_timings_pkey PRIMARY KEY (id)
 );
 
