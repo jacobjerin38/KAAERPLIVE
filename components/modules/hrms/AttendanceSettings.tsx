@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
-import { Clock, Save, Loader2, AlertCircle, CheckCircle, Settings } from 'lucide-react';
+import { Clock, Save, Loader2, AlertCircle, CheckCircle, Settings, Trash2 } from 'lucide-react';
 
 interface AttendanceConfig {
     grace_minutes_late: number;
@@ -183,6 +183,16 @@ export const AttendanceSettings: React.FC = () => {
             fetchOtAuthorities();
         }
         setSavingOtAuth(false);
+    };
+
+    const handleDeleteOtAuthority = async (id: string) => {
+        if (!confirm('Remove this OT approval authority mapping?')) return;
+        const { error } = await (supabase as any)
+            .from('employee_ot_authority')
+            .delete()
+            .eq('id', id);
+        if (error) alert('Failed to delete mapping: ' + error.message);
+        else fetchOtAuthorities();
     };
 
     if (loading) {
@@ -432,12 +442,13 @@ export const AttendanceSettings: React.FC = () => {
                                 <th className="p-3">Level 1 Approver</th>
                                 <th className="p-3">Level 2 Approver</th>
                                 <th className="p-3">Level 3 Approver</th>
+                                <th className="p-3 text-right">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
                             {otAuthorities.length === 0 ? (
                                 <tr>
-                                    <td colSpan={4} className="p-4 text-center text-slate-400">No custom OT approval authorities mapped yet. (Defaulting to manager hierarchy)</td>
+                                    <td colSpan={5} className="p-4 text-center text-slate-400">No custom OT approval authorities mapped yet. (Defaulting to manager hierarchy)</td>
                                 </tr>
                             ) : otAuthorities.map(auth => (
                                 <tr key={auth.id} className="hover:bg-slate-50 dark:hover:bg-zinc-800/50">
@@ -445,6 +456,15 @@ export const AttendanceSettings: React.FC = () => {
                                     <td className="p-3 font-semibold text-emerald-600">{auth.l1?.name || '—'}</td>
                                     <td className="p-3 font-semibold text-indigo-600">{auth.l2?.name || '—'}</td>
                                     <td className="p-3 font-semibold text-purple-600">{auth.l3?.name || '—'}</td>
+                                    <td className="p-3 text-right">
+                                        <button
+                                            onClick={() => handleDeleteOtAuthority(auth.id)}
+                                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg transition-colors"
+                                            title="Delete mapping"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </td>
                                 </tr>
                             ))}
                         </tbody>

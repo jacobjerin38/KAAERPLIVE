@@ -3,7 +3,7 @@ import {
     Edit3, Clock, Users, TrendingUp, AlertTriangle, Check, X, Plus, Download,
     ChevronLeft, ChevronRight, Calendar, Save, Loader2, Eye, Search, BarChart3,
     Lock, Unlock, ShieldCheck, RefreshCcw, AlertCircle, Layers, ClipboardList, MapPin,
-    Upload, ExternalLink, FileSpreadsheet, CheckCircle2, XCircle, Globe
+    Upload, ExternalLink, FileSpreadsheet, CheckCircle2, XCircle, Globe, Settings
 } from 'lucide-react';
 import { Employee } from '../../hrms/types';
 import { supabase } from '../../../lib/supabase';
@@ -114,7 +114,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ employees })
         { id: 'DUTY_ROSTER', label: 'Duty Roster', icon: ClipboardList },
         { id: 'LOCATION_MAPPING', label: 'Location Mapping', icon: MapPin },
         { id: 'OUTDOOR_REPORT', label: 'Outdoor Report', icon: ClipboardList },
-        { id: 'SETTINGS', label: 'Settings', icon: AlertCircle },
+        { id: 'SETTINGS', label: 'OT & Attendance Settings', icon: Settings },
     ];
 
     return (

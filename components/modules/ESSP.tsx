@@ -495,35 +495,28 @@ export const ESSP: React.FC = () => {
                 setLastAttendanceId(data.id);
             }
         } else {
-            // PUNCH OUT
-            if (!lastAttendanceId) {
-                // Look for active open punch across dates (supports shifts across midnight)
-                const { data: activePunches } = await (supabase as any).from('attendance')
-                    .select('id, check_in')
-                    .eq('employee_id', currentEmployee.id)
-                    .is('check_out', null)
-                    .order('created_at', { ascending: false })
-                    .limit(1);
+            // PUNCH OUT - Always query active open punch directly to guarantee matching the open session
+            const { data: activePunches } = await (supabase as any).from('attendance')
+                .select('id, check_in')
+                .eq('employee_id', currentEmployee.id)
+                .is('check_out', null)
+                .order('created_at', { ascending: false })
+                .limit(1);
 
-                const activePunch = activePunches && activePunches.length > 0 ? activePunches[0] : null;
+            const activePunch = activePunches && activePunches.length > 0 ? activePunches[0] : null;
 
-                if (!activePunch) {
-                    alert("No active session found to punch out from.");
-                    setPunchLoading(false);
-                    setPunchStatus('Out');
-                    return;
-                }
-
-                await performPunchOut(activePunch.id, activePunch.check_in, isoNow, locStr, coords);
-            } else {
-                const { data: currentRecord } = await (supabase as any).from('attendance').select('check_in').eq('id', lastAttendanceId).single();
-                if (currentRecord) {
-                    await performPunchOut(lastAttendanceId, currentRecord.check_in, isoNow, locStr, coords);
-                }
+            if (!activePunch) {
+                alert("No active session found to punch out from.");
+                setPunchLoading(false);
+                setPunchStatus('Out');
+                setLastAttendanceId(null);
+                return;
             }
+
+            await performPunchOut(activePunch.id, activePunch.check_in, isoNow, locStr, coords);
         }
 
-        refreshDashboard(currentEmployee.id, currentEmployee.company_id);
+        await refreshDashboard(currentEmployee.id, currentEmployee.company_id);
         } catch (err: any) {
             console.error("Punch execution error:", err);
             alert("An unexpected error occurred while processing punch: " + (err.message || String(err)));
@@ -548,17 +541,21 @@ export const ESSP: React.FC = () => {
             check_out: checkOutTime,
             check_out_lat: coords ? coords.lat : null,
             check_out_lng: coords ? coords.lng : null,
-            total_hours: durationHours
+            total_hours: durationHours,
+            duration: durationHours
         };
         if (locationStr) {
             updateData.check_out_location = locationStr;
         }
 
-        const { error } = await (supabase as any).from('attendance').update(updateData).eq('id', recordId);
+        const { data, error } = await (supabase as any).from('attendance').update(updateData).eq('id', recordId).select();
 
         if (error) {
             console.error("Punch Out Error:", error);
-            alert("Failed to punch out.");
+            alert("Failed to punch out: " + error.message);
+        } else if (!data || data.length === 0) {
+            console.error("Punch Out update returned 0 modified rows for id:", recordId);
+            alert("Punch out failed: Could not update attendance session.");
         } else {
             setPunchStatus('Out');
             setLastAttendanceId(null);
