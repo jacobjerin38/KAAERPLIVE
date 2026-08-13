@@ -78,7 +78,7 @@ export const Payments: React.FC = () => {
             .eq('company_id', currentCompanyId)
             .eq('is_active', true)
             .order('code', { ascending: true });
-        setAccounts(aData || []);
+        setAccounts((aData || []).filter((a: any) => !a.is_group));
 
         // Fetch Org Bank Configs
         const { data: bData } = await supabase

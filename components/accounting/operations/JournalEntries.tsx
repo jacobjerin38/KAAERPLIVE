@@ -71,7 +71,7 @@ export const JournalEntries: React.FC = () => {
             supabase.from('accounting_cost_centers').select('*').eq('company_id', currentCompanyId).eq('is_active', true)
         ]);
         if (jRes.data) setJournals(jRes.data);
-        if (aRes.data) setAccounts(aRes.data);
+        if (aRes.data) setAccounts(aRes.data.filter((a: any) => !a.is_group));
         if (ccRes.data) setCostCenters(ccRes.data);
     };
 
