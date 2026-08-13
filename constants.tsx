@@ -134,6 +134,14 @@ export const MODULES: ModuleConfig[] = [
     bgColor: "bg-slate-100",
   },
   {
+    id: AppView.PROCUREMENT,
+    name: "Procurement",
+    description: "Purchase Orders, RFQs & Vendors",
+    icon: ShoppingCart,
+    color: "text-blue-600",
+    bgColor: "bg-blue-100",
+  },
+  {
     id: AppView.MARKETING,
     name: "Marketing",
     description: "Campaigns & Automation",
