@@ -8,6 +8,20 @@
   }
 }
 
+/* Mobile viewport height fix: use dvh when available to account for browser chrome */
+@supports (height: 100dvh) {
+  .h-screen {
+    height: 100dvh !important;
+  }
+}
+
+/* Ensure mobile touch scrolling works */
+.overflow-auto,
+.overflow-y-auto {
+  -webkit-overflow-scrolling: touch;
+}
+
+
 /* Modern Minimal Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

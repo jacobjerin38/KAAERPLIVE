@@ -6,7 +6,7 @@ import { TableSkeleton, DashboardSkeleton } from '../ui/LoadingSkeletons';
 import {
     LayoutDashboard, Users, FileText, CheckSquare, Calendar, Folder, Briefcase, Plus, Search,
     X, ChevronRight, ChevronDown, Sparkles, Workflow, Mic, Play, KanbanSquare, Bell, Loader2, BarChart3,
-    Package, Receipt, Truck, FileSpreadsheet
+    Package, Receipt, Truck, FileSpreadsheet, Menu
 } from 'lucide-react';
 import { ReportsListView } from './reports/ReportsListView';
 import { LiveView } from '../crm/LiveView';
@@ -52,6 +52,7 @@ const ScheduleView = () => (
 export const CRM: React.FC = () => {
     const { user, userRole, signOut, hasPermission, currentCompanyId } = useAuth();
     const [activeTab, setActiveTab] = useState<CRMViewMode>('DASHBOARD');
+    const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
     const [stats, setStats] = useState<CRMStats | null>(null);
     const [deals, setDeals] = useState<Deal[]>([]);
     const [contacts, setContacts] = useState<Contact[]>([]);
@@ -197,35 +198,62 @@ export const CRM: React.FC = () => {
             { id: 'WEBSITE_FINDER', icon: Search, label: 'Site Finder', permission: 'crm.leads.manage' }
         ].filter(item => hasPermission(item.permission) || hasPermission('*')), [hasPermission]);
 
-        return (
-            <div className="w-[220px] bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl border-r border-slate-100 dark:border-zinc-800 flex flex-col py-6 z-20 shadow-sm">
-                <div className="px-5 mb-8 flex items-center gap-3">
-                    <div className="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/30">
-                        <Briefcase className="w-4 h-4 text-white" />
-                    </div>
-                    <span className="font-bold text-sm text-slate-800 dark:text-white tracking-wide">CRM</span>
-                </div>
+        const handleTabClick = (id: string) => {
+            setActiveTab(id as CRMViewMode);
+            setMobileSidebarOpen(false);
+        };
 
-                <div className="flex-1 w-full px-3 space-y-1 overflow-y-auto">
-                    {navItems.map((item) => {
-                        const Icon = item.icon;
-                        const isActive = activeTab === item.id;
-                        return (
-                            <button
-                                key={item.id}
-                                onClick={() => setActiveTab(item.id as CRMViewMode)}
-                                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-sm font-medium ${isActive
-                                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20'
-                                    : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-zinc-800 dark:text-slate-400'
-                                    }`}
-                            >
-                                <Icon className="w-[18px] h-[18px] min-w-[18px]" />
-                                <span>{item.label}</span>
-                            </button>
-                        );
-                    })}
+        return (
+            <>
+                {/* Mobile overlay backdrop */}
+                {mobileSidebarOpen && (
+                    <div
+                        className="fixed inset-0 bg-black/30 z-30 md:hidden"
+                        onClick={() => setMobileSidebarOpen(false)}
+                    />
+                )}
+                <div className={`
+                    w-[220px] bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl border-r border-slate-100 dark:border-zinc-800 flex flex-col py-6 z-40 shadow-sm flex-shrink-0
+                    fixed inset-y-0 left-0 transition-transform duration-200 ease-in-out
+                    md:relative md:translate-x-0
+                    ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+                `}>
+                    <div className="px-5 mb-8 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/30">
+                                <Briefcase className="w-4 h-4 text-white" />
+                            </div>
+                            <span className="font-bold text-sm text-slate-800 dark:text-white tracking-wide">CRM</span>
+                        </div>
+                        <button
+                            className="md:hidden p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-400"
+                            onClick={() => setMobileSidebarOpen(false)}
+                        >
+                            <X className="w-5 h-5" />
+                        </button>
+                    </div>
+
+                    <div className="flex-1 w-full px-3 space-y-1 overflow-y-auto">
+                        {navItems.map((item) => {
+                            const Icon = item.icon;
+                            const isActive = activeTab === item.id;
+                            return (
+                                <button
+                                    key={item.id}
+                                    onClick={() => handleTabClick(item.id)}
+                                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-sm font-medium ${isActive
+                                        ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20'
+                                        : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-zinc-800 dark:text-slate-400'
+                                        }`}
+                                >
+                                    <Icon className="w-[18px] h-[18px] min-w-[18px]" />
+                                    <span>{item.label}</span>
+                                </button>
+                            );
+                        })}
+                    </div>
                 </div>
-            </div>
+            </>
         );
     };
 
@@ -544,7 +572,14 @@ export const CRM: React.FC = () => {
     return (
         <div className="flex h-full relative z-10 overflow-hidden">
             <SidebarNav />
-            <div className="flex-1 overflow-hidden relative bg-slate-50/50 dark:bg-zinc-950">
+            <div className="flex-1 overflow-y-auto overflow-x-hidden relative bg-slate-50/50 dark:bg-zinc-950">
+                {/* Mobile menu toggle */}
+                <button
+                    className="md:hidden fixed bottom-6 left-4 z-50 p-3 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-500/30 active:scale-95 transition-transform"
+                    onClick={() => setMobileSidebarOpen(true)}
+                >
+                    <Menu className="w-5 h-5" />
+                </button>
                 {delayedLoading ? (
                     activeTab === 'DASHBOARD' ? <DashboardSkeleton /> : <TableSkeleton />
                 ) : !companyId ? (
