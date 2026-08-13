@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
     Building2, MapPin, LayoutGrid, Users, Settings, Plus, Check, Edit3, X, Shield, User, Database, GitMerge, PlayCircle, StopCircle, ArrowRight, Bell, Clock, Save, Search, Trash2, Sparkles, Radio, BarChart2, Loader2, KeyRound,
-    Banknote, Package, Factory, ShoppingCart, Calendar, Sliders
+    Banknote, Package, Factory, ShoppingCart, Calendar, Sliders, ShieldCheck, DollarSign, KanbanSquare, FileText, Megaphone, Award, Plane, UserCircle, Briefcase
 }
     from 'lucide-react';
 import { PollsView } from './organization/PollsView';
@@ -2178,13 +2178,22 @@ const RolePermissionEditor = ({ selectedPermissions, onChange }: { selectedPermi
     const getModuleIcon = (module: string) => {
         switch (module) {
             case 'HRMS': return Users;
-            case 'CRM': return BarChart2; // Or Briefcase
+            case 'CRM': return Briefcase;
+            case 'SALES': return ShoppingCart;
             case 'ORGANISATION': return Building2;
-            case 'FINANCE': return Banknote; // Need to import Banknote or use DollarSign
-            case 'INVENTORY': return Package; // Need import
-            case 'MANUFACTURING': return Factory; // Need import
-            case 'PROCUREMENT': return ShoppingCart; // Need import
-            case 'ESSP': return User;
+            case 'FINANCE': return DollarSign;
+            case 'INVENTORY': return Package;
+            case 'MANUFACTURING': return Factory;
+            case 'PROCUREMENT': return ShoppingCart;
+            case 'PROJECTS': return KanbanSquare;
+            case 'DOCUMENTS': return FileText;
+            case 'MARKETING': return Megaphone;
+            case 'RECRUITMENT': return Briefcase;
+            case 'LOANS': return DollarSign;
+            case 'PERFORMANCE': return Award;
+            case 'TRAVEL': return Plane;
+            case 'PRO': return ShieldCheck;
+            case 'ESSP': return UserCircle;
             default: return Shield;
         }
     };
@@ -2208,7 +2217,7 @@ const RolePermissionEditor = ({ selectedPermissions, onChange }: { selectedPermi
                                 : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-zinc-800'}`}
                         >
                             <div className="flex items-center gap-3">
-                                {/* <Icon className="w-4 h-4" /> */}
+                                <Icon className="w-4 h-4 flex-shrink-0" />
                                 <span className="font-bold text-sm tracking-wide">{module}</span>
                             </div>
                             <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${count > 0 ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-zinc-800 text-slate-400'}`}>
@@ -3012,15 +3021,23 @@ export const Organisation: React.FC = () => {
 
     const GenericUserModal = ({ setShowAddUser, handleSaveUser, roles, editingUser, allEmployees }: any) => {
         const MODULE_PERMISSIONS = [
-            { label: 'HRMS', perms: ['hrms.employees.view', 'hrms.attendance.view', 'hrms.leave.view', 'hrms.payroll.view'] },
-            { label: 'Self Service (ESSP)', perms: ['essp.view'] },
-            { label: 'CRM', perms: ['crm.dashboard.view', 'crm.deals.view', 'crm.customers.view'] },
+            { label: 'HRMS', perms: ['hrms.employees.view', 'hrms.employees.manage', 'hrms.attendance.view', 'hrms.attendance.manage', 'hrms.leave.view', 'hrms.leave.manage', 'hrms.payroll.manage'] },
+            { label: 'Self Service (ESSP)', perms: ['essp.view', 'essp.profile.manage', 'essp.leaves.view', 'essp.attendance.view', 'essp.approvals.view'] },
+            { label: 'CRM', perms: ['crm.dashboard.view', 'crm.leads.view', 'crm.leads.manage', 'crm.deals.view', 'crm.deals.manage', 'crm.contacts.manage'] },
+            { label: 'Sales', perms: ['sales.view', 'sales.manage'] },
             { label: 'Organisation', perms: ['org.structure.view', 'org.company.manage', 'org.roles.manage', 'org.users.manage', 'org.masters.manage'] },
-            { label: 'Inventory', perms: ['inventory.view'] },
-            { label: 'Accounting / Finance', perms: ['finance.dashboard.view', 'finance.payroll.manage'] },
-            { label: 'Manufacturing', perms: ['manufacturing.view'] },
-            { label: 'Procurement', perms: ['procurement.view'] },
-            { label: 'PRO (Mandoob)', perms: ['pro.view', 'pro.requests.view', 'pro.tasks.manage'] },
+            { label: 'Inventory', perms: ['inventory.view', 'inventory.manage'] },
+            { label: 'Accounting / Finance', perms: ['finance.dashboard.view', 'finance.payroll.manage', 'finance.invoices.manage', 'finance.expenses.manage'] },
+            { label: 'Manufacturing', perms: ['manufacturing.view', 'manufacturing.manage'] },
+            { label: 'Procurement', perms: ['procurement.view', 'procurement.manage'] },
+            { label: 'Projects', perms: ['projects.view', 'projects.manage'] },
+            { label: 'Documents', perms: ['documents.view', 'documents.manage'] },
+            { label: 'Marketing', perms: ['marketing.view', 'marketing.manage'] },
+            { label: 'Recruitment', perms: ['recruitment.view', 'recruitment.manage'] },
+            { label: 'Loans & Benefits', perms: ['loans.view', 'loans.manage'] },
+            { label: 'Performance', perms: ['performance.view', 'performance.manage'] },
+            { label: 'Travel & Expenses', perms: ['travel.view', 'travel.manage'] },
+            { label: 'PRO (Mandoob)', perms: ['pro.view', 'pro.requests.create', 'pro.requests.view', 'pro.tasks.manage', 'pro.renewals.view', 'pro.reports.view'] },
         ];
         const [grantedPerms, setGrantedPerms] = React.useState<string[]>([]);
         const [showPerms, setShowPerms] = React.useState(false);
