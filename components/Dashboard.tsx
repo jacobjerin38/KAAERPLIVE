@@ -437,7 +437,7 @@ export const Dashboard: React.FC = () => {
             key={moduleId}
             onClick={() => handleNavigate(AppView.PRO)}
             className="md:col-span-1 min-h-[180px]"
-            title="PRO (Madoob)"
+            title="PRO (Mandoob)"
             subtitle="Public Relations & Licenses"
             icon={ShieldAlert}
             gradient="bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-zinc-900 dark:to-zinc-800"

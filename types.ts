@@ -325,7 +325,7 @@ export interface EmployeeLeaveAuthority {
   updated_at?: string;
 }
 
-// PRO (Madoob) Module Interfaces
+// PRO (Mandoob) Module Interfaces
 export interface PROApplication {
   id: string;
   company_id: string;

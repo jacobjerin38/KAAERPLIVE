@@ -199,7 +199,7 @@ export const MODULES: ModuleConfig[] = [
   },
   {
     id: AppView.PRO,
-    name: "PRO (Madoob)",
+    name: "PRO (Mandoob)",
     description: "Public Relations, Licenses & Govt Approvals",
     icon: ShieldCheck,
     color: "text-blue-600",
