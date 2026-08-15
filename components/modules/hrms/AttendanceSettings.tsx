@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
-import { Clock, Save, Loader2, AlertCircle, CheckCircle, Settings, Trash2 } from 'lucide-react';
+import { Clock, Save, Loader2, AlertCircle, CheckCircle, Settings, Trash2, Edit3, ShieldCheck } from 'lucide-react';
 
 interface AttendanceConfig {
     grace_minutes_late: number;
@@ -54,6 +54,7 @@ export const AttendanceSettings: React.FC = () => {
     // OT Authority Mapping State
     const [employees, setEmployees] = useState<any[]>([]);
     const [otAuthorities, setOtAuthorities] = useState<any[]>([]);
+    const [editingOtAuthId, setEditingOtAuthId] = useState<string | null>(null);
     const [selectedEmpId, setSelectedEmpId] = useState('');
     const [level1, setLevel1] = useState('');
     const [level2, setLevel2] = useState('');
@@ -151,6 +152,22 @@ export const AttendanceSettings: React.FC = () => {
         setSaving(false);
     };
 
+    const handleEditOtAuthority = (auth: any) => {
+        setEditingOtAuthId(auth.id);
+        setSelectedEmpId(auth.employee_id);
+        setLevel1(auth.approver_level_1 || '');
+        setLevel2(auth.approver_level_2 || '');
+        setLevel3(auth.approver_level_3 || '');
+    };
+
+    const handleCancelEditOtAuth = () => {
+        setEditingOtAuthId(null);
+        setSelectedEmpId('');
+        setLevel1('');
+        setLevel2('');
+        setLevel3('');
+    };
+
     const handleSaveOtAuthority = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!selectedEmpId || !level1) {
@@ -175,11 +192,8 @@ export const AttendanceSettings: React.FC = () => {
         if (error) {
             alert('Failed to save Overtime Authority Mapping: ' + error.message);
         } else {
-            alert('Overtime Authority Mapping Saved!');
-            setSelectedEmpId('');
-            setLevel1('');
-            setLevel2('');
-            setLevel3('');
+            alert(editingOtAuthId ? 'Overtime Authority Mapping Updated!' : 'Overtime Authority Mapping Saved!');
+            handleCancelEditOtAuth();
             fetchOtAuthorities();
         }
         setSavingOtAuth(false);
@@ -192,7 +206,10 @@ export const AttendanceSettings: React.FC = () => {
             .delete()
             .eq('id', id);
         if (error) alert('Failed to delete mapping: ' + error.message);
-        else fetchOtAuthorities();
+        else {
+            if (editingOtAuthId === id) handleCancelEditOtAuth();
+            fetchOtAuthorities();
+        }
     };
 
     if (loading) {
@@ -310,10 +327,23 @@ export const AttendanceSettings: React.FC = () => {
 
             {/* Overtime Settings */}
             <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-800 p-6">
-                <h4 className="font-bold text-slate-700 dark:text-slate-200 mb-4 flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 text-amber-500" /> Overtime Settings & Multipliers
-                </h4>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <div className="flex items-center justify-between mb-4">
+                    <h4 className="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 text-amber-500" /> Overtime Settings & Policy Controls
+                    </h4>
+                    <label className="flex items-center gap-3 p-2 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={config.ot_approval_required ?? true}
+                            onChange={e => setConfig({...config, ot_approval_required: e.target.checked})}
+                            className="w-5 h-5 text-indigo-600 rounded"
+                        />
+                        <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                            Enforce Mandatory Manager Approval for OT Pay
+                        </span>
+                    </label>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                     <div>
                         <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">OT Starts After (hours)</label>
                         <input
@@ -325,7 +355,7 @@ export const AttendanceSettings: React.FC = () => {
                         <p className="text-xs text-slate-400 mt-1">Hours beyond standard day</p>
                     </div>
                     <div>
-                        <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Normal Day OT Multiplier</label>
+                        <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Standard Day Multiplier</label>
                         <input
                             type="number" step="0.25" min="1" max="4"
                             value={config.ot_multiplier}
@@ -335,7 +365,7 @@ export const AttendanceSettings: React.FC = () => {
                         <p className="text-xs text-slate-400 mt-1">Default 1.5x</p>
                     </div>
                     <div>
-                        <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Weekend OT Multiplier</label>
+                        <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Weekend Multiplier</label>
                         <input
                             type="number" step="0.25" min="1" max="4"
                             value={config.weekend_ot_multiplier || 2.0}
@@ -345,6 +375,16 @@ export const AttendanceSettings: React.FC = () => {
                         <p className="text-xs text-slate-400 mt-1">Off-day multiplier (e.g. 2.0x)</p>
                     </div>
                     <div>
+                        <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Public Holiday Multiplier</label>
+                        <input
+                            type="number" step="0.25" min="1" max="4"
+                            value={config.holiday_ot_multiplier || 2.0}
+                            onChange={e => setConfig({...config, holiday_ot_multiplier: Number(e.target.value)})}
+                            className="w-full p-3 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
+                        />
+                        <p className="text-xs text-slate-400 mt-1">Holiday multiplier (e.g. 2.0x)</p>
+                    </div>
+                    <div>
                         <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Max OT / Day (hours)</label>
                         <input
                             type="number" step="0.5" min="1" max="16"
@@ -352,27 +392,34 @@ export const AttendanceSettings: React.FC = () => {
                             onChange={e => setConfig({...config, max_ot_hours_per_day: Number(e.target.value)})}
                             className="w-full p-3 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
                         />
-                        <p className="text-xs text-slate-400 mt-1">Max allowed per day</p>
+                        <p className="text-xs text-slate-400 mt-1">Daily cap (e.g. max 4.0 hrs)</p>
                     </div>
                 </div>
             </div>
 
             {/* Overtime Approval Authority Mapping */}
             <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-800 p-6">
-                <h4 className="font-bold text-slate-700 dark:text-slate-200 mb-2 flex items-center gap-2">
-                    <Settings className="w-4 h-4 text-orange-500" /> Overtime Approval Authority Mapping
-                </h4>
-                <p className="text-sm text-slate-500 mb-6">Map 3-level approval hierarchy for employee Overtime Requests.</p>
+                <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">
+                        <ShieldCheck className="w-4 h-4 text-orange-500" /> 3-Level Overtime Approval Authority Mapping
+                    </h4>
+                    {editingOtAuthId && (
+                        <span className="px-3 py-1 bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 rounded-lg text-xs font-bold flex items-center gap-1">
+                            <Edit3 className="w-3.5 h-3.5" /> Editing Mapping
+                        </span>
+                    )}
+                </div>
+                <p className="text-sm text-slate-500 mb-6">Configure 3-tier approval hierarchy per employee for Overtime Requests and Timesheets.</p>
 
                 <form onSubmit={handleSaveOtAuthority} className="bg-slate-50 dark:bg-zinc-800/50 p-4 rounded-xl border border-slate-200 dark:border-zinc-700 mb-6">
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                         <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Employee</label>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Employee *</label>
                             <select
                                 required
                                 value={selectedEmpId}
                                 onChange={e => setSelectedEmpId(e.target.value)}
-                                className="w-full p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm"
+                                className="w-full p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm font-medium"
                             >
                                 <option value="">Select Employee</option>
                                 {employees.map(emp => (
@@ -381,12 +428,12 @@ export const AttendanceSettings: React.FC = () => {
                             </select>
                         </div>
                         <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Level 1 Approver</label>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Level 1 Approver *</label>
                             <select
                                 required
                                 value={level1}
                                 onChange={e => setLevel1(e.target.value)}
-                                className="w-full p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm"
+                                className="w-full p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm font-medium"
                             >
                                 <option value="">Select Level 1 Approver</option>
                                 {employees.map(emp => (
@@ -399,7 +446,7 @@ export const AttendanceSettings: React.FC = () => {
                             <select
                                 value={level2}
                                 onChange={e => setLevel2(e.target.value)}
-                                className="w-full p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm"
+                                className="w-full p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm font-medium"
                             >
                                 <option value="">Select Level 2 Approver</option>
                                 {employees.map(emp => (
@@ -412,7 +459,7 @@ export const AttendanceSettings: React.FC = () => {
                             <select
                                 value={level3}
                                 onChange={e => setLevel3(e.target.value)}
-                                className="w-full p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm"
+                                className="w-full p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm font-medium"
                             >
                                 <option value="">Select Level 3 Approver</option>
                                 {employees.map(emp => (
@@ -421,14 +468,23 @@ export const AttendanceSettings: React.FC = () => {
                             </select>
                         </div>
                     </div>
-                    <div className="mt-4 flex justify-end">
+                    <div className="mt-4 flex justify-end gap-2">
+                        {editingOtAuthId && (
+                            <button
+                                type="button"
+                                onClick={handleCancelEditOtAuth}
+                                className="px-4 py-2 border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-slate-300 rounded-lg text-sm font-bold hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                        )}
                         <button
                             type="submit"
                             disabled={savingOtAuth}
-                            className="px-5 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-bold transition-all flex items-center gap-2"
+                            className="px-5 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-bold shadow-lg shadow-orange-500/20 transition-all flex items-center gap-2"
                         >
                             {savingOtAuth ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                            Save OT Authority Mapping
+                            {editingOtAuthId ? 'Update OT Authority' : 'Save OT Authority Mapping'}
                         </button>
                     </div>
                 </form>
@@ -451,19 +507,28 @@ export const AttendanceSettings: React.FC = () => {
                                     <td colSpan={5} className="p-4 text-center text-slate-400">No custom OT approval authorities mapped yet. (Defaulting to manager hierarchy)</td>
                                 </tr>
                             ) : otAuthorities.map(auth => (
-                                <tr key={auth.id} className="hover:bg-slate-50 dark:hover:bg-zinc-800/50">
+                                <tr key={auth.id} className="hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-colors">
                                     <td className="p-3 font-bold text-slate-800 dark:text-slate-200">{auth.employee?.name} ({auth.employee?.employee_code})</td>
                                     <td className="p-3 font-semibold text-emerald-600">{auth.l1?.name || '—'}</td>
                                     <td className="p-3 font-semibold text-indigo-600">{auth.l2?.name || '—'}</td>
                                     <td className="p-3 font-semibold text-purple-600">{auth.l3?.name || '—'}</td>
                                     <td className="p-3 text-right">
-                                        <button
-                                            onClick={() => handleDeleteOtAuthority(auth.id)}
-                                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg transition-colors"
-                                            title="Delete mapping"
-                                        >
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
+                                        <div className="flex items-center justify-end gap-1.5">
+                                            <button
+                                                onClick={() => handleEditOtAuthority(auth)}
+                                                className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition-colors"
+                                                title="Edit mapping"
+                                            >
+                                                <Edit3 className="w-4 h-4" />
+                                            </button>
+                                            <button
+                                                onClick={() => handleDeleteOtAuthority(auth.id)}
+                                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg transition-colors"
+                                                title="Delete mapping"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))}
