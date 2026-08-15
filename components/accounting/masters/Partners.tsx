@@ -29,6 +29,7 @@ interface Account {
     name: string;
     code: string;
     type: string;
+    is_group?: boolean;
 }
 
 export const Partners: React.FC<{ type?: 'Customer' | 'Vendor' }> = ({ type }) => {
@@ -69,15 +70,17 @@ export const Partners: React.FC<{ type?: 'Customer' | 'Vendor' }> = ({ type }) =
 
     const fetchAccounts = async () => {
         if (!currentCompanyId) return;
-        const { data, error } = await supabase
+        const { data } = await (supabase as any)
             .from('accounting_chart_of_accounts')
-            .select('id, name, code, type')
+            .select('id, name, code, type, is_group')
             .eq('company_id', currentCompanyId)
-            .in('type', ['Asset', 'Liability']);
+            .in('type', ['Asset', 'Liability'])
+            .order('code');
 
         if (data) {
-            setReceivableAccounts(data.filter(a => a.type === 'Asset'));
-            setPayableAccounts(data.filter(a => a.type === 'Liability'));
+            const accList = data as Account[];
+            setReceivableAccounts(accList.filter(a => a.type === 'Asset' && !a.is_group));
+            setPayableAccounts(accList.filter(a => a.type === 'Liability' && !a.is_group));
         }
     };
 
@@ -89,21 +92,29 @@ export const Partners: React.FC<{ type?: 'Customer' | 'Vendor' }> = ({ type }) =
 
         if (!data.name) return alert('Name is required');
 
+        const partnerType = String(data.partner_type || type || 'Customer');
+        const defaultRec = receivableAccounts.find(a => a.code === '1110') || receivableAccounts[0];
+        const defaultPay = payableAccounts.find(a => a.code === '2010') || payableAccounts[0];
+
+        const recId = (data.property_account_receivable_id as string) || (partnerType === 'Customer' || partnerType === 'Both' ? defaultRec?.id : null) || null;
+        const payId = (data.property_account_payable_id as string) || (partnerType === 'Vendor' || partnerType === 'Both' ? defaultPay?.id : null) || null;
+
         const payload = {
-            name: String(data.name || ''),
-            partner_type: String(data.partner_type || 'Customer'),
-            email: data.email ? String(data.email) : null,
-            phone: data.phone ? String(data.phone) : null,
-            tax_id: data.tax_id ? String(data.tax_id) : null,
-            street: data.street ? String(data.street) : null,
-            city: data.city ? String(data.city) : null,
-            state: data.state ? String(data.state) : null,
-            country: data.country ? String(data.country) : null,
-            postal_code: data.postal_code ? String(data.postal_code) : null,
+            name: String(data.name || '').trim(),
+            partner_type: partnerType,
+            email: data.email ? String(data.email).trim() : null,
+            phone: data.phone ? String(data.phone).trim() : null,
+            tax_id: data.tax_id ? String(data.tax_id).trim() : null,
+            street: data.street ? String(data.street).trim() : null,
+            city: data.city ? String(data.city).trim() : null,
+            state: data.state ? String(data.state).trim() : null,
+            country: data.country ? String(data.country).trim() : null,
+            postal_code: data.postal_code ? String(data.postal_code).trim() : null,
             company_id: currentCompanyId,
             credit_limit: parseFloat(data.credit_limit as string) || 0,
-            property_account_receivable_id: (data.property_account_receivable_id as string) || null,
-            property_account_payable_id: (data.property_account_payable_id as string) || null,
+            property_account_receivable_id: recId,
+            property_account_payable_id: payId,
+            is_active: true,
         };
 
         try {
@@ -215,8 +226,8 @@ export const Partners: React.FC<{ type?: 'Customer' | 'Vendor' }> = ({ type }) =
                 'State': 'Doha',
                 'Country': 'Qatar',
                 'Postal Code': '00000',
-                'Receivable Account Code': receivableAccounts[0]?.code || '101200',
-                'Payable Account Code': payableAccounts[0]?.code || '201100'
+                'Receivable Account Code': receivableAccounts[0]?.code || '1110',
+                'Payable Account Code': payableAccounts[0]?.code || '2010'
             }
         ];
         const ws = utils.json_to_sheet(template);
