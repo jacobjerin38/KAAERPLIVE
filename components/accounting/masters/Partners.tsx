@@ -373,7 +373,7 @@ export const Partners: React.FC<{ type?: 'Customer' | 'Vendor' }> = ({ type }) =
 
                         <div>
                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Credit Limit (QAR)</label>
-                            <input name="credit_limit" type="number" step="0.01" defaultValue={editingPartner?.credit_limit || 0} className="w-full p-2.5 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-900/50 rounded-lg text-sm font-bold text-rose-600" placeholder="0.00" />
+                            <input name="credit_limit" type="number" step="0.01" defaultValue={editingPartner?.credit_limit || 0} className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm font-medium text-slate-900 dark:text-white" placeholder="0.00" />
                         </div>
 
                         <div className="pt-4 border-t border-slate-200 dark:border-zinc-700">
@@ -393,7 +393,7 @@ export const Partners: React.FC<{ type?: 'Customer' | 'Vendor' }> = ({ type }) =
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Receivable Account</label>
                                     <select name="property_account_receivable_id" defaultValue={editingPartner?.property_account_receivable_id} className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm">
-                                        <option value="">Select Account</option>
+                                        <option value="">Select Account (Optional)</option>
                                         {receivableAccounts.map(acc => (
                                             <option key={acc.id} value={acc.id}>{acc.code} - {acc.name}</option>
                                         ))}
@@ -402,7 +402,7 @@ export const Partners: React.FC<{ type?: 'Customer' | 'Vendor' }> = ({ type }) =
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Payable Account</label>
                                     <select name="property_account_payable_id" defaultValue={editingPartner?.property_account_payable_id} className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm">
-                                        <option value="">Select Account</option>
+                                        <option value="">Select Account (Optional)</option>
                                         {payableAccounts.map(acc => (
                                             <option key={acc.id} value={acc.id}>{acc.code} - {acc.name}</option>
                                         ))}
@@ -411,9 +411,14 @@ export const Partners: React.FC<{ type?: 'Customer' | 'Vendor' }> = ({ type }) =
                             </div>
                         </div>
 
-                        <button className="w-full mt-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold transition-colors">
-                            Save Partner
-                        </button>
+                        <div className="pt-4 flex gap-3 justify-end border-t border-slate-100 dark:border-zinc-800">
+                            <button type="button" onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-slate-300 rounded-xl font-bold hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors">
+                                Cancel
+                            </button>
+                            <button type="submit" className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-500/20 transition-all">
+                                {editingPartner ? 'Update Partner' : 'Save Partner'}
+                            </button>
+                        </div>
                     </form>
                 </Modal>
             )}
