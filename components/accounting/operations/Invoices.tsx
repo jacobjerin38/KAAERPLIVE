@@ -186,15 +186,24 @@ export const Invoices: React.FC = () => {
                 }
             }
 
+            if (!selectedPartner) {
+                alert('Please select a customer.');
+                return;
+            }
+            if (!selectedJournal) {
+                alert('Please select a sales journal.');
+                return;
+            }
+
             const payloadLines = lines.map(l => ({
-                item_id: l.item_id || null,
-                quantity: Number(l.quantity),
-                unit_price: Number(l.unit_price),
-                cost_center_id: l.cost_center_id || null,
-                project_cost_center_id: l.project_cost_center_id || null,
-                contract_cost_center_id: l.contract_cost_center_id || null,
-                sales_ledger_id: l.sales_ledger_id || null,
-                description: l.description || null
+                item_id: l.item_id ? String(l.item_id).trim() : null,
+                quantity: Number(l.quantity) || 1,
+                unit_price: Number(l.unit_price) || 0,
+                cost_center_id: l.cost_center_id ? String(l.cost_center_id).trim() : null,
+                project_cost_center_id: l.project_cost_center_id ? String(l.project_cost_center_id).trim() : null,
+                contract_cost_center_id: l.contract_cost_center_id ? String(l.contract_cost_center_id).trim() : null,
+                sales_ledger_id: l.sales_ledger_id ? String(l.sales_ledger_id).trim() : null,
+                description: l.description ? String(l.description).trim() : null
             }));
 
             if (editMode && editingInvoiceId) {
@@ -204,11 +213,12 @@ export const Invoices: React.FC = () => {
                     p_journal_id: selectedJournal,
                     p_date: invoiceDate,
                     p_due_date: dueDate,
-                    p_lines: payloadLines
+                    p_lines: payloadLines,
+                    p_company_id: currentCompanyId
                 };
                 const { error } = await (supabase.rpc as any)('rpc_update_accounting_invoice', updatePayload);
                 if (error) throw error;
-                alert('Invoice Updated!');
+                alert('Invoice Updated successfully!');
             } else {
                 const payload = {
                     p_partner_id: selectedPartner,
@@ -216,12 +226,13 @@ export const Invoices: React.FC = () => {
                     p_date: invoiceDate,
                     p_due_date: dueDate,
                     p_move_type: 'out_invoice',
-                    p_lines: payloadLines
+                    p_lines: payloadLines,
+                    p_company_id: currentCompanyId
                 };
 
-                const { data, error } = await supabase.rpc('rpc_create_accounting_invoice', payload);
+                const { data, error } = await (supabase.rpc as any)('rpc_create_accounting_invoice', payload);
                 if (error) throw error;
-                alert('Invoice Created! ID: ' + data);
+                alert('Invoice Created successfully!');
             }
 
             setIsModalOpen(false);
@@ -230,7 +241,7 @@ export const Invoices: React.FC = () => {
 
         } catch (err: any) {
             console.error(err);
-            alert('Error saving invoice: ' + err.message);
+            alert('Error saving invoice: ' + (err.message || 'Failed to save invoice'));
         }
     };
 

@@ -146,32 +146,46 @@ export const CRM: React.FC = () => {
     };
 
     const handleCreateContact = async () => {
-        if (!companyId || !newContact.name) return;
-        const { error } = await (supabase as any).from('crm_contacts').insert([{
-            ...newContact,
-            company_id: companyId,
-            status: 'Active',
-            owner_id: currentEmployee?.id,
-            created_by: user?.id
-        }]);
-        if (!error) {
+        if (!companyId) return alert('No company context available.');
+        if (!newContact.name?.trim()) return alert('Contact name is required.');
+        try {
+            const { error } = await (supabase as any).from('crm_contacts').insert([{
+                ...newContact,
+                name: newContact.name.trim(),
+                email: newContact.email?.trim() || null,
+                phone: newContact.phone?.trim() || null,
+                company_id: companyId,
+                status: 'Active',
+                owner_id: currentEmployee?.id || null,
+                created_by: user?.id || null
+            }]);
+            if (error) throw error;
             setShowContactModal(false);
             setNewContact({});
             fetchCRMData(companyId);
+        } catch (err: any) {
+            console.error('Error creating contact:', err);
+            alert('Failed to save contact: ' + (err.message || 'Unknown error'));
         }
     };
 
     const handleUploadDocument = async () => {
-        if (!companyId || !newDoc.name) return;
-        const { error } = await (supabase as any).from('crm_documents').insert([{
-            ...newDoc,
-            company_id: companyId,
-            uploaded_by: currentEmployee?.id
-        }]);
-        if (!error) {
+        if (!companyId) return alert('No company context available.');
+        if (!newDoc.name?.trim()) return alert('Document name is required.');
+        try {
+            const { error } = await (supabase as any).from('crm_documents').insert([{
+                ...newDoc,
+                name: newDoc.name.trim(),
+                company_id: companyId,
+                uploaded_by: currentEmployee?.id || null
+            }]);
+            if (error) throw error;
             setShowDocModal(false);
             setNewDoc({});
             fetchCRMData(companyId);
+        } catch (err: any) {
+            console.error('Error uploading document:', err);
+            alert('Failed to upload document: ' + (err.message || 'Unknown error'));
         }
     };
 

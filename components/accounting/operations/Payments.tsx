@@ -152,20 +152,36 @@ export const Payments: React.FC = () => {
                 throw new Error('Please select a Bank Account');
             }
 
+            const trimmedVoucher = paymentNumber.trim();
+            if (trimmedVoucher) {
+                const { data: existingPay } = await supabase
+                    .from('accounting_payments')
+                    .select('id')
+                    .eq('company_id', currentCompanyId)
+                    .eq('name', trimmedVoucher)
+                    .neq('id', editingPaymentId || '00000000-0000-0000-0000-000000000000')
+                    .maybeSingle();
+
+                if (existingPay) {
+                    alert(`Voucher / Reference number "${trimmedVoucher}" already exists in your company. Please choose a unique reference.`);
+                    return;
+                }
+            }
+
             const payload = {
                 company_id: currentCompanyId,
-                name: paymentNumber.trim() || null,
+                name: trimmedVoucher || null,
                 payment_category: paymentCategory,
                 payment_type: paymentType,
                 partner_type: paymentType === 'inbound' ? 'customer' : 'vendor',
-                partner_id: selectedPartner || null,
-                account_id: paymentCategory === 'direct_account' ? selectedAccount : (selectedAccount || null),
+                partner_id: selectedPartner ? String(selectedPartner).trim() : null,
+                account_id: selectedAccount ? String(selectedAccount).trim() : null,
                 amount: Number(amount),
                 date: date,
-                accounting_journal_id: selectedJournal,
+                accounting_journal_id: String(selectedJournal).trim(),
                 bank_name: isBankJournal ? selectedBank : null,
                 bank_account: isBankJournal ? selectedBankAccount : null,
-                notes: notes,
+                notes: notes ? notes.trim() : null,
                 state: 'draft'
             };
 
@@ -173,27 +189,27 @@ export const Payments: React.FC = () => {
                 const { error } = await supabase
                     .from('accounting_payments')
                     .update({
-                        name: paymentNumber.trim() || null,
+                        name: trimmedVoucher || null,
                         payment_category: paymentCategory,
                         payment_type: paymentType,
                         partner_type: paymentType === 'inbound' ? 'customer' : 'vendor',
-                        partner_id: selectedPartner || null,
-                        account_id: paymentCategory === 'direct_account' ? selectedAccount : (selectedAccount || null),
+                        partner_id: selectedPartner ? String(selectedPartner).trim() : null,
+                        account_id: selectedAccount ? String(selectedAccount).trim() : null,
                         amount: Number(amount),
                         date: date,
-                        accounting_journal_id: selectedJournal,
+                        accounting_journal_id: String(selectedJournal).trim(),
                         bank_name: isBankJournal ? selectedBank : null,
                         bank_account: isBankJournal ? selectedBankAccount : null,
-                        notes: notes
+                        notes: notes ? notes.trim() : null
                     })
                     .eq('id', editingPaymentId);
 
                 if (error) throw error;
-                alert('Payment Updated!');
+                alert('Payment Updated successfully!');
             } else {
                 const { error } = await supabase.from('accounting_payments').insert([payload]);
                 if (error) throw error;
-                alert('Payment Created!');
+                alert('Payment Created successfully!');
             }
 
             setIsModalOpen(false);
@@ -204,7 +220,11 @@ export const Payments: React.FC = () => {
 
         } catch (err: any) {
             console.error(err);
-            alert('Error saving payment: ' + err.message);
+            if (err.code === '23505' || err.message?.includes('duplicate key')) {
+                alert('A payment with this reference number already exists in your company.');
+            } else {
+                alert('Error saving payment: ' + (err.message || 'Failed to save payment'));
+            }
         }
     };
 

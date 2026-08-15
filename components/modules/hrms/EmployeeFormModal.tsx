@@ -318,61 +318,75 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
             const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', user.id).single();
             if (!profile) throw new Error("No company profile found");
 
+            // Pre-flight duplicate check for employee_code
+            const { data: existingEmp } = await supabase
+                .from('employees')
+                .select('id')
+                .eq('company_id', profile.company_id)
+                .eq('employee_code', formData.employee_code.trim())
+                .neq('id', initialData?.id || '00000000-0000-0000-0000-000000000000')
+                .maybeSingle();
+
+            if (existingEmp) {
+                setSubmitError(`Employee Code "${formData.employee_code.trim()}" is already assigned to another employee in your company.`);
+                setLoading(false);
+                return;
+            }
+
             // 1. Prepare Data
             const employeeData = {
                 company_id: profile.company_id,
                 name: fullName,
-                employee_code: formData.employee_code,
-                // ... map all other fields - UUID fields use string directly ...
+                employee_code: formData.employee_code.trim(),
                 date_of_birth: dbDob || null,
                 gender: formData.gender || null,
                 faith_id: formData.faith_id ? parseInt(formData.faith_id) : null,
                 blood_group_id: formData.blood_group_id ? parseInt(formData.blood_group_id) : null,
                 marital_status_id: formData.marital_status_id ? parseInt(formData.marital_status_id) : null,
-                personal_mobile: formData.personal_mobile || null,
-                office_mobile: formData.office_mobile || null,
-                personal_email: formData.personal_email || null,
-                office_email: formData.office_email || null,
-                current_address: formData.current_address || null,
-                permanent_address: formData.permanent_address || null,
+                personal_mobile: formData.personal_mobile?.trim() || null,
+                office_mobile: formData.office_mobile?.trim() || null,
+                personal_email: formData.personal_email?.trim() || null,
+                office_email: formData.office_email?.trim() || null,
+                current_address: formData.current_address?.trim() || null,
+                permanent_address: formData.permanent_address?.trim() || null,
                 department_id: formData.department_id ? parseInt(formData.department_id) : null,
                 designation_id: formData.designation_id ? parseInt(formData.designation_id) : null,
                 grade_id: formData.grade_id ? parseInt(formData.grade_id) : null,
                 location_id: formData.location_id ? parseInt(formData.location_id) : null,
                 employment_type_id: formData.employment_type_id ? parseInt(formData.employment_type_id) : null,
                 join_date: dbJoinDate || null,
-                manager_id: formData.reporting_manager_id || null, // Keeping as string if UUID, but check if manager_id is also numeric
+                manager_id: formData.reporting_manager_id && String(formData.reporting_manager_id).trim() ? String(formData.reporting_manager_id).trim() : null,
                 shift_timing_id: formData.shift_timing_id ? parseInt(formData.shift_timing_id) : null,
                 weekoff_rule_id: formData.weekoff_rule_id ? parseInt(formData.weekoff_rule_id) : null,
                 pay_group_id: formData.pay_group_id ? parseInt(formData.pay_group_id) : null,
                 salary_amount: formData.salary_amount ? parseFloat(formData.salary_amount) : null,
-                bank_name: formData.bank_name || null,
-                account_number: formData.account_number || null,
-                ifsc_code: formData.ifsc_code || null,
-                role_id: formData.role_id || null,
+                bank_name: formData.bank_name?.trim() || null,
+                account_number: formData.account_number?.trim() || null,
+                ifsc_code: formData.ifsc_code?.trim() || null,
+                role_id: formData.role_id && String(formData.role_id).trim() ? String(formData.role_id).trim() : null,
                 employee_status_id: formData.employee_status_id ? parseInt(formData.employee_status_id) : null,
                 status: employeeStatuses.find(s => s.id.toString() === formData.employee_status_id)?.name || 'Active',
                 // Legacy
-                email: formData.office_email || formData.personal_email || null,
-                phone: formData.office_mobile || formData.personal_mobile || null,
+                email: formData.office_email?.trim() || formData.personal_email?.trim() || null,
+                phone: formData.office_mobile?.trim() || formData.personal_mobile?.trim() || null,
                 role: roles.find(r => String(r.id) === String(formData.role_id))?.name || null,
                 department: departments.find(d => String(d.id) === String(formData.department_id))?.name || null,
                 designation: designations.find(d => String(d.id) === String(formData.designation_id))?.name || null,
                 // Immigration fields
-                passport_number: formData.passport_number || null,
+                passport_number: formData.passport_number?.trim() || null,
                 passport_expiry: dbPassportExpiry || null,
-                visa_number: formData.visa_number || null,
+                visa_number: formData.visa_number?.trim() || null,
                 visa_expiry: dbVisaExpiry || null,
-                visa_sponsor: formData.visa_sponsor || null,
-                visa_type: formData.visa_type || null,
+                visa_sponsor: formData.visa_sponsor?.trim() || null,
+                visa_type: formData.visa_type?.trim() || null,
                 visa_type_id: formData.visa_type_id ? parseInt(formData.visa_type_id) : null,
-                client_name: formData.client_name || null,
+                client_name: formData.client_name?.trim() || null,
                 nationality_id: formData.nationality_id ? parseInt(formData.nationality_id) : null,
                 leave_plan_id: formData.leave_plan_id ? parseInt(formData.leave_plan_id) : null,
                 annual_leave_duration_policy: formData.annual_leave_duration_policy || null,
                 air_ticket: formData.air_ticket || null,
-                memo: formData.memo || null,
-                remarks: formData.remarks || null,
+                memo: formData.memo?.trim() || null,
+                remarks: formData.remarks?.trim() || null,
                 // Attendance & Location Settings
                 punch_mode: formData.punch_mode || 'BOTH',
                 ot_applicable: formData.ot_applicable,
@@ -428,7 +442,11 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
 
         } catch (err: any) {
             console.error(err);
-            setSubmitError(err.message || 'An error occurred');
+            if (err.code === '23505' || err.message?.includes('duplicate key')) {
+                setSubmitError('An employee with this code or email already exists in your company.');
+            } else {
+                setSubmitError(err.message || 'An error occurred while saving employee');
+            }
         } finally {
             setLoading(false);
         }

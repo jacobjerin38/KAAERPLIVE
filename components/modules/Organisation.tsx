@@ -1108,17 +1108,23 @@ const GenericMasterModal = ({ config, item, onClose, onRefresh }: { config: Mast
 
         const payload: any = {};
         config.fields.forEach(field => {
-            const value = formData.get(field.key);
+            const raw = formData.get(field.key);
             if (field.type === 'boolean') {
-                payload[field.key] = value === 'on';
+                payload[field.key] = raw === 'on' || raw === 'true';
             } else if (field.type === 'number') {
-                payload[field.key] = value ? Number(value) : null;
+                payload[field.key] = (raw !== '' && raw !== null && !isNaN(Number(raw))) ? Number(raw) : null;
+            } else if (field.type === 'select' || field.key.endsWith('_id') || field.key.endsWith('_type_id')) {
+                // Foreign keys and select fields: convert empty strings to null
+                const strVal = raw !== null ? String(raw).trim() : '';
+                payload[field.key] = strVal.length > 0 ? strVal : null;
+            } else if (field.type === 'date' || field.type === 'time') {
+                const strVal = raw !== null ? String(raw).trim() : '';
+                payload[field.key] = strVal.length > 0 ? strVal : null;
             } else {
-                payload[field.key] = value;
+                // Text fields: preserve text and trim
+                payload[field.key] = raw !== null ? String(raw).trim() : '';
             }
         });
-
-
 
         if (config.tableName === 'org_shift_timings') {
             if (payload.start_time && payload.end_time && payload.start_time > payload.end_time) {
@@ -1131,25 +1137,38 @@ const GenericMasterModal = ({ config, item, onClose, onRefresh }: { config: Mast
             payload.company_id = currentCompanyId;
             setSaving(true);
 
-            if (item) {
-                const { error } = await (supabase as any).from(config.tableName).update(payload).eq('id', item.id);
-                if (error) {
-                    setError(error.message);
-                    setSaving(false);
-                    return;
+            try {
+                if (item) {
+                    const { error: updateError } = await (supabase as any).from(config.tableName).update(payload).eq('id', item.id);
+                    if (updateError) {
+                        if (updateError.code === '23505' || updateError.message?.includes('duplicate key')) {
+                            setError(`A ${config.displayName.toLowerCase()} with this code or name already exists in your company.`);
+                        } else {
+                            setError(updateError.message || 'Failed to update record.');
+                        }
+                        setSaving(false);
+                        return;
+                    }
+                } else {
+                    const { error: insertError } = await (supabase as any).from(config.tableName).insert([payload]);
+                    if (insertError) {
+                        if (insertError.code === '23505' || insertError.message?.includes('duplicate key')) {
+                            setError(`A ${config.displayName.toLowerCase()} with this code or name already exists in your company.`);
+                        } else {
+                            setError(insertError.message || 'Failed to create record.');
+                        }
+                        setSaving(false);
+                        return;
+                    }
                 }
-            } else {
-                const { error } = await (supabase as any).from(config.tableName).insert([payload]);
-                if (error) {
-                    setError(error.message);
-                    setSaving(false);
-                    return;
-                }
-            }
 
-            setSaving(false);
-            onClose();
-            onRefresh();
+                setSaving(false);
+                onClose();
+                onRefresh();
+            } catch (err: any) {
+                setError(err.message || 'An unexpected error occurred.');
+                setSaving(false);
+            }
         }
     };
 

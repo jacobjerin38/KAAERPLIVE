@@ -149,17 +149,24 @@ export const Bills: React.FC = () => {
             return;
         }
         try {
-            if (!selectedPartner || !selectedJournal) throw new Error('Missing required fields');
+            if (!selectedPartner) {
+                alert('Please select a vendor.');
+                return;
+            }
+            if (!selectedJournal) {
+                alert('Please select a purchase journal.');
+                return;
+            }
 
             const payloadLines = lines.map(l => ({
-                item_id: l.item_id || null,
-                quantity: Number(l.quantity),
-                unit_price: Number(l.unit_price),
-                cost_center_id: l.cost_center_id || null,
-                project_cost_center_id: l.project_cost_center_id || null,
-                contract_cost_center_id: l.contract_cost_center_id || null,
-                purchase_ledger_id: l.purchase_ledger_id || null,
-                description: l.description || null
+                item_id: l.item_id ? String(l.item_id).trim() : null,
+                quantity: Number(l.quantity) || 1,
+                unit_price: Number(l.unit_price) || 0,
+                cost_center_id: l.cost_center_id ? String(l.cost_center_id).trim() : null,
+                project_cost_center_id: l.project_cost_center_id ? String(l.project_cost_center_id).trim() : null,
+                contract_cost_center_id: l.contract_cost_center_id ? String(l.contract_cost_center_id).trim() : null,
+                purchase_ledger_id: l.purchase_ledger_id ? String(l.purchase_ledger_id).trim() : null,
+                description: l.description ? String(l.description).trim() : null
             }));
 
             if (editMode && editingBillId) {
@@ -169,11 +176,12 @@ export const Bills: React.FC = () => {
                     p_journal_id: selectedJournal,
                     p_date: billDate,
                     p_due_date: dueDate,
-                    p_lines: payloadLines
+                    p_lines: payloadLines,
+                    p_company_id: currentCompanyId
                 };
                 const { error } = await (supabase.rpc as any)('rpc_update_accounting_invoice', updatePayload);
                 if (error) throw error;
-                alert('Bill Updated!');
+                alert('Bill Updated successfully!');
             } else {
                 const payload = {
                     p_partner_id: selectedPartner,
@@ -181,12 +189,13 @@ export const Bills: React.FC = () => {
                     p_date: billDate,
                     p_due_date: dueDate,
                     p_move_type: 'in_invoice',
-                    p_lines: payloadLines
+                    p_lines: payloadLines,
+                    p_company_id: currentCompanyId
                 };
 
-                const { data, error } = await supabase.rpc('rpc_create_accounting_invoice', payload);
+                const { data, error } = await (supabase.rpc as any)('rpc_create_accounting_invoice', payload);
                 if (error) throw error;
-                alert('Bill Created! ID: ' + data);
+                alert('Bill Created successfully!');
             }
 
             setIsModalOpen(false);
@@ -195,7 +204,7 @@ export const Bills: React.FC = () => {
 
         } catch (err: any) {
             console.error(err);
-            alert('Error saving bill: ' + err.message);
+            alert('Error saving bill: ' + (err.message || 'Failed to save bill'));
         }
     };
 

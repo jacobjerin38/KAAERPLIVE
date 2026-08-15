@@ -84,23 +84,39 @@ export const BankStatements: React.FC = () => {
         }
     };
 
-    const handleAddLine = async (statementId: string) => {
-        // Simplified: Add a dummy line for testing
-        const amount = prompt('Amount (Positive for Deposit, Negative for Withdrawal):');
-        if (!amount) return;
+    // Add Line Form State
+    const [isAddLineModalOpen, setIsAddLineModalOpen] = useState(false);
+    const [lineDate, setLineDate] = useState(new Date().toISOString().split('T')[0]);
+    const [lineAmount, setLineAmount] = useState('');
+    const [linePartner, setLinePartner] = useState('');
+    const [lineRef, setLineRef] = useState('');
+
+    const handleSaveLine = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!selectedStatement) return;
         if (!currentCompanyId) return alert('No company context');
+        const numAmt = Number(lineAmount);
+        if (isNaN(numAmt) || numAmt === 0) return alert('Please enter a valid non-zero amount');
 
-        const { error } = await supabase.from('bank_statement_lines').insert([{
-            statement_id: statementId,
-            date: new Date().toISOString().split('T')[0],
-            amount: Number(amount),
-            partner_name: 'Unknown',
-            payment_ref: 'REF-' + Math.floor(Math.random() * 1000),
-            company_id: currentCompanyId
-        }]);
+        try {
+            const { error } = await supabase.from('bank_statement_lines').insert([{
+                statement_id: selectedStatement.id,
+                date: lineDate,
+                amount: numAmt,
+                partner_name: linePartner.trim() || 'Direct Entry',
+                payment_ref: lineRef.trim() || null,
+                company_id: currentCompanyId
+            }]);
 
-        if (error) alert(error.message);
-        else fetchStatementDetails(statementId);
+            if (error) throw error;
+            setIsAddLineModalOpen(false);
+            setLineAmount('');
+            setLinePartner('');
+            setLineRef('');
+            fetchStatementDetails(selectedStatement.id);
+        } catch (err: any) {
+            alert('Failed to add transaction line: ' + (err.message || 'Unknown error'));
+        }
     };
 
     const openReconcileModal = async (line: any) => {
@@ -150,8 +166,7 @@ export const BankStatements: React.FC = () => {
 
                 <div className="bg-white dark:bg-zinc-900 rounded-xl border border-slate-200 dark:border-zinc-800 flex-1 flex flex-col">
                     <div className="p-4 border-b border-slate-200 dark:border-zinc-800 flex justify-between items-center bg-slate-50 dark:bg-zinc-800/50">
-                        <h3 className="font-bold">Transactions (Lines)</h3>
-                        <button onClick={() => handleAddLine(selectedStatement.id)} className="px-3 py-1.5 bg-slate-200 dark:bg-zinc-700 rounded-lg text-xs font-bold">
+                        <button onClick={() => setIsAddLineModalOpen(true)} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-colors">
                             + Add Line
                         </button>
                     </div>
@@ -286,6 +301,34 @@ export const BankStatements: React.FC = () => {
                             </select>
                         </div>
                         <button className="w-full py-2 bg-indigo-600 text-white rounded font-bold">Create</button>
+                    </form>
+                </Modal>
+            )}
+
+            {isAddLineModalOpen && (
+                <Modal title="Add Transaction Line" onClose={() => setIsAddLineModalOpen(false)}>
+                    <form onSubmit={handleSaveLine} className="space-y-4">
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Date</label>
+                            <input type="date" required value={lineDate} onChange={e => setLineDate(e.target.value)} className="w-full p-2 border rounded dark:bg-zinc-800 dark:border-zinc-700" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Partner / Description</label>
+                            <input value={linePartner} onChange={e => setLinePartner(e.target.value)} className="w-full p-2 border rounded dark:bg-zinc-800 dark:border-zinc-700" placeholder="e.g. Al Rayan Trading / Direct Deposit" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Amount (QAR)</label>
+                            <input type="number" step="0.01" required value={lineAmount} onChange={e => setLineAmount(e.target.value)} className="w-full p-2 border rounded dark:bg-zinc-800 dark:border-zinc-700" placeholder="Positive for Deposit, Negative for Withdrawal" />
+                            <p className="text-[11px] text-slate-400 mt-1">Use positive numbers for inbound deposits and negative for outbound expenses.</p>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Payment / Cheque Reference</label>
+                            <input value={lineRef} onChange={e => setLineRef(e.target.value)} className="w-full p-2 border rounded dark:bg-zinc-800 dark:border-zinc-700" placeholder="e.g. CHQ-449102" />
+                        </div>
+                        <div className="flex justify-end gap-2 pt-2">
+                            <button type="button" onClick={() => setIsAddLineModalOpen(false)} className="px-4 py-2 bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-slate-300 rounded-lg text-sm font-semibold">Cancel</button>
+                            <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold">Add Transaction</button>
+                        </div>
                     </form>
                 </Modal>
             )}

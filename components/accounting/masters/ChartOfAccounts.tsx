@@ -110,20 +110,34 @@ export const ChartOfAccounts: React.FC = () => {
         if (!form.code || !form.name) return alert('Code and Name are required');
         
         const payload: any = { 
-            code: form.code, 
-            name: form.name, 
+            code: form.code.trim(), 
+            name: form.name.trim(), 
             type: form.type, 
-            subtype: form.category, 
+            subtype: form.category || null, 
             parent_id: form.parent_id || null, 
-            is_group: form.is_group,
+            is_group: !!form.is_group,
             balance_type: form.balance_type || getBalanceType(form.type),
-            is_active: form.is_active, 
+            is_active: form.is_active !== false, 
             account_group_id: null, 
-            description: form.description, 
+            description: form.description?.trim() || null, 
             company_id: currentCompanyId 
         };
 
         try {
+            // Pre-flight duplicate code check in current company
+            const { data: existingAcc } = await supabase
+                .from('accounting_chart_of_accounts')
+                .select('id')
+                .eq('company_id', currentCompanyId)
+                .eq('code', payload.code)
+                .neq('id', editing?.id || '00000000-0000-0000-0000-000000000000')
+                .maybeSingle();
+
+            if (existingAcc) {
+                alert(`Account code "${payload.code}" already exists in your company. Please choose a unique account code.`);
+                return;
+            }
+
             let err: any = null;
             if (editing) { 
                 const res = await supabase.from('accounting_chart_of_accounts').update(payload).eq('id', editing.id); 
@@ -133,25 +147,17 @@ export const ChartOfAccounts: React.FC = () => {
                 err = res.error;
             }
 
-            if (err && (err.message?.includes('description') || err.message?.includes('parent_id') || err.message?.includes('schema cache'))) {
-                const safePayload = { ...payload };
-                delete safePayload.description;
-                delete safePayload.parent_id;
-                
-                if (editing) {
-                    const res2 = await supabase.from('accounting_chart_of_accounts').update(safePayload).eq('id', editing.id);
-                    err = res2.error;
-                } else {
-                    const res2 = await supabase.from('accounting_chart_of_accounts').insert([safePayload]);
-                    err = res2.error;
-                }
-            }
-
             if (err) throw err;
 
             setIsModalOpen(false); 
             fetch_();
-        } catch (err: any) { alert('Error: ' + err.message); }
+        } catch (err: any) { 
+            if (err.code === '23505' || err.message?.includes('duplicate key')) {
+                alert(`Account code "${payload.code}" already exists in your company.`);
+            } else {
+                alert('Error: ' + (err.message || 'Failed to save account')); 
+            }
+        }
     };
 
     const handleDelete = async (id: string) => {
