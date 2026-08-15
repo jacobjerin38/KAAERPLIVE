@@ -1243,7 +1243,7 @@ const GenericMastersView = ({
     });
 
     return (
-        <div className="h-full flex flex-col p-8">
+        <div className="min-h-full flex flex-col p-8 pb-16">
             {/* Category Tabs */}
             <div className="flex flex-col gap-4 mb-8">
                 {/* Core & HRMS */}
@@ -1438,7 +1438,7 @@ const GenericMastersView = ({
 };
 
 const GenericRolesView = ({ filteredRoles, users, setShowAddRole, setEditingRole, onDeleteRole, localSearch, setLocalSearch }: any) => (
-    <div className="p-8 h-full flex flex-col animate-page-enter">
+    <div className="p-8 min-h-full flex flex-col pb-16 animate-page-enter">
         <div className="flex justify-between items-center mb-8">
             <div>
                 <h2 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Roles & Permissions</h2>
@@ -1449,7 +1449,7 @@ const GenericRolesView = ({ filteredRoles, users, setShowAddRole, setEditingRole
             </button>
         </div>
         <SearchBar value={localSearch} onChange={setLocalSearch} placeholder="Search roles..." />
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 overflow-y-auto pb-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-4">
             {filteredRoles.map((role: any) => (
                 <div key={role.id} className="bg-white/70 dark:bg-zinc-900/70 backdrop-blur-xl p-6 rounded-[2rem] border border-white/60 dark:border-zinc-800 shadow-lg group relative">
                     <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
@@ -1493,7 +1493,7 @@ const GenericRolesView = ({ filteredRoles, users, setShowAddRole, setEditingRole
 );
 
 const GenericUsersView = ({ filteredUsers, roles, setShowAddUser, localSearch, setLocalSearch, onEditUser, onResetPassword, onDeleteUser }: any) => (
-    <div className="p-8 h-full flex flex-col animate-page-enter">
+    <div className="p-8 min-h-full flex flex-col pb-16 animate-page-enter">
         <div className="flex justify-between items-center mb-8">
             <div>
                 <h2 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">System Users</h2>
@@ -1505,7 +1505,7 @@ const GenericUsersView = ({ filteredUsers, roles, setShowAddUser, localSearch, s
         </div>
 
         <SearchBar value={localSearch} onChange={setLocalSearch} placeholder="Search users by name or email..." />
-        <div className="bg-white/70 dark:bg-zinc-900/70 backdrop-blur-xl rounded-[2rem] border border-white/60 dark:border-zinc-800 shadow-xl shadow-slate-200/50 dark:shadow-black/30 overflow-hidden flex-1">
+        <div className="bg-white/70 dark:bg-zinc-900/70 backdrop-blur-xl rounded-[2rem] border border-white/60 dark:border-zinc-800 shadow-xl shadow-slate-200/50 dark:shadow-black/30 overflow-x-auto">
             <table className="w-full text-left">
                 <thead className="bg-slate-50/80 dark:bg-zinc-800/80 sticky top-0 z-10 backdrop-blur-sm border-b border-slate-200/60 dark:border-zinc-700">
                     <tr>
@@ -1516,7 +1516,7 @@ const GenericUsersView = ({ filteredUsers, roles, setShowAddUser, localSearch, s
                         <th className="px-8 py-5 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-right">Actions</th>
                     </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100/50 dark:divide-zinc-800/50 overflow-y-auto">
+                <tbody className="divide-y divide-slate-100/50 dark:divide-zinc-800/50">
                     {filteredUsers.map((user: any) => {
                         const role = roles.find((r: any) => r.id === user.roleId);
                         return (
@@ -3451,7 +3451,7 @@ export const Organisation: React.FC = () => {
     return (
         <div className="flex h-full relative z-10 overflow-hidden">
             {/* Organisation Sidebar */}
-            <div className="w-20 md:w-64 flex-shrink-0 bg-white/40 dark:bg-zinc-900/40 border-r border-slate-200/50 dark:border-zinc-800 flex flex-col justify-between pt-8 pb-4 px-4 backdrop-blur-xl">
+            <div className="w-20 md:w-64 flex-shrink-0 bg-white/40 dark:bg-zinc-900/40 border-r border-slate-200/50 dark:border-zinc-800 flex flex-col justify-between pt-8 pb-4 px-4 backdrop-blur-xl overflow-y-auto custom-scrollbar">
                 <div className="flex flex-col gap-3">
                     <div className="mb-8 px-2 hidden md:block">
                         <div className="flex items-center gap-2 mb-1">
@@ -3481,7 +3481,7 @@ export const Organisation: React.FC = () => {
             </div>
 
             {/* Content Area */}
-            <div className="flex-1 overflow-hidden relative">
+            <div className="flex-1 overflow-y-auto relative h-full custom-scrollbar">
                 {delayedLoading ? (
                     activeTab === 'STRUCTURE' ? <DashboardSkeleton /> : <TableSkeleton />
                 ) : (
