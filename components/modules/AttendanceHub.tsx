@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-    Clock, Calendar, Layers, ClipboardList, BarChart3, FileText, MapPin, Globe
+    Clock, Calendar, Layers, ClipboardList, BarChart3, FileText, MapPin, Globe, Settings
 } from 'lucide-react';
 import { Employee } from '../hrms/types';
 import { AttendanceViewMode } from '../../types';
 import {
     OverviewTab, DailyTab, MonthlyTab, ShiftsTab, DutyRosterTab, LocationMappingTab, OutdoorReportTab
 } from './hrms/AttendanceModule';
+import { AttendanceSettings } from './hrms/AttendanceSettings';
 import { ReportsListView } from './reports/ReportsListView';
 
 import { KAA_LOGO_URL } from '../../constants';
@@ -78,6 +79,7 @@ export const AttendanceHub: React.FC = () => {
         { id: 'SHIFTS', icon: Layers, label: 'Shifts', permission: 'hrms.attendance.view' },
         { id: 'LOCATION_MAPPING', icon: MapPin, label: 'Location Mapping', permission: 'hrms.attendance.view' },
         { id: 'OUTDOOR_REPORT', icon: Globe, label: 'Outdoor Report', permission: 'hrms.attendance.view' },
+        { id: 'SETTINGS', icon: Settings, label: 'OT & Settings', permission: 'hrms.attendance.view' },
         { id: 'REPORTS', icon: FileText, label: 'Reports', permission: 'hrms.reports.view' },
     ].filter(item => hasPermission(item.permission) || hasPermission('*')), [hasPermission]);
 
@@ -130,6 +132,11 @@ export const AttendanceHub: React.FC = () => {
                         {activeTab === 'SHIFTS' && <ShiftsTab companyId={companyId} />}
                         {activeTab === 'LOCATION_MAPPING' && <LocationMappingTab employees={activeEmployees} companyId={companyId} />}
                         {activeTab === 'OUTDOOR_REPORT' && <OutdoorReportTab employees={activeEmployees} companyId={companyId} />}
+                        {activeTab === 'SETTINGS' && (
+                            <div className="p-8 h-full overflow-y-auto">
+                                <AttendanceSettings />
+                            </div>
+                        )}
                         {activeTab === 'REPORTS' && <ReportsListView moduleFilter="ATTENDANCE" />}
                     </>
                 )}

@@ -106,7 +106,7 @@ export const LeaveHub: React.FC = () => {
         { id: 'APPLICATIONS', icon: Calendar, label: 'Applications', permission: 'hrms.leave.view' },
         { id: 'APPROVALS', icon: ShieldCheck, label: 'Approvals', permission: 'hrms.leave.approve' },
         { id: 'CALENDAR', icon: Calendar, label: 'Holidays', permission: 'hrms.leave.view' },
-        { id: 'BALANCES', icon: Settings, label: 'Accruals', permission: 'hrms.leave.view' },
+        { id: 'BALANCES', icon: Settings, label: 'Leave Accruals & Policies', permission: 'hrms.leave.view' },
         { id: 'AUTHORITIES', icon: UserCheck, label: 'Leave Authority', permission: 'hrms.leave.view' },
         { id: 'REPORTS', icon: FileText, label: 'Reports', permission: 'hrms.reports.view' },
     ].filter(item => hasPermission(item.permission) || hasPermission('*')), [hasPermission]);

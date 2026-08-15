@@ -145,7 +145,7 @@ export interface Ticket {
 export type HRMSViewMode = 'OVERVIEW' | 'EMPLOYEES' | 'PEOPLE' | 'ATTENDANCE' | 'LEAVES' | 'PAYROLL' | 'PERFORMANCE' | 'ASSETS' | 'HELPDESK' | 'SETTINGS' | 'REPORTS' | 'EXIT' | 'DOCUMENTS' | 'ADMIN' | 'RECRUITMENT' | 'ONBOARDING' | 'OFFBOARDING';
 
 export type EmployeesViewMode = 'OVERVIEW' | 'PEOPLE' | 'APPROVALS' | 'ASSETS' | 'HELPDESK' | 'EXIT' | 'SETTINGS' | 'REPORTS';
-export type AttendanceViewMode = 'OVERVIEW' | 'LOGS' | 'CORRECTION' | 'MANUAL' | 'SHIFTS' | 'LOCATION_MAPPING' | 'OUTDOOR_REPORT' | 'REPORTS';
+export type AttendanceViewMode = 'OVERVIEW' | 'LOGS' | 'CORRECTION' | 'MANUAL' | 'SHIFTS' | 'LOCATION_MAPPING' | 'OUTDOOR_REPORT' | 'SETTINGS' | 'REPORTS';
 export type LeaveViewMode = 'OVERVIEW' | 'APPLICATIONS' | 'APPROVALS' | 'CALENDAR' | 'BALANCES' | 'AUTHORITIES' | 'REPORTS';
 export type PayrollViewMode = 'OVERVIEW' | 'PROCESSING' | 'RUNS' | 'PAYSLIPS' | 'STRUCTURES' | 'REVISIONS' | 'REPORTS';
 
