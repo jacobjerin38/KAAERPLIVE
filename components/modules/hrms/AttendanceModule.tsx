@@ -3,15 +3,16 @@ import {
     Edit3, Clock, Users, TrendingUp, AlertTriangle, Check, X, Plus, Download,
     ChevronLeft, ChevronRight, Calendar, Save, Loader2, Eye, Search, BarChart3,
     Lock, Unlock, ShieldCheck, RefreshCcw, AlertCircle, Layers, ClipboardList, MapPin,
-    Upload, ExternalLink, FileSpreadsheet, CheckCircle2, XCircle, Globe, Settings
+    Upload, ExternalLink, FileSpreadsheet, CheckCircle2, XCircle, Globe, Settings, FileText
 } from 'lucide-react';
 import { Employee } from '../../hrms/types';
 import { supabase } from '../../../lib/supabase';
 import { AttendanceSettings } from './AttendanceSettings';
+import { AttendanceReportsSuite } from './reports/AttendanceReportsSuite';
 import { useAuth } from '../../../contexts/AuthContext';
 import { WorkflowEngine } from '../../../lib/WorkflowEngine';
 
-type SubTab = 'OVERVIEW' | 'DAILY' | 'MONTHLY' | 'MISSED_PUNCH' | 'SHIFTS' | 'DUTY_ROSTER' | 'LOCATION_MAPPING' | 'OUTDOOR_REPORT' | 'SETTINGS';
+type SubTab = 'OVERVIEW' | 'DAILY' | 'MONTHLY' | 'MISSED_PUNCH' | 'SHIFTS' | 'DUTY_ROSTER' | 'LOCATION_MAPPING' | 'OUTDOOR_REPORT' | 'SETTINGS' | 'REPORTS';
 
 interface AttendanceModuleProps {
     employees: Employee[];
@@ -115,6 +116,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ employees })
         { id: 'LOCATION_MAPPING', label: 'Location Mapping', icon: MapPin },
         { id: 'OUTDOOR_REPORT', label: 'Outdoor Report', icon: ClipboardList },
         { id: 'SETTINGS', label: 'OT & Attendance Settings', icon: Settings },
+        { id: 'REPORTS', label: 'Reports', icon: FileText },
     ];
 
     return (
@@ -152,6 +154,7 @@ export const AttendanceModule: React.FC<AttendanceModuleProps> = ({ employees })
                 {subTab === 'LOCATION_MAPPING' && <LocationMappingTab employees={activeEmployees} companyId={companyId} />}
                 {subTab === 'OUTDOOR_REPORT' && <OutdoorReportTab employees={activeEmployees} companyId={companyId} />}
                 {subTab === 'SETTINGS' && <AttendanceSettings />}
+                {subTab === 'REPORTS' && <AttendanceReportsSuite />}
             </div>
         </div>
     );

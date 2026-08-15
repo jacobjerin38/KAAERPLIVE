@@ -8,6 +8,7 @@ import {
     OverviewTab, DailyTab, MonthlyTab, ShiftsTab, DutyRosterTab, LocationMappingTab, OutdoorReportTab
 } from './hrms/AttendanceModule';
 import { AttendanceSettings } from './hrms/AttendanceSettings';
+import { AttendanceReportsSuite } from './hrms/reports/AttendanceReportsSuite';
 import { ReportsListView } from './reports/ReportsListView';
 
 import { KAA_LOGO_URL } from '../../constants';
@@ -137,7 +138,7 @@ export const AttendanceHub: React.FC = () => {
                                 <AttendanceSettings />
                             </div>
                         )}
-                        {activeTab === 'REPORTS' && <ReportsListView moduleFilter="ATTENDANCE" />}
+                        {activeTab === 'REPORTS' && <AttendanceReportsSuite />}
                     </>
                 )}
             </div>

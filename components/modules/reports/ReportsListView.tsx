@@ -3,12 +3,15 @@ import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
 import {
     Plus, FileText, Download, Trash2, Search, Play, Clock,
-    BarChart3, Loader2, ChevronRight, Columns, DollarSign
+    BarChart3, Loader2, ChevronRight, Columns, DollarSign, Calendar, AlertTriangle
 } from 'lucide-react';
 import { ReportBuilder } from './ReportBuilder';
 import { LeaveAnalyticsReport } from '../hrms/reports/LeaveAnalyticsReport';
 import { SalaryStatementReport } from '../hrms/reports/SalaryStatementReport';
 import { BonusGratuityReport } from '../hrms/reports/BonusGratuityReport';
+import { MonthlyAttendanceReport } from '../hrms/reports/MonthlyAttendanceReport';
+import { OvertimeReport } from '../hrms/reports/OvertimeReport';
+import { LateEarlyReport } from '../hrms/reports/LateEarlyReport';
 
 interface ReportsListViewProps {
     moduleFilter?: string;   // e.g. "CRM" — show only CRM modules
@@ -28,6 +31,9 @@ export const ReportsListView: React.FC<ReportsListViewProps> = ({ moduleFilter, 
     const [reportCategory, setReportCategory] = useState<'CUSTOM' | 'STANDARD'>('CUSTOM');
 
     const allStandardReports = useMemo(() => [
+        { id: 'MONTHLY_ATTENDANCE', name: 'Monthly Attendance Report', desc: 'Working days, leaves, shifts & punch audit', icon: Calendar, color: 'cyan', module: 'ATTENDANCE' },
+        { id: 'OVERTIME_REPORT', name: 'Overtime Statement', desc: 'Rules, multipliers, daily caps & approvals', icon: Clock, color: 'amber', module: 'ATTENDANCE' },
+        { id: 'LATE_EARLY_REPORT', name: 'Late In / Early Out Report', desc: 'Punctuality analysis & grace comparisons', icon: AlertTriangle, color: 'rose', module: 'ATTENDANCE' },
         { id: 'LEAVE_ANALYTICS', name: 'Leave Analytics', desc: 'Visual trends and departmental distribution', icon: BarChart3, color: 'emerald', module: 'LEAVE' },
         { id: 'SALARY_STATEMENT', name: 'Monthly Salary Statement', desc: 'Detailed earnings and deductions breakdown', icon: DollarSign, color: 'indigo', module: 'PAYROLL' },
         { id: 'BONUS_GRATUITY', name: 'Bonus & Gratuity Valuation', desc: 'Tenure-based liability and accruals', icon: FileText, color: 'amber', module: 'PAYROLL' },
@@ -99,6 +105,9 @@ export const ReportsListView: React.FC<ReportsListViewProps> = ({ moduleFilter, 
                         className="mb-6 flex items-center gap-2 text-slate-500 hover:text-indigo-600 font-bold text-sm transition-colors w-fit">
                         <Plus className="w-4 h-4 rotate-45" /> Back to Reports
                     </button>
+                    {selectedStandardReport === 'MONTHLY_ATTENDANCE' && <MonthlyAttendanceReport />}
+                    {selectedStandardReport === 'OVERTIME_REPORT' && <OvertimeReport />}
+                    {selectedStandardReport === 'LATE_EARLY_REPORT' && <LateEarlyReport />}
                     {selectedStandardReport === 'LEAVE_ANALYTICS' && <LeaveAnalyticsReport />}
                     {selectedStandardReport === 'SALARY_STATEMENT' && <SalaryStatementReport />}
                     {selectedStandardReport === 'BONUS_GRATUITY' && <BonusGratuityReport />}
