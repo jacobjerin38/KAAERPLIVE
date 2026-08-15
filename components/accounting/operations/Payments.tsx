@@ -19,6 +19,7 @@ export const Payments: React.FC = () => {
     const [bankConfigs, setBankConfigs] = useState<any[]>([]); // Org Bank Configurations
 
     // Form State
+    const [paymentNumber, setPaymentNumber] = useState(''); // Custom voucher / reference number
     const [paymentCategory, setPaymentCategory] = useState<'partner' | 'direct_account'>('partner'); // partner, direct_account
     const [paymentType, setPaymentType] = useState('outbound'); // inbound (Money In), outbound (Money Out)
     const [selectedPartner, setSelectedPartner] = useState('');
@@ -91,6 +92,7 @@ export const Payments: React.FC = () => {
     const handleOpenModal = (pay?: any, readonly = false) => {
         if (pay) {
             setEditingPaymentId(pay.id);
+            setPaymentNumber(pay.name || '');
             setPaymentCategory(pay.payment_category === 'direct_account' || pay.account_id ? 'direct_account' : 'partner');
             setPaymentType(pay.payment_type || 'outbound');
             setSelectedPartner(pay.partner_id || '');
@@ -106,6 +108,7 @@ export const Payments: React.FC = () => {
             setIsModalOpen(true);
         } else {
             setEditingPaymentId(null);
+            setPaymentNumber('');
             setPaymentCategory('partner');
             setPaymentType('outbound');
             setSelectedPartner('');
@@ -151,6 +154,7 @@ export const Payments: React.FC = () => {
 
             const payload = {
                 company_id: currentCompanyId,
+                name: paymentNumber.trim() || null,
                 payment_category: paymentCategory,
                 payment_type: paymentType,
                 partner_type: paymentType === 'inbound' ? 'customer' : 'vendor',
@@ -169,6 +173,7 @@ export const Payments: React.FC = () => {
                 const { error } = await supabase
                     .from('accounting_payments')
                     .update({
+                        name: paymentNumber.trim() || null,
                         payment_category: paymentCategory,
                         payment_type: paymentType,
                         partner_type: paymentType === 'inbound' ? 'customer' : 'vendor',
@@ -192,6 +197,7 @@ export const Payments: React.FC = () => {
             }
 
             setIsModalOpen(false);
+            setPaymentNumber('');
             setAmount('');
             setNotes('');
             fetchPayments();
@@ -486,6 +492,21 @@ export const Payments: React.FC = () => {
                                     <option value="">Select Partner</option>
                                     {partners.map(p => <option key={p.id} value={p.id}>{p.name} ({p.partner_type})</option>)}
                                 </select>
+                            </div>
+
+                            {/* Voucher / Reference Number */}
+                            <div className="col-span-2">
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                                    Voucher / Reference No. <span className="text-slate-400 font-normal">(Optional — e.g. PV-2026-001, CHQ-10492, TT-88392)</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    value={paymentNumber}
+                                    onChange={e => setPaymentNumber(e.target.value)}
+                                    disabled={viewMode}
+                                    placeholder="Leave blank for auto-generated number (e.g. PAY-XXXXX)"
+                                    className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm font-mono font-medium text-slate-900 dark:text-white"
+                                />
                             </div>
 
                             <div>
