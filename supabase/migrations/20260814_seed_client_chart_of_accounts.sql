@@ -60,7 +60,8 @@ BEGIN
         (p_company_id, '5000', 'Cost of Sales', 'Expense', 'Operating Expense', 'Debit balance', true, true),
         (p_company_id, '5200', 'Cost of Service-Projects', 'Expense', 'Operating Expense', 'Debit balance', true, true),
         (p_company_id, '5300', 'Cost of Service-Manpower', 'Expense', 'Operating Expense', 'Debit balance', true, true),
-        (p_company_id, '5500', 'General & Administrative Expenses', 'Expense', 'Non-Operating Expense', 'Debit balance', true, true)
+        (p_company_id, '5500', 'General & Administrative Expenses', 'Expense', 'Non-Operating Expense', 'Debit balance', true, true),
+        (p_company_id, '5915', 'Finance Cost', 'Expense', 'Non-Operating Expense', 'Debit balance', true, true)
     ON CONFLICT (company_id, code) DO UPDATE SET
         name = EXCLUDED.name,
         type = EXCLUDED.type,
@@ -285,10 +286,10 @@ BEGIN
     (p_company_id, '5910', 'Other Expense', 'Expense', 'Non-Operating Expense', 'Debit balance', false, (SELECT id FROM public.accounting_chart_of_accounts WHERE company_id = p_company_id AND code = '5500' LIMIT 1), true)
     ON CONFLICT (company_id, code) DO UPDATE SET name = EXCLUDED.name, type = EXCLUDED.type, subtype = EXCLUDED.subtype, balance_type = EXCLUDED.balance_type, parent_id = EXCLUDED.parent_id;
 
-    -- Expenses: Finance Cost / Interests (under 5500)
+    -- Expenses: Finance Cost / Interests (under 5915)
     INSERT INTO public.accounting_chart_of_accounts (company_id, code, name, type, subtype, balance_type, is_group, parent_id, is_active) VALUES
-    (p_company_id, '5920', 'Interest on Borrowings', 'Expense', 'Non-Operating Expense', 'Debit balance', false, (SELECT id FROM public.accounting_chart_of_accounts WHERE company_id = p_company_id AND code = '5500' LIMIT 1), true),
-    (p_company_id, '5921', 'Interest on Lease Liability', 'Expense', 'Non-Operating Expense', 'Debit balance', false, (SELECT id FROM public.accounting_chart_of_accounts WHERE company_id = p_company_id AND code = '5500' LIMIT 1), true)
+    (p_company_id, '5920', 'Interest on Borrowings', 'Expense', 'Non-Operating Expense', 'Debit balance', false, (SELECT id FROM public.accounting_chart_of_accounts WHERE company_id = p_company_id AND code = '5915' LIMIT 1), true),
+    (p_company_id, '5921', 'Interest on Lease Liability', 'Expense', 'Non-Operating Expense', 'Debit balance', false, (SELECT id FROM public.accounting_chart_of_accounts WHERE company_id = p_company_id AND code = '5915' LIMIT 1), true)
     ON CONFLICT (company_id, code) DO UPDATE SET name = EXCLUDED.name, type = EXCLUDED.type, subtype = EXCLUDED.subtype, balance_type = EXCLUDED.balance_type, parent_id = EXCLUDED.parent_id;
 
 END;

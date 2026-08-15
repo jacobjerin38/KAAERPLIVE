@@ -400,9 +400,9 @@ export const ChartOfAccounts: React.FC = () => {
                                                         {parentAcc ? `${parentAcc.code} - ${parentAcc.name}` : '—'}
                                                     </td>
                                                     <td className="px-5 py-3"><span className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase ${acc.is_active!==false ? 'text-emerald-600' : 'text-slate-400'}`}>{acc.is_active!==false ? <ToggleRight className="w-3.5 h-3.5" /> : <ToggleLeft className="w-3.5 h-3.5" />}{acc.is_active!==false ? 'Active' : 'Inactive'}</span></td>
-                                                    <td className="px-5 py-3 text-right"><div className="flex gap-1.5 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        <button onClick={() => openEdit(acc)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg" title="Edit Account"><Edit3 className="w-3.5 h-3.5" /></button>
-                                                        <button onClick={() => handleDelete(acc.id)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg" title="Delete Account"><Trash2 className="w-3.5 h-3.5" /></button>
+                                                    <td className="px-5 py-3 text-right"><div className="flex gap-1.5 justify-end">
+                                                        <button onClick={() => openEdit(acc)} className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:text-slate-400 dark:hover:bg-indigo-900/30 rounded-lg transition-colors" title="Edit Account"><Edit3 className="w-3.5 h-3.5" /></button>
+                                                        <button onClick={() => handleDelete(acc.id)} className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:text-slate-400 dark:hover:bg-rose-900/30 rounded-lg transition-colors" title="Delete Account"><Trash2 className="w-3.5 h-3.5" /></button>
                                                     </div></td>
                                                 </tr>
                                             )})}
