@@ -21,26 +21,20 @@ DECLARE
     v_default_off_days TEXT;
     v_standard_hours NUMERIC;
 BEGIN
-    -- Fetch default weekly off days from org_attendance_settings
     SELECT COALESCE(oas.default_weekly_off_days, '5,6')
     INTO v_default_off_days
     FROM public.org_attendance_settings oas
     WHERE oas.company_id = p_company_id
     LIMIT 1;
 
-    -- Fetch standard working hours from attendance_settings
     SELECT COALESCE(ast.standard_hours, 8.0)
     INTO v_standard_hours
     FROM public.attendance_settings ast
     WHERE ast.company_id = p_company_id
     LIMIT 1;
 
-    IF v_default_off_days IS NULL THEN
-        v_default_off_days := '5,6';
-    END IF;
-    IF v_standard_hours IS NULL THEN
-        v_standard_hours := 8.0;
-    END IF;
+    IF v_default_off_days IS NULL THEN v_default_off_days := '5,6'; END IF;
+    IF v_standard_hours IS NULL THEN v_standard_hours := 8.0; END IF;
 
     WITH emp_list AS (
         SELECT 
@@ -187,7 +181,6 @@ DECLARE
     v_approval_required BOOLEAN;
     v_default_off_days TEXT;
 BEGIN
-    -- Fetch attendance & OT settings
     SELECT 
         COALESCE(s.ot_threshold_hours, 8.0),
         COALESCE(s.ot_multiplier, 1.5),
@@ -228,27 +221,28 @@ BEGIN
             a.check_in,
             a.check_out,
             COALESCE(a.total_hours, a.duration, 0) AS total_worked_hours,
+            COALESCE(a.is_processed, false) AS is_processed,
             st.name AS shift_name,
             st.start_time AS scheduled_start,
             st.end_time AS scheduled_end,
             COALESCE(st.full_day_hours, v_ot_threshold) AS regular_hours,
-            -- Raw OT calculation: if stored ot_hours > 0, use it, else worked - regular
             GREATEST(COALESCE(a.ot_hours, 0), GREATEST(COALESCE(a.total_hours, a.duration, 0) - COALESCE(st.full_day_hours, v_ot_threshold), 0)) AS raw_ot_hours,
-            -- Determine if date is holiday or weekend
             (EXISTS (SELECT 1 FROM public.org_holidays h WHERE h.company_id = p_company_id AND h.date = a.date)) AS is_holiday,
             (EXTRACT(DOW FROM a.date)::text = ANY(string_to_array(v_default_off_days, ','))) AS is_weekend,
-            -- Overtime requests lookup
             otr.status AS req_status,
             otr.approved_hours AS req_approved_hours,
-            approver.name AS approver_name,
+            COALESCE(approver.name, ot_auth_l1.name, mgr.name) AS approver_name,
             otr.approved_at,
             otr.reason AS ot_reason
         FROM public.attendance a
         JOIN public.employees e ON a.employee_id = e.id
         LEFT JOIN public.departments d ON e.department_id = d.id
+        LEFT JOIN public.employees mgr ON e.manager_id = mgr.id
         LEFT JOIN public.org_shift_timings st ON a.shift_id = st.id
         LEFT JOIN public.overtime_requests otr ON a.employee_id = otr.employee_id AND a.date = otr.request_date
         LEFT JOIN public.employees approver ON otr.approved_by = approver.id
+        LEFT JOIN public.employee_ot_authority eoa ON a.employee_id = eoa.employee_id AND eoa.is_active = true
+        LEFT JOIN public.employees ot_auth_l1 ON eoa.approver_level_1 = ot_auth_l1.id
         WHERE a.company_id = p_company_id
           AND a.date BETWEEN p_start_date AND p_end_date
           AND (p_employee_id IS NULL OR a.employee_id = p_employee_id)
@@ -257,9 +251,7 @@ BEGIN
     calculated_ot AS (
         SELECT 
             r.*,
-            -- Eligible OT capped by max_ot_hours_per_day
             LEAST(r.raw_ot_hours, v_max_daily_ot) AS eligible_ot_hours,
-            -- OT Classification & Multiplier
             CASE 
                 WHEN r.is_holiday THEN 'Holiday OT'
                 WHEN r.is_weekend THEN 'Weekend OT'
@@ -270,13 +262,17 @@ BEGIN
                 WHEN r.is_weekend THEN v_weekend_multiplier
                 ELSE v_ot_multiplier
             END AS multiplier,
-            -- Approval status
+            -- Accurate Approval Status:
+            -- If approval NOT required -> 'Not Required'
+            -- Else if explicit overtime_request exists -> req_status ('Approved', 'Pending', 'Rejected')
+            -- Else if attendance record has been formally processed/locked -> 'Approved'
+            -- Else -> 'Pending' (waiting for manager review / attendance processing)
             CASE 
                 WHEN NOT v_approval_required THEN 'Not Required'
                 WHEN r.req_status IS NOT NULL THEN r.req_status
-                ELSE 'Approved' -- Default to Approved if pre-calculated/processed
+                WHEN r.is_processed THEN 'Approved'
+                ELSE 'Pending'
             END AS final_approval_status,
-            -- Estimated Hourly Rate & OT Amount: (Salary / (30 * 8)) * eligible_ot * multiplier
             ROUND(
                 (COALESCE(r.salary_amount, 0) / (30.0 * v_ot_threshold)) * LEAST(r.raw_ot_hours, v_max_daily_ot) * 
                 CASE WHEN r.is_holiday THEN v_holiday_multiplier WHEN r.is_weekend THEN v_weekend_multiplier ELSE v_ot_multiplier END, 
@@ -349,7 +345,6 @@ DECLARE
     v_grace_late INT;
     v_grace_early INT;
 BEGIN
-    -- Fetch grace settings
     SELECT 
         COALESCE(s.grace_minutes_late, 15),
         COALESCE(s.grace_minutes_early, 15)
@@ -381,7 +376,6 @@ BEGIN
             COALESCE(st.grace_period_minutes, v_grace_late) AS effective_grace_late,
             v_grace_early AS effective_grace_early,
             st.is_overnight,
-            -- Calculated or stored late minutes
             COALESCE(a.late_minutes, 0) AS stored_late_minutes,
             COALESCE(a.early_minutes, 0) AS stored_early_minutes
         FROM public.attendance a
@@ -397,7 +391,6 @@ BEGIN
     calculated_incidents AS (
         SELECT 
             b.*,
-            -- Dynamic calculation if stored is 0 but actual check-in is after scheduled start + grace
             CASE 
                 WHEN b.stored_late_minutes > 0 THEN b.stored_late_minutes
                 WHEN b.check_in IS NOT NULL AND b.scheduled_start IS NOT NULL THEN
@@ -407,7 +400,6 @@ BEGIN
                     )
                 ELSE 0
             END AS computed_late_minutes,
-            -- Dynamic calculation for early out
             CASE 
                 WHEN b.stored_early_minutes > 0 THEN b.stored_early_minutes
                 WHEN b.check_out IS NOT NULL AND b.scheduled_end IS NOT NULL AND NOT COALESCE(b.is_overnight, false) THEN
