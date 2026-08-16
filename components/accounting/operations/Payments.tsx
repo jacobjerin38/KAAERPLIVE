@@ -699,6 +699,7 @@ export const Payments: React.FC = () => {
                 <Modal
                     title={viewMode ? "Payment Voucher Summary" : (editMode ? "Edit Payment Voucher" : "Register Payment Voucher")}
                     onClose={() => setIsModalOpen(false)}
+                    size="3xl"
                 >
                     <form onSubmit={handleSavePayment} className="space-y-6">
                         
