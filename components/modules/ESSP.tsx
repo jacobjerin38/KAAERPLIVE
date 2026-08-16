@@ -1963,6 +1963,7 @@ export const ESSP: React.FC = () => {
 
     const MyLeaves = () => {
         const [leaves, setLeaves] = useState<any[]>([]);
+        const [empBalances, setEmpBalances] = useState<any[]>([]);
         const [showForm, setShowForm] = useState(false);
         const [formData, setFormData] = useState({ leave_type_id: '', type: 'Annual', from: '', to: '', reason: '' });
         const [submitting, setSubmitting] = useState(false);
@@ -1981,8 +1982,13 @@ export const ESSP: React.FC = () => {
         }, [leaveTypes]);
 
         const refreshLeaves = async () => {
-            const { data } = await supabase.from('leaves').select('*').eq('employee_id', currentEmployee.id).order('created_at', { ascending: false });
-            if (data) setLeaves(data);
+            if (!currentEmployee) return;
+            const [lRes, bRes] = await Promise.all([
+                supabase.from('leaves').select('*').eq('employee_id', currentEmployee.id).order('created_at', { ascending: false }),
+                supabase.from('employee_leave_balances').select('*').eq('employee_id', currentEmployee.id)
+            ]);
+            if (lRes.data) setLeaves(lRes.data);
+            if (bRes.data) setEmpBalances(bRes.data);
         };
 
         // Live Balance View calculations
@@ -1991,7 +1997,14 @@ export const ESSP: React.FC = () => {
         ) || (leaveTypes.length > 0 ? leaveTypes[0] : null);
 
         const typeName = selectedLeaveType ? selectedLeaveType.name : (formData.type || 'Annual');
-        const defaultEntitlement = selectedLeaveType ? (selectedLeaveType.default_balance || 0) : (leaveTypes.length === 0 ? 22 : 0);
+
+        // Check custom employee_leave_balances first, then org_leave_types default, then statutory default
+        const customBal = empBalances.find((b: any) => b.leave_type_id?.toString() === formData.leave_type_id?.toString());
+        const defaultEntitlement = customBal && customBal.total_balance != null
+            ? Number(customBal.total_balance)
+            : (selectedLeaveType?.default_balance && Number(selectedLeaveType.default_balance) > 0
+                ? Number(selectedLeaveType.default_balance)
+                : (selectedLeaveType?.name?.toLowerCase().includes('annual') ? 21 : 14));
 
         const leavesForSelectedType = leaves.filter((l: any) => {
             if (selectedLeaveType && selectedLeaveType.id && l.leave_type_id) {
@@ -2018,7 +2031,7 @@ export const ESSP: React.FC = () => {
             }
         });
 
-        const remainingBalance = defaultEntitlement - usedDays;
+        const remainingBalance = Math.max(0, defaultEntitlement - usedDays);
 
         let requestedDays = 0;
         if (formData.from && formData.to) {
@@ -2049,22 +2062,9 @@ export const ESSP: React.FC = () => {
             setSubmitting(true);
 
             try {
-                // 1. Leave Authority Mapping Validation
-                const { data: authData } = await (supabase as any)
-                    .from('employee_leave_authority')
-                    .select('approver_level_1')
-                    .eq('employee_id', currentEmployee.id)
-                    .eq('is_active', true);
+                if (!currentEmployee) throw new Error('Employee context not found');
 
-                const activeAuth = authData && authData.length > 0 ? authData[0] : null;
-
-                if (!activeAuth || !activeAuth.approver_level_1) {
-                    alert("Leave approval authority is not configured for your profile. Please contact HR to map your Leave Approver.");
-                    setSubmitting(false);
-                    return;
-                }
-
-                // 2. Date Validation & Leave Balance Validation
+                // 1. Date Validation
                 if (!formData.from || !formData.to) {
                     alert("Please select both start and end dates.");
                     setSubmitting(false);
@@ -2087,10 +2087,14 @@ export const ESSP: React.FC = () => {
 
                 const reqDays = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
 
-                if (reqDays > remainingBalance) {
-                    alert(`Insufficient leave balance! You have ${remainingBalance} days remaining for ${typeName}, but requested ${reqDays} days.`);
-                    setSubmitting(false);
-                    return;
+                if (reqDays > remainingBalance && remainingBalance > 0) {
+                    const proceed = confirm(
+                        `Note: You are requesting ${reqDays} days, which exceeds your current balance of ${remainingBalance} days.\n\nDo you want to submit this application for Special/Unpaid Leave approval by HR Management?`
+                    );
+                    if (!proceed) {
+                        setSubmitting(false);
+                        return;
+                    }
                 }
 
                 let attachmentUrl = '';
@@ -2141,7 +2145,7 @@ export const ESSP: React.FC = () => {
                     }
                 }
 
-                alert('Leave application submitted successfully!');
+                alert('Leave application submitted successfully! It is now visible in the HRMS for approval.');
                 setShowForm(false);
                 setLeaveFile(null);
                 setSubmitting(false);
@@ -2154,7 +2158,7 @@ export const ESSP: React.FC = () => {
                     reason: ''
                 });
             } catch (err: any) {
-                alert('Failed to submit leave application: ' + err.message);
+                alert('Failed to submit leave application: ' + (err.message || 'Error occurred'));
                 setSubmitting(false);
             }
         };
