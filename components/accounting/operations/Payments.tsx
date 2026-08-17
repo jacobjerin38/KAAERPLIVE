@@ -23,6 +23,7 @@ interface BankLine {
     bank_name?: string;
     bank_account?: string;
     reference?: string;
+    instrument_date?: string;
     amount: string | number;
 }
 
@@ -53,7 +54,7 @@ export const Payments: React.FC = () => {
         { id: 'exp-1', account_id: '', partner_id: '', notes: '', amount: '' }
     ]);
     const [bankLines, setBankLines] = useState<BankLine[]>([
-        { id: 'bnk-1', journal_id: '', bank_name: '', bank_account: '', reference: '', amount: '' }
+        { id: 'bnk-1', journal_id: '', bank_name: '', bank_account: '', reference: '', instrument_date: '', amount: '' }
     ]);
 
     // Edit/View State
@@ -197,6 +198,7 @@ export const Payments: React.FC = () => {
                 bank_name: '',
                 bank_account: '',
                 reference: '',
+                instrument_date: date || new Date().toISOString().split('T')[0],
                 amount: remaining
             }
         ]);
@@ -287,6 +289,7 @@ export const Payments: React.FC = () => {
                     bank_name: l.bank_name || '',
                     bank_account: l.bank_account || '',
                     reference: l.reference || '',
+                    instrument_date: l.instrument_date || pay.instrument_date || '',
                     amount: l.amount || ''
                 })));
             } else {
@@ -295,7 +298,8 @@ export const Payments: React.FC = () => {
                     journal_id: pay.accounting_journal_id || pay.journal_id || defaultJournalId,
                     bank_name: pay.bank_name || '',
                     bank_account: pay.bank_account || '',
-                    reference: '',
+                    reference: pay.notes?.startsWith('CHQ') || pay.notes?.startsWith('TT') ? pay.notes : '',
+                    instrument_date: pay.instrument_date || pay.date || '',
                     amount: pay.amount || ''
                 }]);
             }
@@ -327,6 +331,7 @@ export const Payments: React.FC = () => {
                 bank_name: '',
                 bank_account: '',
                 reference: '',
+                instrument_date: new Date().toISOString().split('T')[0],
                 amount: ''
             }]);
 
@@ -409,6 +414,7 @@ export const Payments: React.FC = () => {
                 bank_name: bl.bank_name || null,
                 bank_account: bl.bank_account || null,
                 reference: bl.reference || null,
+                instrument_date: bl.instrument_date || null,
                 amount: Number(bl.amount)
             }));
 
@@ -425,6 +431,7 @@ export const Payments: React.FC = () => {
                 accounting_journal_id: primaryBank?.journal_id ? String(primaryBank.journal_id).trim() : null,
                 bank_name: primaryBank?.bank_name || null,
                 bank_account: primaryBank?.bank_account || null,
+                instrument_date: primaryBank?.instrument_date || null,
                 expense_lines: formattedExpenseLines,
                 bank_lines: formattedBankLines,
                 notes: notes ? notes.trim() : null,
@@ -1047,17 +1054,32 @@ export const Payments: React.FC = () => {
                                                 </div>
                                             </div>
 
-                                            {/* Cheque / Reference No. */}
+                                            {/* Cheque / Reference No. & Instrument Date */}
                                             {isBank && (
-                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-slate-100 dark:border-zinc-700/40">
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100 dark:border-zinc-700/40">
                                                     <div>
+                                                        <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-0.5">
+                                                            Cheque / Transfer Reference No.
+                                                        </label>
                                                         <input
                                                             type="text"
                                                             value={bLine.reference || ''}
                                                             onChange={e => handleUpdateBankLine(bIdx, 'reference', e.target.value)}
                                                             disabled={viewMode}
-                                                            placeholder="Cheque / TT / Transfer Reference No. (e.g. CHQ-10492)"
-                                                            className="w-full p-1.5 bg-slate-50 dark:bg-zinc-700/40 border border-slate-200 dark:border-zinc-600 rounded-lg text-[11px]"
+                                                            placeholder="Cheque / TT / Transfer Reference No. (e.g. QNB-00000289)"
+                                                            className="w-full p-2 bg-slate-50 dark:bg-zinc-700/40 border border-slate-200 dark:border-zinc-600 rounded-lg text-xs font-medium text-slate-800 dark:text-slate-200 placeholder:text-slate-400"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-0.5">
+                                                            Instrument Date / Cheque Date / Transfer Date
+                                                        </label>
+                                                        <input
+                                                            type="date"
+                                                            value={bLine.instrument_date || ''}
+                                                            onChange={e => handleUpdateBankLine(bIdx, 'instrument_date', e.target.value)}
+                                                            disabled={viewMode}
+                                                            className="w-full p-2 bg-slate-50 dark:bg-zinc-700/40 border border-slate-200 dark:border-zinc-600 rounded-lg text-xs font-medium text-slate-800 dark:text-slate-200"
                                                         />
                                                     </div>
                                                 </div>
