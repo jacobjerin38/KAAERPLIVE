@@ -67,7 +67,7 @@ export const FinancialReports: React.FC = () => {
             let error: any = null;
 
             if (activeReport === 'bs') {
-                const res = await supabase.rpc('rpc_get_accounting_balance_sheet', { p_date: endDate });
+                const res = await supabase.rpc('rpc_get_accounting_balance_sheet', { p_date: endDate, p_company_id: currentCompanyId || null });
                 data = res.data; error = res.error;
             } else if (activeReport === 'pl') {
                 const res = await supabase.rpc('rpc_get_accounting_profit_loss', { 
@@ -75,11 +75,12 @@ export const FinancialReports: React.FC = () => {
                     p_end_date: endDate,
                     p_cost_center_id: selectedCC || null,
                     p_project_cost_center_id: selectedProjectCC || null,
-                    p_contract_cost_center_id: selectedContractCC || null
+                    p_contract_cost_center_id: selectedContractCC || null,
+                    p_company_id: currentCompanyId || null
                 });
                 data = res.data; error = res.error;
             } else if (activeReport === 'tb') {
-                const res = await supabase.rpc('rpc_get_accounting_trial_balance', { p_date: endDate });
+                const res = await supabase.rpc('rpc_get_accounting_trial_balance', { p_date: endDate, p_company_id: currentCompanyId || null });
                 data = res.data; error = res.error;
             } else if (activeReport === 'aging') {
                 const res = await supabase.rpc('rpc_get_accounting_partner_aging', { p_partner_type: partnerType, p_date: endDate });
@@ -91,7 +92,7 @@ export const FinancialReports: React.FC = () => {
                 const res = await supabase.rpc('rpc_get_accounting_purchase_ledger_report', { p_start_date: startDate, p_end_date: endDate });
                 data = res.data; error = res.error;
             } else if (activeReport === 'ea') {
-                const res = await supabase.rpc('rpc_get_accounting_expense_analysis', { p_start_date: startDate, p_end_date: endDate });
+                const res = await supabase.rpc('rpc_get_accounting_expense_analysis', { p_start_date: startDate, p_end_date: endDate, p_company_id: currentCompanyId || null });
                 data = res.data; error = res.error;
             }
 
