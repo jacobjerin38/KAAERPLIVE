@@ -18,7 +18,7 @@ export const PayrollDashboard: React.FC = () => {
     const [showPayslip, setShowPayslip] = useState(false);
     const [selectedPayslip, setSelectedPayslip] = useState<PayrollRecord | null>(null);
     const [companyLogo, setCompanyLogo] = useState(KAA_LOGO_URL);
-    const [companyCurrency, setCompanyCurrency] = useState('USD');
+    const [companyCurrency, setCompanyCurrency] = useState('QAR');
 
     // Edit Pay Modal State
     const [showEditModal, setShowEditModal] = useState(false);
@@ -186,9 +186,9 @@ export const PayrollDashboard: React.FC = () => {
 
     const formatCurrency = (amount: number) => {
         try {
-            return new Intl.NumberFormat('en-US', { style: 'currency', currency: companyCurrency }).format(amount);
+            return new Intl.NumberFormat('en-US', { style: 'currency', currency: companyCurrency || 'QAR' }).format(amount);
         } catch {
-            return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+            return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'QAR' }).format(amount);
         }
     };
 

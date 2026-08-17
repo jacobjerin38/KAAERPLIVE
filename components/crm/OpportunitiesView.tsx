@@ -381,7 +381,7 @@ export default function OpportunitiesView({ companyId, onConvert }: Opportunitie
 
                             <Section title="Opportunity Value">
                                 <div className="grid grid-cols-2 gap-5">
-                                    <Input label="Currency" value={activeOpp.currency || 'USD'} onChange={(v: string) => setActiveOpp({ ...activeOpp, currency: v })} />
+                                    <Input label="Currency" value={activeOpp.currency || 'QAR'} onChange={(v: string) => setActiveOpp({ ...activeOpp, currency: v })} />
                                     <Input label="Opportunity Amount" type="number" value={activeOpp.amount} onChange={(v: string) => setActiveOpp({ ...activeOpp, amount: parseFloat(v) })} />
                                 </div>
                             </Section>

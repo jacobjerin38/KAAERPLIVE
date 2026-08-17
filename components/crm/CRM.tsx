@@ -211,7 +211,7 @@ export const CRM: React.FC = () => {
             {/* Metrics Grid */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
                 {[
-                    { label: 'Pipeline Value', value: deals.length > 0 ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(deals.reduce((sum, d) => sum + (d.value || 0), 0)) : '$0', color: 'text-slate-900', icon: Briefcase },
+                    { label: 'Pipeline Value', value: deals.length > 0 ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'QAR', maximumFractionDigits: 0 }).format(deals.reduce((sum, d) => sum + (d.value || 0), 0)) : 'QAR 0', color: 'text-slate-900', icon: Briefcase },
                     { label: 'Win Rate', value: deals.length > 0 ? `${Math.round((deals.filter(d => (d.stage as any)?.name === 'WON' || (d.stage as any) === 'WON').length / deals.length) * 100)}%` : '0%', color: 'text-emerald-600', icon: CheckCircle2 },
                     { label: 'Active Deals', value: `${deals.filter(d => d.status === 'OPEN').length}`, color: 'text-indigo-600', icon: KanbanSquare },
                     { label: 'Avg Cycle', value: deals.length > 0 ? (() => { const closed = deals.filter(d => d.expected_close_date && d.created_at); if (closed.length === 0) return 'N/A'; const avg = closed.reduce((s, d) => s + Math.max(1, Math.round((new Date(d.expected_close_date!).getTime() - new Date(d.created_at!).getTime()) / 86400000)), 0) / closed.length; return `${Math.round(avg)} Days`; })() : 'N/A', color: 'text-slate-900', icon: Clock }
@@ -301,7 +301,7 @@ export const CRM: React.FC = () => {
                                     <h4 className="font-bold text-slate-800 mb-1 text-lg leading-tight">{deal.title}</h4>
                                     <p className="text-sm text-slate-500 flex items-center gap-1.5 mb-5 font-medium"><Briefcase className="w-3.5 h-3.5" /> {deal.company}</p>
                                     <div className="flex items-center justify-between pt-4 border-t border-slate-50">
-                                        <span className="text-base font-extrabold text-slate-700 tracking-tight">${deal.value?.toLocaleString() || 0}</span>
+                                        <span className="text-base font-extrabold text-slate-700 tracking-tight">QAR {deal.value?.toLocaleString() || 0}</span>
                                         <span className="text-xs font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md">{deal.expected_close_date || 'No Date'}</span>
                                     </div>
                                 </div>

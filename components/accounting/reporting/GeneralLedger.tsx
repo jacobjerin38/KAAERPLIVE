@@ -128,8 +128,8 @@ export const GeneralLedger: React.FC = () => {
     };
 
     const fmt = (n: number) => {
-        try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: companyCurrency }).format(n); }
-        catch { return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n); }
+        try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: companyCurrency || 'QAR' }).format(n); }
+        catch { return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'QAR' }).format(n); }
     };
 
     let runningBalance = 0;

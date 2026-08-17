@@ -132,7 +132,7 @@ export const PayrollHub: React.FC = () => {
     }
 
     const formatCurrency = (amount: number) => {
-        return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+        return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'QAR' }).format(amount);
     };
 
     const renderOverview = () => {
@@ -160,7 +160,7 @@ export const PayrollHub: React.FC = () => {
                         <div>
                             <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Last Payout</p>
                             <h3 className="text-2xl font-black text-slate-900 dark:text-white">
-                                {lastRun ? formatCurrency(lastRun.total_net_pay || lastRun.total_amount || lastRun.total_net_amount || 0) : '$0.00'}
+                                {lastRun ? formatCurrency(lastRun.total_net_pay || lastRun.total_amount || lastRun.total_net_amount || 0) : 'QAR 0.00'}
                             </h3>
                             <p className="text-[10px] text-slate-500 mt-0.5">{lastRun ? `Month: ${lastRun.name || lastRun.month_year || lastRun.period_start}` : 'No runs processed yet'}</p>
                         </div>

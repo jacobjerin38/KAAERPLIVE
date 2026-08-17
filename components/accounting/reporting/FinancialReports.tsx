@@ -542,7 +542,7 @@ export const FinancialReports: React.FC = () => {
                                                 <td className="px-6 py-4 text-slate-600 dark:text-slate-400">
                                                     {row.account_code} — {row.account_name}
                                                 </td>
-                                                <td className="px-6 py-4 text-right font-mono font-bold text-rose-600">${Number(row.amount).toFixed(2)}</td>
+                                                <td className="px-6 py-4 text-right font-mono font-bold text-rose-600">{formatCurrency(Number(row.amount))}</td>
                                             </tr>
                                         ))}
                                     </tbody>

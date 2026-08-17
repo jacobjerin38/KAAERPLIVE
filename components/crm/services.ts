@@ -294,7 +294,7 @@ export const convertLeadToOpportunity = async (
     stage_id: firstStageId,
     status: 'Open',
     probability: 20,
-    currency: 'INR',
+    currency: 'QAR',
     amount: lead.annual_revenue || 0,
     owner_id: ownerId || lead.lead_owner_id,
     created_by: ownerId || lead.created_by || lead.lead_owner_id,

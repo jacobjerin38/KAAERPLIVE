@@ -191,7 +191,7 @@ export default function SummaryView({ stats, activities, deals, tasks }: Summary
                                         </div>
                                     </div>
                                     <div className="text-right">
-                                        <p className="font-bold text-slate-900 dark:text-white text-sm">${deal.value.toLocaleString()}</p>
+                                        <p className="font-bold text-slate-900 dark:text-white text-sm">QAR {deal.value.toLocaleString()}</p>
                                         <span className="text-[10px] font-medium text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 px-1.5 py-0.5 rounded">{deal.stage?.win_probability || 0}%</span>
                                     </div>
                                 </div>

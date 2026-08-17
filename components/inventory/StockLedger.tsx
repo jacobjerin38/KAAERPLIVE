@@ -227,8 +227,8 @@ export const StockLedger: React.FC = () => {
                                             <td className={`px-6 py-4 text-right font-medium ${txn.quantity > 0 ? 'text-green-600 dark:text-green-400' : 'text-orange-600 dark:text-orange-400'}`}>
                                                 {txn.quantity > 0 ? '+' : ''}{txn.quantity} <span className="text-xs text-slate-400 font-normal">{txn.item?.uom}</span>
                                             </td>
-                                            <td className="px-6 py-4 text-right text-slate-600 dark:text-slate-400 font-mono">${txn.unit_cost?.toFixed(2)}</td>
-                                            <td className="px-6 py-4 text-right font-medium text-slate-800 dark:text-white font-mono">${(txn.quantity * txn.unit_cost).toFixed(2)}</td>
+                                            <td className="px-6 py-4 text-right text-slate-600 dark:text-slate-400 font-mono">QAR {txn.unit_cost?.toFixed(2)}</td>
+                                            <td className="px-6 py-4 text-right font-medium text-slate-800 dark:text-white font-mono">QAR {(txn.quantity * txn.unit_cost).toFixed(2)}</td>
                                         </tr>
                                     ))
                                 )}
@@ -271,8 +271,8 @@ export const StockLedger: React.FC = () => {
                                             <td className="px-6 py-4 text-right font-medium text-slate-700 dark:text-slate-300">
                                                 {layer.quantity} <span className="text-xs text-slate-400 font-normal">{layer.item?.uom}</span>
                                             </td>
-                                            <td className="px-6 py-4 text-right text-slate-600 dark:text-slate-400 font-mono">${layer.unit_cost?.toFixed(2)}</td>
-                                            <td className="px-6 py-4 text-right font-medium text-indigo-700 dark:text-indigo-400 font-mono">${layer.total_value?.toFixed(2)}</td>
+                                            <td className="px-6 py-4 text-right text-slate-600 dark:text-slate-400 font-mono">QAR {layer.unit_cost?.toFixed(2)}</td>
+                                            <td className="px-6 py-4 text-right font-medium text-indigo-700 dark:text-indigo-400 font-mono">QAR {layer.total_value?.toFixed(2)}</td>
                                         </tr>
                                     ))
                                 )}

@@ -178,7 +178,7 @@ export const ProjectManagement: React.FC = () => {
                                     </div>
                                     <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 line-clamp-2">{p.description}</p>
                                     <div className="flex justify-between text-sm">
-                                        <span className="text-slate-500">Budget: <strong className="text-slate-700 dark:text-slate-300">${Number(p.budget).toLocaleString()}</strong></span>
+                                        <span className="text-slate-500">Budget: <strong className="text-slate-700 dark:text-slate-300">QAR {Number(p.budget).toLocaleString()}</strong></span>
                                         <span className="text-slate-500">Due: <strong className="text-slate-700 dark:text-slate-300">{p.end_date ? new Date(p.end_date).toLocaleDateString() : 'N/A'}</strong></span>
                                     </div>
                                 </div>
@@ -319,7 +319,7 @@ export const ProjectManagement: React.FC = () => {
                                             <th className="px-6 py-3">Status</th>
                                             <th className="px-6 py-3 text-right">Budget</th>
                                             <th className="px-6 py-3 text-right">Hours Logged</th>
-                                            <th className="px-6 py-3 text-right">Est. Cost (@ $50/hr)</th>
+                                            <th className="px-6 py-3 text-right">Est. Cost (@ QAR 50/hr)</th>
                                             <th className="px-6 py-3 text-right">Variance</th>
                                             <th className="px-6 py-3">Utilization</th>
                                         </tr>
@@ -329,7 +329,7 @@ export const ProjectManagement: React.FC = () => {
                                             const projectTasks = tasks.filter(t => t.project_id === p.id);
                                             const taskIds = projectTasks.map(t => t.id);
                                             const projectHours = timesheets.filter(ts => taskIds.includes(ts.task_id)).reduce((s, ts) => s + Number(ts.hours), 0);
-                                            const estCost = projectHours * 50; // $50/hr rate placeholder
+                                            const estCost = projectHours * 50; // QAR 50/hr rate placeholder
                                             const budget = Number(p.budget) || 0;
                                             const variance = budget - estCost;
                                             const utilPct = budget > 0 ? Math.min((estCost / budget) * 100, 100) : 0;
@@ -341,11 +341,11 @@ export const ProjectManagement: React.FC = () => {
                                                             {p.status}
                                                         </span>
                                                     </td>
-                                                    <td className="px-6 py-4 text-right font-mono">${budget.toLocaleString()}</td>
+                                                    <td className="px-6 py-4 text-right font-mono">QAR {budget.toLocaleString()}</td>
                                                     <td className="px-6 py-4 text-right font-mono text-indigo-600">{projectHours.toFixed(1)}h</td>
-                                                    <td className="px-6 py-4 text-right font-mono">${estCost.toLocaleString()}</td>
+                                                    <td className="px-6 py-4 text-right font-mono">QAR {estCost.toLocaleString()}</td>
                                                     <td className={`px-6 py-4 text-right font-mono font-bold ${variance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                                        {variance >= 0 ? '+' : ''}{variance.toLocaleString()}
+                                                        {variance >= 0 ? '+' : ''}QAR {variance.toLocaleString()}
                                                     </td>
                                                     <td className="px-6 py-4">
                                                         <div className="flex items-center gap-2">
