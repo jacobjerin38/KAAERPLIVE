@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import {
     Users, Briefcase, Phone, DollarSign, FileText, Edit3,
-    Plus, Trash2, X, TrendingUp, MoreVertical, ArrowRightLeft, Loader2
+    Plus, Trash2, X, TrendingUp, MoreVertical, ArrowRightLeft, Loader2,
+    Calendar, CheckCircle, Clock, AlertCircle, ShieldCheck
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { Employee } from '../../hrms/types';
@@ -38,7 +39,12 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
     departments, locations, designations, grades, employmentTypes, payGroups, roles, employees, salaryComponents, maritalStatuses, nationalities,
     visaTypes, employeeStatuses, leavePlans
 }) => {
-    const [tab, setTab] = useState<'PROFILE' | 'JOB' | 'CONTACT' | 'FINANCIAL' | 'DOCUMENTS' | 'TIMELINE' | 'TARGETS'>('PROFILE');
+    const [tab, setTab] = useState<'PROFILE' | 'JOB' | 'CONTACT' | 'FINANCIAL' | 'LEAVES' | 'DOCUMENTS' | 'TIMELINE' | 'TARGETS'>('PROFILE');
+
+    // Leaves State
+    const [employeeLeaves, setEmployeeLeaves] = useState<any[]>([]);
+    const [leaveBalances, setLeaveBalances] = useState<any[]>([]);
+    const [loadingLeaves, setLoadingLeaves] = useState(false);
 
     // Financial Mapping State
     const [empSalaryComponents, setEmpSalaryComponents] = useState<any[]>([]);
@@ -82,9 +88,76 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
         setLoadingComponents(false);
     };
 
+    // Fetch Leave Balances & History
+    const fetchEmployeeLeaves = async () => {
+        if (!emp?.id) return;
+        setLoadingLeaves(true);
+        try {
+            // 1. Fetch leave types for the company
+            const { data: typesData } = await supabase
+                .from('org_leave_types')
+                .select('*')
+                .eq('company_id', emp.company_id || '')
+                .order('name');
+
+            // 2. Fetch specific employee balances
+            const { data: customBalances } = await supabase
+                .from('employee_leave_balances')
+                .select('*')
+                .eq('employee_id', emp.id);
+
+            // 3. Fetch leave applications / history
+            const { data: leavesData } = await supabase
+                .from('leaves')
+                .select('*')
+                .eq('employee_id', emp.id)
+                .order('start_date', { ascending: false });
+
+            const leavesList = leavesData || [];
+            setEmployeeLeaves(leavesList);
+
+            const types = typesData || [];
+            const calculatedBalances = types.map((lt: any) => {
+                const custom = customBalances?.find((cb: any) => cb.leave_type_id === String(lt.id) || cb.leave_type_id === lt.code);
+                const total = custom ? Number(custom.total_balance || 0) : Number(lt.default_balance || 0);
+
+                const takenFromHistory = leavesList
+                    .filter((l: any) => (l.leave_type_id === lt.id || l.type?.toLowerCase() === lt.name?.toLowerCase()) && (l.status === 'Approved' || l.status === 'approved'))
+                    .reduce((sum: number, l: any) => {
+                        const start = new Date(l.start_date);
+                        const end = new Date(l.end_date);
+                        const diffTime = Math.abs(end.getTime() - start.getTime());
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+                        return sum + (diffDays || 1);
+                    }, 0);
+
+                const used = custom?.used !== undefined ? Number(custom.used) : takenFromHistory;
+                const remaining = Math.max(0, total - used);
+
+                return {
+                    id: lt.id,
+                    name: lt.name,
+                    code: lt.code,
+                    is_paid: lt.is_paid,
+                    total,
+                    used,
+                    remaining
+                };
+            });
+
+            setLeaveBalances(calculatedBalances);
+        } catch (err) {
+            console.error('Failed to fetch employee leaves:', err);
+        } finally {
+            setLoadingLeaves(false);
+        }
+    };
+
     useEffect(() => {
         if (tab === 'FINANCIAL') {
             fetchSalaryMapping();
+        } else if (tab === 'LEAVES') {
+            fetchEmployeeLeaves();
         }
     }, [tab, emp.id]);
 
@@ -356,6 +429,7 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
                             { id: 'JOB', label: 'Job Info', icon: Briefcase },
                             { id: 'CONTACT', label: 'Contact', icon: Phone },
                             { id: 'FINANCIAL', label: 'Financial', icon: DollarSign },
+                            { id: 'LEAVES', label: 'Leaves', icon: Calendar },
                             { id: 'DOCUMENTS', label: 'Documents', icon: FileText },
                             { id: 'TIMELINE', label: 'Career Timeline', icon: ArrowRightLeft },
                             { id: 'TARGETS', label: 'Targets', icon: TrendingUp },
@@ -620,6 +694,164 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
                                     </table>
                                 </div>
                             </div>
+                        </div>
+                    )}
+
+                    {tab === 'LEAVES' && (
+                        <div className="animate-fade-in-up space-y-8">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-xl font-bold text-slate-800 dark:text-white tracking-tight">Leave Balances & History</h3>
+                                    <p className="text-slate-400 text-xs mt-1">Accrued leave entitlements, used days, and applications record for {emp.name}.</p>
+                                </div>
+                                <button
+                                    onClick={fetchEmployeeLeaves}
+                                    className="px-3 py-1.5 bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 text-slate-600 dark:text-slate-300 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5"
+                                >
+                                    {loadingLeaves ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Calendar className="w-3.5 h-3.5" />}
+                                    Refresh Balances
+                                </button>
+                            </div>
+
+                            {loadingLeaves ? (
+                                <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+                                    <Loader2 className="w-8 h-8 animate-spin mb-2 text-indigo-600" />
+                                    <p className="text-xs font-bold">Loading leave balances...</p>
+                                </div>
+                            ) : (
+                                <>
+                                    {/* Leave Balance Cards Grid */}
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        {leaveBalances.length > 0 ? (
+                                            leaveBalances.map((b) => {
+                                                const pct = b.total > 0 ? Math.min(100, Math.round((b.used / b.total) * 100)) : 0;
+                                                return (
+                                                    <div
+                                                        key={b.id}
+                                                        className="p-5 bg-white dark:bg-zinc-800/80 rounded-2xl border border-slate-100 dark:border-zinc-700/60 shadow-xs hover:shadow-md transition-shadow relative overflow-hidden"
+                                                    >
+                                                        <div className="flex justify-between items-start mb-3">
+                                                            <div>
+                                                                <h4 className="font-bold text-sm text-slate-800 dark:text-white">{b.name}</h4>
+                                                                <span className="text-[10px] text-slate-400 font-mono">{b.code}</span>
+                                                            </div>
+                                                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase ${
+                                                                b.is_paid
+                                                                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                                                                    : 'bg-slate-100 text-slate-600 dark:bg-zinc-700 dark:text-slate-300'
+                                                            }`}>
+                                                                {b.is_paid ? 'Paid' : 'Unpaid'}
+                                                            </span>
+                                                        </div>
+
+                                                        <div className="flex items-baseline gap-1.5 mb-3">
+                                                            <span className="text-3xl font-black text-indigo-600 dark:text-indigo-400">{b.remaining}</span>
+                                                            <span className="text-xs text-slate-400 font-medium">days available</span>
+                                                        </div>
+
+                                                        <div className="space-y-1.5 pt-2 border-t border-slate-100 dark:border-zinc-700/40">
+                                                            <div className="flex justify-between text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                                                                <span>Used: <strong className="text-slate-700 dark:text-slate-200">{b.used}</strong> / Entitled: <strong className="text-slate-700 dark:text-slate-200">{b.total}</strong></span>
+                                                                <span>{pct}%</span>
+                                                            </div>
+                                                            <div className="w-full h-1.5 bg-slate-100 dark:bg-zinc-700 rounded-full overflow-hidden">
+                                                                <div
+                                                                    className={`h-full rounded-full transition-all ${
+                                                                        pct >= 90 ? 'bg-rose-500' : pct >= 60 ? 'bg-amber-500' : 'bg-indigo-600'
+                                                                    }`}
+                                                                    style={{ width: `${pct}%` }}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })
+                                        ) : (
+                                            <div className="col-span-3 p-6 bg-slate-50 dark:bg-zinc-800/40 rounded-2xl border border-dashed border-slate-200 dark:border-zinc-700 text-center text-slate-400 text-xs">
+                                                No leave policies configured for this company.
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Leave History / Applications */}
+                                    <div className="bg-white dark:bg-zinc-800/80 rounded-2xl border border-slate-100 dark:border-zinc-700/60 overflow-hidden shadow-xs">
+                                        <div className="p-4 border-b border-slate-100 dark:border-zinc-700 flex justify-between items-center">
+                                            <h4 className="font-bold text-sm text-slate-800 dark:text-white flex items-center gap-2">
+                                                <Calendar className="w-4 h-4 text-indigo-500" />
+                                                Leave Applications History ({employeeLeaves.length})
+                                            </h4>
+                                        </div>
+
+                                        {employeeLeaves.length > 0 ? (
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full text-xs text-left">
+                                                    <thead className="bg-slate-50/70 dark:bg-zinc-700/30 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                                        <tr>
+                                                            <th className="px-4 py-3">Leave Type</th>
+                                                            <th className="px-4 py-3">Duration</th>
+                                                            <th className="px-4 py-3 text-center">Days</th>
+                                                            <th className="px-4 py-3">Reason / Memo</th>
+                                                            <th className="px-4 py-3 text-center">Status</th>
+                                                            <th className="px-4 py-3 text-right">Applied Date</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-100 dark:divide-zinc-700/40">
+                                                        {employeeLeaves.map((l) => {
+                                                            const isApproved = l.status === 'Approved' || l.status === 'approved';
+                                                            const isPending = l.status === 'Pending' || l.status === 'pending';
+                                                            const isRejected = l.status === 'Rejected' || l.status === 'rejected';
+
+                                                            const start = new Date(l.start_date);
+                                                            const end = new Date(l.end_date);
+                                                            const diffTime = Math.abs(end.getTime() - start.getTime());
+                                                            const days = l.days || Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1 || 1;
+
+                                                            return (
+                                                                <tr key={l.id} className="hover:bg-slate-50/50 dark:hover:bg-zinc-700/20">
+                                                                    <td className="px-4 py-3 font-bold text-slate-800 dark:text-slate-200">
+                                                                        {l.type || (leaveBalances.find(b => b.id === l.leave_type_id)?.name) || 'Leave'}
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300 font-medium">
+                                                                        {formatDate(l.start_date)} <span className="text-slate-400">→</span> {formatDate(l.end_date)}
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-center font-bold text-slate-700 dark:text-slate-200">
+                                                                        {days} {days === 1 ? 'day' : 'days'}
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-slate-500 dark:text-slate-400 max-w-xs truncate">
+                                                                        {l.reason || l.manager_comment || '—'}
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-center">
+                                                                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                                                                            isApproved
+                                                                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                                                                                : isPending
+                                                                                ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
+                                                                                : 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300'
+                                                                        }`}>
+                                                                            {isApproved && <CheckCircle className="w-3 h-3" />}
+                                                                            {isPending && <Clock className="w-3 h-3" />}
+                                                                            {isRejected && <AlertCircle className="w-3 h-3" />}
+                                                                            {l.status || 'Pending'}
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-right text-slate-400 font-mono">
+                                                                        {formatDate(l.applied_on || l.created_at)}
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        ) : (
+                                            <div className="p-8 text-center text-slate-400">
+                                                <Calendar className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                                                <p className="text-xs font-medium">No leave applications recorded for this employee.</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </>
+                            )}
                         </div>
                     )}
 
