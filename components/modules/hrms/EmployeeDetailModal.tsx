@@ -591,7 +591,7 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
                             {/* Base Info */}
                             <div className="grid grid-cols-2 gap-6">
                                 <ViewField label="Pay Group" value={payGroups.find(p => p.id === emp.pay_group_id)?.name || '-'} />
-                                <ViewField label="Base Salary (CTC)" value={`$${emp.salary_amount || '0'}`} />
+                                <ViewField label="Base Salary (CTC)" value={`QAR ${Number(emp.salary_amount || 0).toLocaleString()}`} />
                                 <ViewField label="Bank Name" value={emp.bank_name || '-'} />
                                 <ViewField label="Account Number" value={emp.account_number || '-'} />
                                 <ViewField label="IFSC Code" value={emp.ifsc_code || '-'} />
@@ -671,7 +671,7 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
                                                         </span>
                                                     </td>
                                                     <td className="px-4 py-3 font-mono font-bold text-slate-700 dark:text-slate-300">
-                                                        ${comp.amount}
+                                                        QAR {Number(comp.amount || 0).toLocaleString()}
                                                     </td>
                                                     <td className="px-4 py-3 text-slate-500">
                                                         {formatDate(comp.effective_from)}

@@ -3279,7 +3279,7 @@ export const ESSP: React.FC = () => {
                                     <span className="bg-emerald-100 text-emerald-700 text-xs font-bold px-2 py-1 rounded-lg uppercase">{slip.status}</span>
                                 </div>
                                 <h3 className="text-xl font-black text-slate-900 dark:text-white mb-1">{new Date(slip.month + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</h3>
-                                <p className="text-slate-500 text-sm font-medium mb-6">Net Pay: <span className="text-slate-900 dark:text-white font-bold">${slip.net_salary.toLocaleString()}</span></p>
+                                <p className="text-slate-500 text-sm font-medium mb-6">Net Pay: <span className="text-slate-900 dark:text-white font-bold">QAR {slip.net_salary.toLocaleString()}</span></p>
 
                                 <button className="w-full py-3 rounded-xl border border-slate-200 dark:border-zinc-700 font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors flex items-center justify-center gap-2">
                                     <Monitor className="w-4 h-4" /> View Slip

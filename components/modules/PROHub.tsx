@@ -465,7 +465,7 @@ export const PROHub: React.FC = () => {
                                     <div className="flex justify-between"><span className="text-slate-500">QID #</span><span className="font-mono font-bold text-slate-800 dark:text-white">{app.qid_number || 'N/A'}</span></div>
                                     <div className="flex justify-between"><span className="text-slate-500">Passport #</span><span className="font-mono font-bold text-slate-800 dark:text-white">{app.passport_number || 'N/A'}</span></div>
                                     <div className="flex justify-between"><span className="text-slate-500">Submitted</span><span className="font-bold text-slate-800 dark:text-white">{app.submission_date || 'N/A'}</span></div>
-                                    <div className="flex justify-between"><span className="text-slate-500">Govt Fees</span><span className="font-bold text-emerald-600">${app.government_fees || 0}</span></div>
+                                    <div className="flex justify-between"><span className="text-slate-500">Govt Fees</span><span className="font-bold text-emerald-600">QAR {app.government_fees || 0}</span></div>
                                 </div>
                             </div>
 
