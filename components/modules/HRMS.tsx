@@ -186,7 +186,7 @@ export const HRMS: React.FC = () => {
         }
         // Fetch Leaves
         const { data: leaveData } = await supabase.from('leaves')
-            .select('*')
+            .select('*, employees(id, name, employee_code)')
             .eq('company_id', profile.company_id)
             .order('created_at', { ascending: false });
         if (leaveData) setLeaves(leaveData as any);
@@ -423,7 +423,7 @@ export const HRMS: React.FC = () => {
                 />}
                 {activeTab === 'APPROVALS' && <ApprovalsModule currentEmployee={currentEmployee} />}
                 {activeTab === 'ATTENDANCE' && <AttendanceModule employees={employees as any} />}
-                {activeTab === 'LEAVES' && <LeaveModule leaves={leaves} leaveTypes={leaveTypes} setShowLeaveModal={setShowLeaveModal} onUpdateStatus={handleUpdateLeaveStatus} formatDate={formatDate} />}
+                {activeTab === 'LEAVES' && <LeaveModule leaves={leaves} leaveTypes={leaveTypes} employees={employees as any} setShowLeaveModal={setShowLeaveModal} onUpdateStatus={handleUpdateLeaveStatus} formatDate={formatDate} />}
                 {activeTab === 'ASSETS' && <AssetModule assets={assets} employees={employees as any} refreshData={refreshData} />}
                 {activeTab === 'HELPDESK' && <HelpDeskModule employees={employees as any} currentEmployee={currentEmployee as any} />}
                 {activeTab === 'PAYROLL' && <PayrollDashboard />}

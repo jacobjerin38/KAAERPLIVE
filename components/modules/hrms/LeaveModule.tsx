@@ -22,6 +22,7 @@ const handleViewAttachment = async (url: string) => {
 interface LeaveModuleProps {
     leaves: LeaveRequest[];
     leaveTypes: any[];
+    employees?: any[];
     setShowLeaveModal: (show: boolean) => void;
     onUpdateStatus: (id: string, status: 'Approved' | 'Rejected', level?: 1 | 2) => void;
     formatDate: (date: string) => string;
@@ -228,9 +229,23 @@ const LeavePolicySettings: React.FC<{ onClose: () => void }> = ({ onClose }) => 
 // ─── Leave Module ─────────────────────────────────────────────────────────────
 
 export const LeaveModule: React.FC<LeaveModuleProps> = ({
-    leaves, leaveTypes, setShowLeaveModal, onUpdateStatus, formatDate
+    leaves, leaveTypes, employees: initialEmployees, setShowLeaveModal, onUpdateStatus, formatDate
 }) => {
     const [showPolicySettings, setShowPolicySettings] = useState(false);
+    const [employeesList, setEmployeesList] = useState<any[]>(initialEmployees || []);
+
+    // If employees prop is not passed or empty, fetch from database
+    useEffect(() => {
+        if (initialEmployees && initialEmployees.length > 0) {
+            setEmployeesList(initialEmployees);
+        } else {
+            const fetchEmployees = async () => {
+                const { data } = await supabase.from('employees').select('id, name, employee_code');
+                if (data) setEmployeesList(data);
+            };
+            fetchEmployees();
+        }
+    }, [initialEmployees]);
 
     // Quick Stats Calculation
     const pendingCount = leaves.filter(l => l.status === 'Pending').length;
@@ -303,61 +318,86 @@ export const LeaveModule: React.FC<LeaveModuleProps> = ({
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100/50 dark:divide-zinc-800/50">
-                            {leaves.length > 0 ? leaves.map((req, i) => (
-                                <tr key={i} className="hover:bg-indigo-50/30 dark:hover:bg-indigo-900/20 transition-colors">
-                                    <td className="px-6 py-4">
-                                        <div className="font-bold text-slate-700 dark:text-slate-200">Employee #{req.id ? req.id.substring(0, 4) : i + 1}</div>
-                                    </td>
-                                    <td className="px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300">
-                                        {leaveTypes.find(lt => lt.id === req.leave_type_id)?.name || req.type}
-                                    </td>
-                                    <td className="px-6 py-4 text-sm font-mono text-slate-500 dark:text-slate-400">{formatDate(req.appliedOn)}</td>
-                                    <td className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400 max-w-xs truncate">{req.reason || 'Personal'}</td>
-                                    <td className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400">
-                                        {req.attachment_url ? (
-                                            <button onClick={() => handleViewAttachment(req.attachment_url!)} className="flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-800 font-bold bg-indigo-50 dark:bg-indigo-950/30 px-2 py-1 rounded-lg border border-indigo-100 dark:border-indigo-900/50 hover:shadow-sm transition-all" title={req.attachment_name || 'View file'}>
-                                                <Paperclip className="w-3.5 h-3.5" />
-                                                <span className="max-w-[100px] truncate">{req.attachment_name || 'View file'}</span>
-                                            </button>
-                                        ) : <span className="text-slate-300 dark:text-zinc-700">—</span>}
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <div className="flex flex-col gap-1">
-                                            <span className={`px-2 py-1 rounded-lg text-xs font-bold w-fit ${req.status === 'Approved' ? 'bg-emerald-100 text-emerald-700' :
-                                                req.status === 'Rejected' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'
-                                                }`}>Final: {req.status}</span>
-                                            {req.status === 'Pending' && (
-                                                <div className="flex flex-col gap-0.5 mt-1">
-                                                    <span className={`text-[10px] font-medium ${req.level1_status === 'Approved' ? 'text-emerald-500 font-bold' : req.level1_status === 'Rejected' ? 'text-rose-500 font-bold' : 'text-amber-500'}`}>L1 (Dept): {req.level1_status || 'Pending'}</span>
-                                                    <span className={`text-[10px] font-medium ${req.level2_status === 'Approved' ? 'text-emerald-500 font-bold' : req.level2_status === 'Rejected' ? 'text-rose-500 font-bold' : 'text-amber-500'}`}>L2 (HR): {req.level2_status || 'Pending'}</span>
-                                                </div>
+                            {leaves.length > 0 ? leaves.map((req, i) => {
+                                const matchedEmp = employeesList.find(e => e.id === (req as any).employee_id || e.id === (req as any).employeeId);
+                                const empName = (req as any).employees?.name || 
+                                                (req as any).employee_name || 
+                                                matchedEmp?.name || 
+                                                (req as any).name ||
+                                                `Employee #${(req as any).employee_id ? (req as any).employee_id.substring(0, 4) : (req.id ? req.id.substring(0, 4) : i + 1)}`;
+                                const empCode = (req as any).employees?.employee_code || matchedEmp?.employee_code;
+
+                                const sDate = (req as any).start_date || (req as any).startDate;
+                                const eDate = (req as any).end_date || (req as any).endDate;
+
+                                return (
+                                    <tr key={req.id || i} className="hover:bg-indigo-50/30 dark:hover:bg-indigo-900/20 transition-colors">
+                                        <td className="px-6 py-4">
+                                            <div className="font-bold text-slate-800 dark:text-slate-200">{empName}</div>
+                                            {empCode && (
+                                                <span className="text-[10px] font-mono text-slate-400 block mt-0.5">{empCode}</span>
                                             )}
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 text-right flex justify-end gap-2">
-                                        {req.status === 'Pending' && (
-                                            <div className="flex flex-col gap-2 scale-90 origin-right">
-                                                {(!req.level1_status || req.level1_status === 'Pending') && (
-                                                    <div className="flex items-center justify-end gap-1">
-                                                        <span className="text-[10px] font-bold text-slate-400 mr-1">L1:</span>
-                                                        <button title="Approve L1" onClick={() => onUpdateStatus(req.id, 'Approved', 1)} className="p-1 px-2 border border-emerald-200 bg-emerald-50 text-emerald-600 rounded flex gap-1 items-center hover:bg-emerald-100 transition-colors text-xs font-bold"><Check className="w-3 h-3" /> Approve</button>
-                                                        <button title="Reject L1" onClick={() => onUpdateStatus(req.id, 'Rejected', 1)} className="p-1 px-2 border border-rose-200 bg-rose-50 text-rose-600 rounded flex gap-1 items-center hover:bg-rose-100 transition-colors text-xs font-bold"><X className="w-3 h-3" /> Reject</button>
-                                                    </div>
-                                                )}
-                                                {req.level1_status === 'Approved' && (!req.level2_status || req.level2_status === 'Pending') && (
-                                                    <div className="flex items-center justify-end gap-1">
-                                                        <span className="text-[10px] font-bold text-slate-400 mr-1">L2:</span>
-                                                        <button title="Approve L2" onClick={() => onUpdateStatus(req.id, 'Approved', 2)} className="p-1 px-2 border border-emerald-200 bg-emerald-50 text-emerald-600 rounded flex gap-1 items-center hover:bg-emerald-100 transition-colors text-xs font-bold"><Check className="w-3 h-3" /> Approve</button>
-                                                        <button title="Reject L2" onClick={() => onUpdateStatus(req.id, 'Rejected', 2)} className="p-1 px-2 border border-rose-200 bg-rose-50 text-rose-600 rounded flex gap-1 items-center hover:bg-rose-100 transition-colors text-xs font-bold"><X className="w-3 h-3" /> Reject</button>
+                                        </td>
+                                        <td className="px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300">
+                                            {leaveTypes.find(lt => lt.id === req.leave_type_id)?.name || req.type}
+                                        </td>
+                                        <td className="px-6 py-4 text-sm font-mono text-slate-500 dark:text-slate-400">
+                                            {sDate ? (
+                                                <span>
+                                                    {formatDate(sDate)}
+                                                    {eDate && eDate !== sDate ? ` → ${formatDate(eDate)}` : ''}
+                                                </span>
+                                            ) : req.appliedOn ? (
+                                                formatDate(req.appliedOn)
+                                            ) : '—'}
+                                        </td>
+                                        <td className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400 max-w-xs truncate">{req.reason || 'Personal'}</td>
+                                        <td className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400">
+                                            {req.attachment_url ? (
+                                                <button onClick={() => handleViewAttachment(req.attachment_url!)} className="flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-800 font-bold bg-indigo-50 dark:bg-indigo-950/30 px-2 py-1 rounded-lg border border-indigo-100 dark:border-indigo-900/50 hover:shadow-sm transition-all" title={req.attachment_name || 'View file'}>
+                                                    <Paperclip className="w-3.5 h-3.5" />
+                                                    <span className="max-w-[100px] truncate">{req.attachment_name || 'View file'}</span>
+                                                </button>
+                                            ) : <span className="text-slate-300 dark:text-zinc-700">—</span>}
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="flex flex-col gap-1">
+                                                <span className={`px-2 py-1 rounded-lg text-xs font-bold w-fit ${req.status === 'Approved' ? 'bg-emerald-100 text-emerald-700' :
+                                                    req.status === 'Rejected' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'
+                                                    }`}>Final: {req.status}</span>
+                                                {req.status === 'Pending' && (
+                                                    <div className="flex flex-col gap-0.5 mt-1">
+                                                        <span className={`text-[10px] font-medium ${req.level1_status === 'Approved' ? 'text-emerald-500 font-bold' : req.level1_status === 'Rejected' ? 'text-rose-500 font-bold' : 'text-amber-500'}`}>L1 (Dept): {req.level1_status || 'Pending'}</span>
+                                                        <span className={`text-[10px] font-medium ${req.level2_status === 'Approved' ? 'text-emerald-500 font-bold' : req.level2_status === 'Rejected' ? 'text-rose-500 font-bold' : 'text-amber-500'}`}>L2 (HR): {req.level2_status || 'Pending'}</span>
                                                     </div>
                                                 )}
                                             </div>
-                                        )}
-                                    </td>
-                                </tr>
-                            )) : (
+                                        </td>
+                                        <td className="px-6 py-4 text-right flex justify-end gap-2">
+                                            {req.status === 'Pending' && (
+                                                <div className="flex flex-col gap-2 scale-90 origin-right">
+                                                    {(!req.level1_status || req.level1_status === 'Pending') && (
+                                                        <div className="flex items-center justify-end gap-1">
+                                                            <span className="text-[10px] font-bold text-slate-400 mr-1">L1:</span>
+                                                            <button title="Approve L1" onClick={() => onUpdateStatus(req.id, 'Approved', 1)} className="p-1 px-2 border border-emerald-200 bg-emerald-50 text-emerald-600 rounded flex gap-1 items-center hover:bg-emerald-100 transition-colors text-xs font-bold"><Check className="w-3 h-3" /> Approve</button>
+                                                            <button title="Reject L1" onClick={() => onUpdateStatus(req.id, 'Rejected', 1)} className="p-1 px-2 border border-rose-200 bg-rose-50 text-rose-600 rounded flex gap-1 items-center hover:bg-rose-100 transition-colors text-xs font-bold"><X className="w-3 h-3" /> Reject</button>
+                                                        </div>
+                                                    )}
+                                                    {req.level1_status === 'Approved' && (!req.level2_status || req.level2_status === 'Pending') && (
+                                                        <div className="flex items-center justify-end gap-1">
+                                                            <span className="text-[10px] font-bold text-slate-400 mr-1">L2:</span>
+                                                            <button title="Approve L2" onClick={() => onUpdateStatus(req.id, 'Approved', 2)} className="p-1 px-2 border border-emerald-200 bg-emerald-50 text-emerald-600 rounded flex gap-1 items-center hover:bg-emerald-100 transition-colors text-xs font-bold"><Check className="w-3 h-3" /> Approve</button>
+                                                            <button title="Reject L2" onClick={() => onUpdateStatus(req.id, 'Rejected', 2)} className="p-1 px-2 border border-rose-200 bg-rose-50 text-rose-600 rounded flex gap-1 items-center hover:bg-rose-100 transition-colors text-xs font-bold"><X className="w-3 h-3" /> Reject</button>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </td>
+                                    </tr>
+                                );
+                            }) : (
                                 <tr>
-                                    <td colSpan={6} className="text-center py-10 text-slate-400 italic">No leave requests found.</td>
+                                    <td colSpan={7} className="text-center py-10 text-slate-400 italic">No leave requests found.</td>
                                 </tr>
                             )}
                         </tbody>

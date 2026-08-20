@@ -53,7 +53,7 @@ export const LeaveHub: React.FC = () => {
         }
 
         const { data: leaveData } = await supabase.from('leaves')
-            .select('*')
+            .select('*, employees(id, name, employee_code)')
             .eq('company_id', companyId)
             .order('created_at', { ascending: false });
         if (leaveData) setLeaves(leaveData as any);
@@ -357,6 +357,7 @@ export const LeaveHub: React.FC = () => {
                             <LeaveModule 
                                 leaves={leaves} 
                                 leaveTypes={leaveTypes} 
+                                employees={employees}
                                 setShowLeaveModal={setShowLeaveModal} 
                                 onUpdateStatus={handleUpdateLeaveStatus} 
                                 formatDate={formatDate} 
@@ -368,6 +369,7 @@ export const LeaveHub: React.FC = () => {
                                 <LeaveModule 
                                     leaves={pendingLeaves} 
                                     leaveTypes={leaveTypes} 
+                                    employees={employees}
                                     setShowLeaveModal={setShowLeaveModal} 
                                     onUpdateStatus={handleUpdateLeaveStatus} 
                                     formatDate={formatDate} 
