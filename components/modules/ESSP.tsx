@@ -217,6 +217,7 @@ export const ESSP: React.FC = () => {
     const [punchStatus, setPunchStatus] = useState<'In' | 'Out'>('Out');
     const [punchLoading, setPunchLoading] = useState(false);
     const [lastAttendanceId, setLastAttendanceId] = useState<string | null>(null);
+    const [activePunchTime, setActivePunchTime] = useState<string | null>(null);
     const [leaveTypes, setLeaveTypes] = useState<any[]>([]);
     const [punchDuration, setPunchDuration] = useState<string>('--:--');
 
@@ -233,22 +234,27 @@ export const ESSP: React.FC = () => {
     }, [currentEmployee]);
 
     const refreshDashboard = async (empId: string, companyId: string) => {
-        // 1. Attendance Status (Look for active open punch across dates to support Night Shift)
+        // 1. Attendance Status: look for active session within a sane 16-hour shift window
+        const sixteenHoursAgo = new Date(Date.now() - 16 * 60 * 60 * 1000).toISOString();
         const { data: activePunches } = await supabase.from('attendance')
             .select('*')
             .eq('employee_id', empId)
-            .is('check_out', null) // Only find open sessions
-            .order('created_at', { ascending: false })
+            .is('check_out', null)
+            .not('check_in', 'is', null)
+            .gte('check_in', sixteenHoursAgo) // Sane active session window (supports night shifts up to 16h)
+            .order('check_in', { ascending: false })
             .limit(1);
 
         const activePunch = activePunches && activePunches.length > 0 ? activePunches[0] : null;
 
-        if (activePunch) {
+        if (activePunch && activePunch.check_in) {
             setPunchStatus('In');
             setLastAttendanceId(activePunch.id);
+            setActivePunchTime(activePunch.check_in);
         } else {
             setPunchStatus('Out');
             setLastAttendanceId(null);
+            setActivePunchTime(null);
         }
 
         // 2. Attendance Log (Recent 3)
@@ -495,12 +501,15 @@ export const ESSP: React.FC = () => {
                 setLastAttendanceId(data.id);
             }
         } else {
-            // PUNCH OUT - Always query active open punch directly to guarantee matching the open session
+            // PUNCH OUT - Always query active open punch directly within the 16-hour session window
+            const sixteenHoursAgo = new Date(Date.now() - 16 * 60 * 60 * 1000).toISOString();
             const { data: activePunches } = await (supabase as any).from('attendance')
                 .select('id, check_in')
                 .eq('employee_id', currentEmployee.id)
                 .is('check_out', null)
-                .order('created_at', { ascending: false })
+                .not('check_in', 'is', null)
+                .gte('check_in', sixteenHoursAgo)
+                .order('check_in', { ascending: false })
                 .limit(1);
 
             const activePunch = activePunches && activePunches.length > 0 ? activePunches[0] : null;
@@ -510,6 +519,7 @@ export const ESSP: React.FC = () => {
                 setPunchLoading(false);
                 setPunchStatus('Out');
                 setLastAttendanceId(null);
+                setActivePunchTime(null);
                 return;
             }
 
@@ -534,8 +544,9 @@ export const ESSP: React.FC = () => {
     ) => {
         const d1 = new Date(checkInTime);
         const d2 = new Date(checkOutTime);
-        const diffMs = d2.getTime() - d1.getTime();
-        const durationHours = Math.max(0, parseFloat((diffMs / (1000 * 60 * 60)).toFixed(2)));
+        const diffMs = Math.max(0, d2.getTime() - d1.getTime());
+        // Cap duration at a maximum of 16 hours to prevent abnormal multi-day calculation anomalies
+        const durationHours = Math.min(16, parseFloat((diffMs / (1000 * 60 * 60)).toFixed(2)));
 
         const updateData: any = {
             check_out: checkOutTime,
@@ -559,6 +570,7 @@ export const ESSP: React.FC = () => {
         } else {
             setPunchStatus('Out');
             setLastAttendanceId(null);
+            setActivePunchTime(null);
         }
     };
 
@@ -608,7 +620,11 @@ export const ESSP: React.FC = () => {
                                 </div>
                                 <h2 className="text-5xl font-black tracking-tight mb-2">{punchStatus === 'In' ? 'Checked In' : 'Checked Out'}</h2>
                                 <p className="text-slate-400 font-medium">
-                                    {punchStatus === 'In' ? 'You are currently active.' : 'Your session has ended.'}
+                                    {punchStatus === 'In'
+                                        ? (activePunchTime
+                                            ? `Checked in at ${new Date(activePunchTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                                            : 'You are currently active.')
+                                        : 'Your session has ended. Ready to punch in.'}
                                 </p>
                             </div>
 
