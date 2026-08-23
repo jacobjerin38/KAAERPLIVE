@@ -124,7 +124,7 @@ export const AttendanceSettings: React.FC = () => {
                 late_deduction_type: d.late_deduction_type || 'per_instance',
                 late_penalty_type: d.late_penalty_type || 'half_day',
                 late_deduction_amount: d.late_deduction_amount || 0,
-                half_day_threshold: d.half_day_threshold || 3,
+                half_day_threshold: d.half_day_threshold ?? d.late_half_day_threshold ?? 3,
                 early_deduction_enabled: d.early_deduction_enabled || false,
                 early_deduction_type: d.early_deduction_type || 'per_instance',
                 early_deduction_amount: d.early_deduction_amount || 0
@@ -140,6 +140,8 @@ export const AttendanceSettings: React.FC = () => {
             .upsert({
                 company_id: currentCompanyId,
                 ...config,
+                late_half_day_threshold: config.half_day_threshold ?? 3,
+                half_day_threshold: config.half_day_threshold ?? 3,
                 updated_at: new Date().toISOString()
             }, { onConflict: 'company_id' });
 
