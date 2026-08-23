@@ -1,10 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
-import { Plus, Search, Filter, FileText, CheckCircle, Clock } from 'lucide-react';
+import { Plus, Search, Filter, FileText, CheckCircle, Clock, ShoppingCart, Zap, Building2, Trash2 } from 'lucide-react';
 import { Modal } from '../../ui/Modal';
 import { PrintButton } from '../../ui/PrintButton';
 
+export interface BillLine {
+    line_type: 'item' | 'expense' | 'asset';
+    item_id?: string;
+    account_id?: string;
+    purchase_ledger_id?: string;
+    description: string;
+    cost_center_id?: string;
+    project_cost_center_id?: string;
+    contract_cost_center_id?: string;
+    quantity: number;
+    unit_price: number;
+}
 
 export const Bills: React.FC = () => {
     const { currentCompanyId } = useAuth();
@@ -18,6 +30,9 @@ export const Bills: React.FC = () => {
     const [journals, setJournals] = useState<any[]>([]); // To select Purchase Journal
     const [costCenters, setCostCenters] = useState<any[]>([]);
     const [purchaseLedgers, setPurchaseLedgers] = useState<any[]>([]);
+    const [accounts, setAccounts] = useState<any[]>([]);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [statusFilter, setStatusFilter] = useState<string>('all');
 
     // Form State
     const [selectedPartner, setSelectedPartner] = useState('');
@@ -31,7 +46,9 @@ export const Bills: React.FC = () => {
     const [editingBillId, setEditingBillId] = useState<string | null>(null);
 
     // Line Items
-    const [lines, setLines] = useState<any[]>([{ item_id: '', quantity: 1, unit_price: 0, cost_center_id: '', project_cost_center_id: '', contract_cost_center_id: '', purchase_ledger_id: '', description: '' }]);
+    const [lines, setLines] = useState<BillLine[]>([
+        { line_type: 'expense', item_id: '', account_id: '', purchase_ledger_id: '', quantity: 1, unit_price: 0, cost_center_id: '', project_cost_center_id: '', contract_cost_center_id: '', description: '' }
+    ]);
 
     useEffect(() => {
         if (currentCompanyId) {
@@ -61,22 +78,65 @@ export const Bills: React.FC = () => {
 
     const fetchMasters = async () => {
         if (!currentCompanyId) return;
-        const { data: pData } = await supabase.from('accounting_partners').select('id, name').eq('company_id', currentCompanyId).or('partner_type.eq.Vendor,partner_type.eq.Both');
+        
+        // 1. Vendors
+        const { data: pData } = await supabase
+            .from('accounting_partners')
+            .select('id, name')
+            .eq('company_id', currentCompanyId)
+            .or('partner_type.eq.Vendor,partner_type.eq.Both')
+            .order('name', { ascending: true });
         setPartners(pData || []);
 
-        const { data: iData } = await supabase.from('item_master').select('id, name, code, expense_account_id').eq('company_id', currentCompanyId);
+        // 2. Inventory Items
+        const { data: iData } = await supabase
+            .from('item_master')
+            .select('id, name, code, expense_account_id, standard_cost')
+            .eq('company_id', currentCompanyId)
+            .order('name', { ascending: true });
         setItems(iData || []);
 
-        const { data: jData } = await supabase.from('accounting_journals').select('id, name').eq('company_id', currentCompanyId).eq('type', 'Purchase');
+        // 3. Purchase Journals
+        const { data: jData } = await supabase
+            .from('accounting_journals')
+            .select('id, name, code')
+            .eq('company_id', currentCompanyId)
+            .eq('type', 'Purchase');
         setJournals(jData || []);
-        if (jData && jData.length > 0) setSelectedJournal(jData[0].id);
+        if (jData && jData.length > 0 && !selectedJournal) setSelectedJournal(jData[0].id);
 
-        const { data: ccData } = await supabase.from('accounting_cost_centers').select('id, name, code, type').eq('company_id', currentCompanyId).eq('is_active', true);
+        // 4. Cost Centers
+        const { data: ccData } = await supabase
+            .from('accounting_cost_centers')
+            .select('id, name, code, type')
+            .eq('company_id', currentCompanyId)
+            .eq('is_active', true)
+            .order('code', { ascending: true });
         setCostCenters(ccData || []);
 
-        const { data: plData } = await supabase.from('accounting_purchase_ledgers').select('id, name, account_id').eq('company_id', currentCompanyId).eq('is_active', true);
+        // 5. Purchase Ledgers
+        const { data: plData } = await supabase
+            .from('accounting_purchase_ledgers')
+            .select('id, name, account_id')
+            .eq('company_id', currentCompanyId)
+            .eq('is_active', true);
         setPurchaseLedgers(plData || []);
+
+        // 6. Chart of Accounts (All active posting accounts)
+        const { data: coaData } = await (supabase.from('accounting_chart_of_accounts') as any)
+            .select('id, name, code, type, subtype')
+            .eq('company_id', currentCompanyId)
+            .eq('is_group', false)
+            .order('code', { ascending: true });
+        setAccounts((coaData as any[]) || []);
     };
+
+    // Filter accounts by type
+    const expenseAccounts = accounts.filter(a => a.type === 'Expense');
+    const assetAccounts = accounts.filter(a => 
+        a.subtype === 'Fixed Assets' || 
+        (a.type === 'Asset' && Number(a.code) >= 1500 && Number(a.code) < 1700)
+    );
 
     const handleOpenModal = async (bill?: any, readonly = false) => {
         if (bill) {
@@ -100,24 +160,34 @@ export const Bills: React.FC = () => {
                 return;
             }
 
-            // Filter out the balancing line (receivable/payable)
+            // Filter out the balancing payable line (debit > 0)
             const itemLines = (data as any[] || []).filter(l => Number(l.debit) > 0);
 
-            const mappedLines = itemLines.map((l: any) => {
+            const mappedLines: BillLine[] = itemLines.map((l: any) => {
+                const isItem = !!l.item_id;
+                const isFixedAsset = assetAccounts.some(a => a.id === l.account_id) || 
+                    accounts.some(a => a.id === l.account_id && (a.subtype === 'Fixed Assets' || (a.type === 'Asset' && Number(a.code) >= 1500 && Number(a.code) < 1700)));
+                
+                const line_type: 'item' | 'expense' | 'asset' = isItem ? 'item' : (isFixedAsset ? 'asset' : 'expense');
                 const matchedLedger = purchaseLedgers.find(pl => pl.account_id === l.account_id);
+
                 return {
+                    line_type,
                     item_id: l.item_id || '',
+                    account_id: l.account_id || '',
                     purchase_ledger_id: matchedLedger ? matchedLedger.id : '',
                     cost_center_id: l.cost_center_id || '',
                     project_cost_center_id: l.project_cost_center_id || '',
                     contract_cost_center_id: l.contract_cost_center_id || '',
                     quantity: Number(l.quantity || 1),
-                    unit_price: Number(l.unit_price || l.debit || 0),
+                    unit_price: Number(l.unit_price || (l.quantity ? Number(l.debit) / Number(l.quantity) : Number(l.debit)) || 0),
                     description: l.name || ''
                 };
             });
 
-            setLines(mappedLines.length > 0 ? mappedLines : [{ item_id: '', quantity: 1, unit_price: 0, cost_center_id: '', project_cost_center_id: '', contract_cost_center_id: '', purchase_ledger_id: '', description: '' }]);
+            setLines(mappedLines.length > 0 ? mappedLines : [
+                { line_type: 'expense', item_id: '', account_id: '', purchase_ledger_id: '', quantity: 1, unit_price: 0, cost_center_id: '', project_cost_center_id: '', contract_cost_center_id: '', description: '' }
+            ]);
             setIsModalOpen(true);
         } else {
             setEditingBillId(null);
@@ -125,20 +195,56 @@ export const Bills: React.FC = () => {
             if (journals.length > 0) setSelectedJournal(journals[0].id);
             setBillDate(new Date().toISOString().split('T')[0]);
             setDueDate(new Date().toISOString().split('T')[0]);
-            setLines([{ item_id: '', quantity: 1, unit_price: 0, cost_center_id: '', project_cost_center_id: '', contract_cost_center_id: '', purchase_ledger_id: '', description: '' }]);
+            setLines([
+                { line_type: 'expense', item_id: '', account_id: '', purchase_ledger_id: '', quantity: 1, unit_price: 0, cost_center_id: '', project_cost_center_id: '', contract_cost_center_id: '', description: '' }
+            ]);
             setEditMode(false);
             setViewMode(false);
             setIsModalOpen(true);
         }
     };
 
-    const handleAddLine = () => {
-        setLines([...lines, { item_id: '', quantity: 1, unit_price: 0, cost_center_id: '', project_cost_center_id: '', contract_cost_center_id: '', purchase_ledger_id: '', description: '' }]);
+    const handleAddLine = (type: 'item' | 'expense' | 'asset' = 'expense') => {
+        setLines([...lines, { 
+            line_type: type, 
+            item_id: '', 
+            account_id: '', 
+            purchase_ledger_id: '', 
+            quantity: 1, 
+            unit_price: 0, 
+            cost_center_id: '', 
+            project_cost_center_id: '', 
+            contract_cost_center_id: '', 
+            description: '' 
+        }]);
     };
 
-    const handleLineChange = (index: number, field: string, value: any) => {
+    const handleLineChange = (index: number, field: keyof BillLine, value: any) => {
         const newLines = [...lines];
-        newLines[index][field] = value;
+        const currentLine = { ...newLines[index], [field]: value };
+
+        // Auto-fill logic when selecting an inventory item
+        if (field === 'item_id' && value) {
+            const selectedItem = items.find(i => i.id === value);
+            if (selectedItem) {
+                if (!currentLine.description) currentLine.description = selectedItem.name;
+                if (selectedItem.standard_cost && Number(currentLine.unit_price) === 0) {
+                    currentLine.unit_price = Number(selectedItem.standard_cost);
+                }
+                if (selectedItem.expense_account_id && !currentLine.account_id) {
+                    currentLine.account_id = selectedItem.expense_account_id;
+                }
+            }
+        }
+
+        // When switching line type, reset dependent fields
+        if (field === 'line_type') {
+            currentLine.item_id = '';
+            currentLine.purchase_ledger_id = '';
+            currentLine.account_id = '';
+        }
+
+        newLines[index] = currentLine;
         setLines(newLines);
     };
 
@@ -158,15 +264,33 @@ export const Bills: React.FC = () => {
                 return;
             }
 
+            // Validate that each line has required fields
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                if (line.line_type === 'expense' && !line.account_id) {
+                    alert(`Line #${i + 1}: Please select an Expense Account.`);
+                    return;
+                }
+                if (line.line_type === 'asset' && !line.account_id) {
+                    alert(`Line #${i + 1}: Please select a Fixed Asset Account.`);
+                    return;
+                }
+                if (line.line_type === 'item' && !line.item_id && !line.purchase_ledger_id && !line.account_id) {
+                    alert(`Line #${i + 1}: Please select an Item or Purchase Ledger.`);
+                    return;
+                }
+            }
+
             const payloadLines = lines.map(l => ({
-                item_id: l.item_id ? String(l.item_id).trim() : null,
+                item_id: l.line_type === 'item' && l.item_id ? String(l.item_id).trim() : null,
+                purchase_ledger_id: l.line_type === 'item' && l.purchase_ledger_id ? String(l.purchase_ledger_id).trim() : null,
+                account_id: l.account_id ? String(l.account_id).trim() : null,
+                description: l.description ? String(l.description).trim() : null,
                 quantity: Number(l.quantity) || 1,
                 unit_price: Number(l.unit_price) || 0,
                 cost_center_id: l.cost_center_id ? String(l.cost_center_id).trim() : null,
                 project_cost_center_id: l.project_cost_center_id ? String(l.project_cost_center_id).trim() : null,
-                contract_cost_center_id: l.contract_cost_center_id ? String(l.contract_cost_center_id).trim() : null,
-                purchase_ledger_id: l.purchase_ledger_id ? String(l.purchase_ledger_id).trim() : null,
-                description: l.description ? String(l.description).trim() : null
+                contract_cost_center_id: l.contract_cost_center_id ? String(l.contract_cost_center_id).trim() : null
             }));
 
             if (editMode && editingBillId) {
@@ -181,7 +305,7 @@ export const Bills: React.FC = () => {
                 };
                 const { error } = await (supabase.rpc as any)('rpc_update_accounting_invoice', updatePayload);
                 if (error) throw error;
-                alert('Bill Updated successfully!');
+                alert('Vendor Bill updated successfully!');
             } else {
                 const payload = {
                     p_partner_id: selectedPartner,
@@ -193,13 +317,15 @@ export const Bills: React.FC = () => {
                     p_company_id: currentCompanyId
                 };
 
-                const { data, error } = await (supabase.rpc as any)('rpc_create_accounting_invoice', payload);
+                const { error } = await (supabase.rpc as any)('rpc_create_accounting_invoice', payload);
                 if (error) throw error;
-                alert('Bill Created successfully!');
+                alert('Vendor Bill created successfully!');
             }
 
             setIsModalOpen(false);
-            setLines([{ item_id: '', quantity: 1, unit_price: 0, cost_center_id: '', project_cost_center_id: '', contract_cost_center_id: '', purchase_ledger_id: '', description: '' }]);
+            setLines([
+                { line_type: 'expense', item_id: '', account_id: '', purchase_ledger_id: '', quantity: 1, unit_price: 0, cost_center_id: '', project_cost_center_id: '', contract_cost_center_id: '', description: '' }
+            ]);
             fetchBills();
 
         } catch (err: any) {
@@ -210,7 +336,7 @@ export const Bills: React.FC = () => {
 
     const handlePost = async (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
-        if (!confirm('Confirm Post? This will lock the bill.')) return;
+        if (!confirm('Confirm Post? This will lock the bill and update general ledger.')) return;
 
         const { data, error } = await supabase.rpc('rpc_post_accounting_entry', { 
             p_entry_id: id
@@ -257,46 +383,95 @@ export const Bills: React.FC = () => {
     const projectCC = costCenters.filter(cc => cc.type === 'PROJECT');
     const contractCC = costCenters.filter(cc => cc.type === 'CONTRACT');
 
+    const filteredBills = bills.filter(b => {
+        const matchesSearch = 
+            (b.reference || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (b.partner?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (b.id || '').toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesStatus = statusFilter === 'all' || b.state === statusFilter;
+        return matchesSearch && matchesStatus;
+    });
+
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center">
-                <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Vendor Bills</h2>
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+                <div>
+                    <h2 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                        <span>Vendor Bills</span>
+                        <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-400">
+                            {bills.length}
+                        </span>
+                    </h2>
+                    <p className="text-xs text-slate-500 mt-1">
+                        Record vendor invoices for operational expenses, fixed assets, and item purchases.
+                    </p>
+                </div>
                 <div className="flex items-center gap-3 no-print">
                     <PrintButton />
                     <button
                         onClick={() => handleOpenModal()}
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold shadow-md shadow-indigo-500/20 transition-all active:scale-95"
                     >
                         <Plus className="w-4 h-4" />
-                        New Bill
+                        Create Bill
                     </button>
                 </div>
             </div>
 
+            {/* Filters and Search Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-zinc-900 p-4 rounded-xl border border-slate-200 dark:border-zinc-800">
+                <div className="flex items-center gap-2 flex-1 min-w-[240px]">
+                    <Search className="w-4 h-4 text-slate-400" />
+                    <input
+                        type="text"
+                        placeholder="Search by vendor or bill number..."
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                        className="w-full bg-transparent text-sm border-none focus:outline-none placeholder:text-slate-400"
+                    />
+                </div>
+                <div className="flex items-center gap-2">
+                    <Filter className="w-4 h-4 text-slate-400" />
+                    <select
+                        value={statusFilter}
+                        onChange={e => setStatusFilter(e.target.value)}
+                        className="text-xs font-medium bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg p-2 text-slate-700 dark:text-slate-300"
+                    >
+                        <option value="all">All Statuses</option>
+                        <option value="Draft">Draft</option>
+                        <option value="Posted">Posted</option>
+                    </select>
+                </div>
+            </div>
+
             {/* List */}
-            <div className="bg-white dark:bg-zinc-900 rounded-xl border border-slate-200 dark:border-zinc-800 overflow-hidden">
+            <div className="bg-white dark:bg-zinc-900 rounded-xl border border-slate-200 dark:border-zinc-800 overflow-hidden shadow-sm">
                 <table className="w-full text-left text-sm">
-                    <thead className="bg-slate-50 dark:bg-zinc-800/50 text-slate-500 font-medium">
+                    <thead className="bg-slate-50 dark:bg-zinc-800/50 text-slate-500 font-medium border-b border-slate-100 dark:border-zinc-800">
                         <tr>
-                            <th className="px-6 py-4">Number</th>
-                            <th className="px-6 py-4">Vendor</th>
-                            <th className="px-6 py-4">Date</th>
-                            <th className="px-6 py-4">Status</th>
-                            <th className="px-6 py-4">Approval</th>
-                            <th className="px-6 py-4 text-right">Total</th>
-                            <th className="px-6 py-4 text-center">Actions</th>
+                            <th className="px-6 py-4 font-bold text-xs uppercase tracking-wider">Number</th>
+                            <th className="px-6 py-4 font-bold text-xs uppercase tracking-wider">Vendor</th>
+                            <th className="px-6 py-4 font-bold text-xs uppercase tracking-wider">Date</th>
+                            <th className="px-6 py-4 font-bold text-xs uppercase tracking-wider">Status</th>
+                            <th className="px-6 py-4 font-bold text-xs uppercase tracking-wider">Approval</th>
+                            <th className="px-6 py-4 text-right font-bold text-xs uppercase tracking-wider">Total</th>
+                            <th className="px-6 py-4 text-center font-bold text-xs uppercase tracking-wider">Actions</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
                         {loading ? (
-                            <tr><td colSpan={7} className="px-6 py-8 text-center text-slate-500">Loading...</td></tr>
-                        ) : bills.map(bill => (
+                            <tr><td colSpan={7} className="px-6 py-12 text-center text-slate-500 font-medium">Loading bills...</td></tr>
+                        ) : filteredBills.length === 0 ? (
+                            <tr><td colSpan={7} className="px-6 py-12 text-center text-slate-400">No vendor bills found.</td></tr>
+                        ) : filteredBills.map(bill => (
                             <tr key={bill.id} className="hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-colors">
-                                <td className="px-6 py-4 font-bold text-slate-700 dark:text-slate-300">
+                                <td className="px-6 py-4 font-bold text-slate-700 dark:text-slate-300 font-mono text-xs">
                                     {bill.reference || `BILL-${bill.id.slice(0, 5).toUpperCase()}`}
                                 </td>
-                                <td className="px-6 py-4">{bill.partner?.name}</td>
-                                <td className="px-6 py-4 text-slate-500">{bill.date}</td>
+                                <td className="px-6 py-4 font-medium text-slate-800 dark:text-white">
+                                    {bill.partner?.name || '—'}
+                                </td>
+                                <td className="px-6 py-4 text-slate-500 text-xs">{bill.date}</td>
                                 <td className="px-6 py-4">
                                     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${bill.state === 'Posted'
                                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
@@ -307,18 +482,18 @@ export const Bills: React.FC = () => {
                                     </span>
                                 </td>
                                 <td className="px-6 py-4">
-                                    <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${bill.approval_status === 'approved' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
-                                        {bill.approval_status}
+                                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${bill.approval_status === 'approved' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'}`}>
+                                        {bill.approval_status || 'pending'}
                                     </span>
                                 </td>
-                                <td className="px-6 py-4 text-right font-bold text-slate-800 dark:text-white">
+                                <td className="px-6 py-4 text-right font-bold text-slate-800 dark:text-white font-mono">
                                     QAR {Number(bill.amount_total).toFixed(2)}
                                 </td>
                                 <td className="px-6 py-4 text-center">
                                     <div className="flex gap-2 justify-center items-center">
                                         <button
                                             onClick={(e) => { e.stopPropagation(); handleOpenModal(bill, true); }}
-                                            className="px-2 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 rounded transition-colors"
+                                            className="px-2.5 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 rounded-lg transition-colors"
                                         >
                                             View
                                         </button>
@@ -326,30 +501,30 @@ export const Bills: React.FC = () => {
                                             <>
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); handleOpenModal(bill, false); }}
-                                                    className="px-2 py-1 text-xs font-semibold text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/20 rounded transition-colors"
+                                                    className="px-2.5 py-1 text-xs font-semibold text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/20 rounded-lg transition-colors"
                                                 >
                                                     Edit
                                                 </button>
                                                 <button
                                                     onClick={(e) => handleDelete(bill.id, e)}
-                                                    className="px-2 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/20 rounded transition-colors"
+                                                    className="px-2.5 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/20 rounded-lg transition-colors"
                                                 >
                                                     Delete
                                                 </button>
                                                 {bill.approval_status !== 'approved' && (
                                                     <button
                                                         onClick={(e) => handleApprove(bill.id, e)}
-                                                        className="px-3 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                                                        className="px-3 py-1 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors shadow-sm"
                                                     >
-                                                        APPROVE
+                                                        Approve
                                                     </button>
                                                 )}
                                                 {bill.approval_status === 'approved' && (
                                                     <button
                                                         onClick={(e) => handlePost(bill.id, e)}
-                                                        className="px-3 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors"
+                                                        className="px-3 py-1 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors shadow-sm"
                                                     >
-                                                        POST
+                                                        Post
                                                     </button>
                                                 )}
                                             </>
@@ -362,183 +537,418 @@ export const Bills: React.FC = () => {
                 </table>
             </div>
 
-            {/* Create Modal */}
+            {/* Create / Edit / View Modal */}
             {isModalOpen && (
-                <Modal title={viewMode ? "View Vendor Bill" : (editMode ? "Edit Vendor Bill" : "Create Vendor Bill")} onClose={() => setIsModalOpen(false)} maxWidth="5xl">
+                <Modal 
+                    title={viewMode ? "View Vendor Bill" : (editMode ? "Edit Vendor Bill" : "Create Vendor Bill")} 
+                    onClose={() => setIsModalOpen(false)} 
+                    maxWidth="5xl"
+                >
                     <form onSubmit={handleCreateBill} className="space-y-6">
-                        <div className="grid grid-cols-2 gap-4">
+                        {/* Header Details */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 bg-slate-50 dark:bg-zinc-800/40 p-4 rounded-xl border border-slate-100 dark:border-zinc-800">
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Vendor</label>
+                                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Vendor *</label>
                                 <select
                                     required
                                     value={selectedPartner}
                                     onChange={e => setSelectedPartner(e.target.value)}
                                     disabled={viewMode}
-                                    className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm"
+                                    className="w-full p-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:outline-none"
                                 >
                                     <option value="">Select Vendor</option>
                                     {partners.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                                 </select>
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Journal</label>
+                                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Journal *</label>
                                 <select
                                     required
                                     value={selectedJournal}
                                     onChange={e => setSelectedJournal(e.target.value)}
                                     disabled={viewMode}
-                                    className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm"
+                                    className="w-full p-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:outline-none"
                                 >
                                     <option value="">Select Journal</option>
-                                    {journals.map(j => <option key={j.id} value={j.id}>{j.name}</option>)}
+                                    {journals.map(j => <option key={j.id} value={j.id}>{j.name} ({j.code})</option>)}
                                 </select>
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Bill Date</label>
-                                <input type="date" required value={billDate} onChange={e => setBillDate(e.target.value)} disabled={viewMode} className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm" />
+                                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Bill Date *</label>
+                                <input 
+                                    type="date" 
+                                    required 
+                                    value={billDate} 
+                                    onChange={e => setBillDate(e.target.value)} 
+                                    disabled={viewMode} 
+                                    className="w-full p-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:outline-none" 
+                                />
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Due Date</label>
-                                <input type="date" required value={dueDate} onChange={e => setDueDate(e.target.value)} disabled={viewMode} className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm" />
+                                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Due Date *</label>
+                                <input 
+                                    type="date" 
+                                    required 
+                                    value={dueDate} 
+                                    onChange={e => setDueDate(e.target.value)} 
+                                    disabled={viewMode} 
+                                    className="w-full p-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:outline-none" 
+                                />
                             </div>
                         </div>
 
-                        <div className="space-y-3">
-                            <div className="flex justify-between items-center">
-                                <h4 className="font-bold text-sm text-slate-700 dark:text-slate-300">Bill Lines</h4>
-                            </div>
-
-                            <div className="bg-slate-50 dark:bg-zinc-800/50 rounded-xl p-4 space-y-3">
-                                {lines.map((line, idx) => (
-                                    <div key={idx} className="flex flex-wrap md:flex-nowrap gap-2 items-end border-b border-slate-100 dark:border-zinc-800 pb-3 md:pb-0 md:border-b-0">
-                                        <div className="flex-1 min-w-[150px]">
-                                            <label className="text-[10px] font-bold text-slate-400 uppercase">Item</label>
-                                            <select
-                                                value={line.item_id}
-                                                onChange={e => handleLineChange(idx, 'item_id', e.target.value)}
-                                                disabled={viewMode}
-                                                className="w-full p-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-md text-sm"
-                                            >
-                                                <option value="">Select Item</option>
-                                                {items.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
-                                            </select>
-                                        </div>
-                                        <div className="w-full md:w-48">
-                                            <label className="text-[10px] font-bold text-slate-400 uppercase">Purchase Ledger</label>
-                                            <select
-                                                required={!line.item_id}
-                                                value={line.purchase_ledger_id}
-                                                onChange={e => handleLineChange(idx, 'purchase_ledger_id', e.target.value)}
-                                                disabled={viewMode}
-                                                className="w-full p-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-md text-sm"
-                                            >
-                                                <option value="">Select Purchase Ledger</option>
-                                                {purchaseLedgers.map(pl => <option key={pl.id} value={pl.id}>{pl.name}</option>)}
-                                            </select>
-                                        </div>
-                                        <div className="w-full md:flex-1 min-w-[150px]">
-                                            <label className="text-[10px] font-bold text-slate-400 uppercase">Narration</label>
-                                            <input
-                                                type="text"
-                                                value={line.description || ''}
-                                                onChange={e => handleLineChange(idx, 'description', e.target.value)}
-                                                disabled={viewMode}
-                                                placeholder="Comment / Line note"
-                                                className="w-full p-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-md text-sm"
-                                            />
-                                        </div>
-                                        <div className="w-full md:w-36">
-                                            <label className="text-[10px] font-bold text-slate-400 uppercase">Project CC</label>
-                                            <select
-                                                value={line.project_cost_center_id}
-                                                onChange={e => handleLineChange(idx, 'project_cost_center_id', e.target.value)}
-                                                disabled={viewMode}
-                                                className="w-full p-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-md text-sm"
-                                            >
-                                                <option value="">None</option>
-                                                {projectCC.map(cc => <option key={cc.id} value={cc.id}>{cc.code}</option>)}
-                                            </select>
-                                        </div>
-                                        <div className="w-full md:w-36">
-                                            <label className="text-[10px] font-bold text-slate-400 uppercase">Contract CC</label>
-                                            <select
-                                                value={line.contract_cost_center_id}
-                                                onChange={e => handleLineChange(idx, 'contract_cost_center_id', e.target.value)}
-                                                disabled={viewMode}
-                                                className="w-full p-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-md text-sm"
-                                            >
-                                                <option value="">None</option>
-                                                {contractCC.map(cc => <option key={cc.id} value={cc.id}>{cc.code}</option>)}
-                                            </select>
-                                        </div>
-                                        <div className="w-full md:w-36">
-                                            <label className="text-[10px] font-bold text-slate-400 uppercase">Cost Center</label>
-                                            <select
-                                                value={line.cost_center_id}
-                                                onChange={e => handleLineChange(idx, 'cost_center_id', e.target.value)}
-                                                disabled={viewMode}
-                                                className="w-full p-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-md text-sm"
-                                            >
-                                                <option value="">None</option>
-                                                {genericCC.map(cc => <option key={cc.id} value={cc.id}>{cc.code}</option>)}
-                                            </select>
-                                        </div>
-                                        <div className="w-20">
-                                            <label className="text-[10px] font-bold text-slate-400 uppercase">Qty</label>
-                                            <input
-                                                type="number"
-                                                min="1"
-                                                value={line.quantity}
-                                                onChange={e => handleLineChange(idx, 'quantity', e.target.value)}
-                                                disabled={viewMode}
-                                                className="w-full p-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-md text-sm"
-                                            />
-                                        </div>
-                                        <div className="w-28">
-                                            <label className="text-[10px] font-bold text-slate-400 uppercase">Price</label>
-                                            <div className="relative">
-                                                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-semibold">QAR</span>
-                                                <input
-                                                    type="number"
-                                                    step="0.01"
-                                                    value={line.unit_price}
-                                                    onChange={e => handleLineChange(idx, 'unit_price', e.target.value)}
-                                                    disabled={viewMode}
-                                                    className="w-full pl-10 p-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-md text-sm"
-                                                />
-                                            </div>
-                                        </div>
-                                        {!viewMode && (
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    const newLines = lines.filter((_, i) => i !== idx);
-                                                    setLines(newLines);
-                                                }}
-                                                className="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/20 rounded-md mb-0.5"
-                                            >
-                                                &times;
-                                            </button>
-                                        )}
-                                    </div>
-                                ))}
+                        {/* Bill Lines Section */}
+                        <div className="space-y-4">
+                            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
+                                <div>
+                                    <h4 className="font-bold text-sm text-slate-800 dark:text-white flex items-center gap-2">
+                                        <span>Bill Lines</span>
+                                        <span className="text-xs font-normal text-slate-500">
+                                            (Expenses, Fixed Assets, or Item Purchases)
+                                        </span>
+                                    </h4>
+                                </div>
                                 {!viewMode && (
-                                    <button type="button" onClick={handleAddLine} className="text-xs font-bold text-blue-600 hover:underline">+ Add Line</button>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => handleAddLine('expense')}
+                                            className="px-3 py-1.5 text-xs font-bold rounded-lg bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 hover:bg-amber-100 transition-colors flex items-center gap-1.5"
+                                        >
+                                            <Zap className="w-3.5 h-3.5" />
+                                            + Add Expense
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleAddLine('asset')}
+                                            className="px-3 py-1.5 text-xs font-bold rounded-lg bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 transition-colors flex items-center gap-1.5"
+                                        >
+                                            <Building2 className="w-3.5 h-3.5" />
+                                            + Add Fixed Asset
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleAddLine('item')}
+                                            className="px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 transition-colors flex items-center gap-1.5"
+                                        >
+                                            <ShoppingCart className="w-3.5 h-3.5" />
+                                            + Add Item
+                                        </button>
+                                    </div>
                                 )}
                             </div>
 
-                            <div className="flex justify-end text-right">
-                                <div>
-                                    <span className="text-xs text-slate-500 font-bold uppercase mr-4">Total</span>
-                                    <span className="text-xl font-bold text-slate-800 dark:text-white">
-                                        QAR {lines.reduce((acc, l) => acc + (Number(l.quantity) * Number(l.unit_price)), 0).toFixed(2)}
+                            {/* Lines List */}
+                            <div className="space-y-3">
+                                {lines.map((line, idx) => (
+                                    <div 
+                                        key={idx} 
+                                        className={`rounded-xl p-4 border transition-all ${
+                                            line.line_type === 'expense' 
+                                                ? 'bg-amber-50/40 dark:bg-amber-950/10 border-amber-200 dark:border-amber-900/30' 
+                                                : line.line_type === 'asset'
+                                                ? 'bg-blue-50/40 dark:bg-blue-950/10 border-blue-200 dark:border-blue-900/30'
+                                                : 'bg-emerald-50/40 dark:bg-emerald-950/10 border-emerald-200 dark:border-emerald-900/30'
+                                        }`}
+                                    >
+                                        {/* Line Category Selector Pill */}
+                                        <div className="flex justify-between items-center mb-3">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[11px] font-bold text-slate-400 font-mono">#{idx + 1}</span>
+                                                <div className="inline-flex rounded-lg p-0.5 bg-slate-200/70 dark:bg-zinc-800 text-xs font-medium">
+                                                    <button
+                                                        type="button"
+                                                        disabled={viewMode}
+                                                        onClick={() => handleLineChange(idx, 'line_type', 'expense')}
+                                                        className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all flex items-center gap-1 ${
+                                                            line.line_type === 'expense'
+                                                                ? 'bg-amber-500 text-white shadow-sm'
+                                                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-800'
+                                                        }`}
+                                                    >
+                                                        <Zap className="w-3 h-3" />
+                                                        Expense
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        disabled={viewMode}
+                                                        onClick={() => handleLineChange(idx, 'line_type', 'asset')}
+                                                        className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all flex items-center gap-1 ${
+                                                            line.line_type === 'asset'
+                                                                ? 'bg-blue-600 text-white shadow-sm'
+                                                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-800'
+                                                        }`}
+                                                    >
+                                                        <Building2 className="w-3 h-3" />
+                                                        Fixed Asset
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        disabled={viewMode}
+                                                        onClick={() => handleLineChange(idx, 'line_type', 'item')}
+                                                        className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all flex items-center gap-1 ${
+                                                            line.line_type === 'item'
+                                                                ? 'bg-emerald-600 text-white shadow-sm'
+                                                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-800'
+                                                        }`}
+                                                    >
+                                                        <ShoppingCart className="w-3 h-3" />
+                                                        Item Purchase
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {!viewMode && lines.length > 1 && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const newLines = lines.filter((_, i) => i !== idx);
+                                                        setLines(newLines);
+                                                    }}
+                                                    className="p-1.5 text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-950/40 rounded-lg transition-colors"
+                                                    title="Remove line"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        {/* Dynamic Fields Grid */}
+                                        <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+                                            {/* EXPENSE MODE */}
+                                            {line.line_type === 'expense' && (
+                                                <>
+                                                    <div className="md:col-span-4">
+                                                        <label className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider block mb-1">
+                                                            Expense Account *
+                                                        </label>
+                                                        <select
+                                                            required
+                                                            value={line.account_id || ''}
+                                                            onChange={e => handleLineChange(idx, 'account_id', e.target.value)}
+                                                            disabled={viewMode}
+                                                            className="w-full p-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-amber-500/20 focus:outline-none"
+                                                        >
+                                                            <option value="">Select Expense Account</option>
+                                                            {expenseAccounts.map(acc => (
+                                                                <option key={acc.id} value={acc.id}>
+                                                                    [{acc.code}] {acc.name}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                    <div className="md:col-span-4">
+                                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                                                            Narration / Expense Note
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            value={line.description || ''}
+                                                            onChange={e => handleLineChange(idx, 'description', e.target.value)}
+                                                            disabled={viewMode}
+                                                            placeholder="e.g. Travel, Air tickets, Office Rent, Utilities..."
+                                                            className="w-full p-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-amber-500/20 focus:outline-none"
+                                                        />
+                                                    </div>
+                                                </>
+                                            )}
+
+                                            {/* FIXED ASSET MODE */}
+                                            {line.line_type === 'asset' && (
+                                                <>
+                                                    <div className="md:col-span-4">
+                                                        <label className="text-[10px] font-bold text-blue-700 dark:text-blue-400 uppercase tracking-wider block mb-1">
+                                                            Fixed Asset Account *
+                                                        </label>
+                                                        <select
+                                                            required
+                                                            value={line.account_id || ''}
+                                                            onChange={e => handleLineChange(idx, 'account_id', e.target.value)}
+                                                            disabled={viewMode}
+                                                            className="w-full p-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:outline-none"
+                                                        >
+                                                            <option value="">Select Asset Account</option>
+                                                            {assetAccounts.map(acc => (
+                                                                <option key={acc.id} value={acc.id}>
+                                                                    [{acc.code}] {acc.name}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                    <div className="md:col-span-4">
+                                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                                                            Asset Description / Serial #
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            value={line.description || ''}
+                                                            onChange={e => handleLineChange(idx, 'description', e.target.value)}
+                                                            disabled={viewMode}
+                                                            placeholder="e.g. MacBook Pro, Office Desk, Vehicle Plate #..."
+                                                            className="w-full p-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:outline-none"
+                                                        />
+                                                    </div>
+                                                </>
+                                            )}
+
+                                            {/* ITEM PURCHASE MODE */}
+                                            {line.line_type === 'item' && (
+                                                <>
+                                                    <div className="md:col-span-3">
+                                                        <label className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider block mb-1">
+                                                            Item
+                                                        </label>
+                                                        <select
+                                                            value={line.item_id || ''}
+                                                            onChange={e => handleLineChange(idx, 'item_id', e.target.value)}
+                                                            disabled={viewMode}
+                                                            className="w-full p-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500/20 focus:outline-none"
+                                                        >
+                                                            <option value="">Select Catalog Item</option>
+                                                            {items.map(i => <option key={i.id} value={i.id}>{i.name} ({i.code})</option>)}
+                                                        </select>
+                                                    </div>
+                                                    <div className="md:col-span-3">
+                                                        <label className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider block mb-1">
+                                                            Purchase / COGS Ledger
+                                                        </label>
+                                                        <select
+                                                            value={line.purchase_ledger_id || ''}
+                                                            onChange={e => handleLineChange(idx, 'purchase_ledger_id', e.target.value)}
+                                                            disabled={viewMode}
+                                                            className="w-full p-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500/20 focus:outline-none"
+                                                        >
+                                                            <option value="">Select Ledger / COGS</option>
+                                                            <optgroup label="Purchase Ledgers">
+                                                                {purchaseLedgers.map(pl => <option key={pl.id} value={pl.id}>{pl.name}</option>)}
+                                                            </optgroup>
+                                                            <optgroup label="Expense / COGS Accounts">
+                                                                {expenseAccounts.map(acc => (
+                                                                    <option key={`coa-${acc.id}`} value={`coa:${acc.id}`}>
+                                                                        [{acc.code}] {acc.name}
+                                                                    </option>
+                                                                ))}
+                                                            </optgroup>
+                                                        </select>
+                                                    </div>
+                                                    <div className="md:col-span-2">
+                                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                                                            Narration
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            value={line.description || ''}
+                                                            onChange={e => handleLineChange(idx, 'description', e.target.value)}
+                                                            disabled={viewMode}
+                                                            placeholder="Line note"
+                                                            className="w-full p-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500/20 focus:outline-none"
+                                                        />
+                                                    </div>
+                                                </>
+                                            )}
+
+                                            {/* Quantity */}
+                                            <div className="md:col-span-1">
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Qty</label>
+                                                <input
+                                                    type="number"
+                                                    min="1"
+                                                    value={line.quantity}
+                                                    onChange={e => handleLineChange(idx, 'quantity', e.target.value)}
+                                                    disabled={viewMode}
+                                                    className="w-full p-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm text-center font-semibold focus:outline-none"
+                                                />
+                                            </div>
+
+                                            {/* Unit Price */}
+                                            <div className="md:col-span-2">
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Price (QAR)</label>
+                                                <div className="relative">
+                                                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-semibold">QAR</span>
+                                                    <input
+                                                        type="number"
+                                                        step="0.01"
+                                                        min="0"
+                                                        value={line.unit_price}
+                                                        onChange={e => handleLineChange(idx, 'unit_price', e.target.value)}
+                                                        disabled={viewMode}
+                                                        className="w-full pl-11 p-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm font-semibold focus:outline-none"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            {/* Line Total */}
+                                            <div className="md:col-span-1 text-right pb-2">
+                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Line Total</span>
+                                                <span className="text-xs font-bold text-slate-800 dark:text-white font-mono">
+                                                    {(Number(line.quantity || 1) * Number(line.unit_price || 0)).toFixed(2)}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {/* Cost Centers Row */}
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3 pt-3 border-t border-slate-200/50 dark:border-zinc-800">
+                                            <div>
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Project CC</label>
+                                                <select
+                                                    value={line.project_cost_center_id || ''}
+                                                    onChange={e => handleLineChange(idx, 'project_cost_center_id', e.target.value)}
+                                                    disabled={viewMode}
+                                                    className="w-full p-1.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-md text-xs"
+                                                >
+                                                    <option value="">None</option>
+                                                    {projectCC.map(cc => <option key={cc.id} value={cc.id}>{cc.code} - {cc.name}</option>)}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Contract CC</label>
+                                                <select
+                                                    value={line.contract_cost_center_id || ''}
+                                                    onChange={e => handleLineChange(idx, 'contract_cost_center_id', e.target.value)}
+                                                    disabled={viewMode}
+                                                    className="w-full p-1.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-md text-xs"
+                                                >
+                                                    <option value="">None</option>
+                                                    {contractCC.map(cc => <option key={cc.id} value={cc.id}>{cc.code} - {cc.name}</option>)}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Cost Center</label>
+                                                <select
+                                                    value={line.cost_center_id || ''}
+                                                    onChange={e => handleLineChange(idx, 'cost_center_id', e.target.value)}
+                                                    disabled={viewMode}
+                                                    className="w-full p-1.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-md text-xs"
+                                                >
+                                                    <option value="">None</option>
+                                                    {genericCC.map(cc => <option key={cc.id} value={cc.id}>{cc.code} - {cc.name}</option>)}
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Total Bar */}
+                            <div className="flex justify-between items-center bg-slate-50 dark:bg-zinc-800/40 p-4 rounded-xl border border-slate-100 dark:border-zinc-800">
+                                <div className="text-xs text-slate-500">
+                                    Total {lines.length} {lines.length === 1 ? 'line item' : 'line items'}
+                                </div>
+                                <div className="text-right">
+                                    <span className="text-xs text-slate-500 font-bold uppercase tracking-wider mr-4">Total Amount</span>
+                                    <span className="text-2xl font-black text-indigo-600 dark:text-indigo-400 font-mono">
+                                        QAR {lines.reduce((acc, l) => acc + (Number(l.quantity || 1) * Number(l.unit_price || 0)), 0).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </span>
                                 </div>
                             </div>
                         </div>
 
+                        {/* Submit Button */}
                         <div className="pt-4 border-t border-slate-200 dark:border-zinc-700">
-                            <button className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-500/20 transition-all">
+                            <button 
+                                type="submit"
+                                className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-500/25 transition-all active:scale-[0.99] flex items-center justify-center gap-2 text-base"
+                            >
                                 {viewMode ? "Close" : (editMode ? "Save Changes" : "Create Bill")}
                             </button>
                         </div>
@@ -548,3 +958,4 @@ export const Bills: React.FC = () => {
         </div>
     );
 };
+export default Bills;
