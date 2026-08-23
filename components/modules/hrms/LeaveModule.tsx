@@ -353,10 +353,10 @@ export const LeaveModule: React.FC<LeaveModuleProps> = ({
                                         </td>
                                         <td className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400 max-w-xs truncate">{req.reason || 'Personal'}</td>
                                         <td className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400">
-                                            {req.attachment_url ? (
-                                                <button onClick={() => handleViewAttachment(req.attachment_url!)} className="flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-800 font-bold bg-indigo-50 dark:bg-indigo-950/30 px-2 py-1 rounded-lg border border-indigo-100 dark:border-indigo-900/50 hover:shadow-sm transition-all" title={req.attachment_name || 'View file'}>
+                                            {(req as any).ticket_url || req.attachment_url ? (
+                                                <button onClick={() => handleViewAttachment(((req as any).ticket_url || req.attachment_url)!)} className="flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-800 font-bold bg-indigo-50 dark:bg-indigo-950/30 px-2 py-1 rounded-lg border border-indigo-100 dark:border-indigo-900/50 hover:shadow-sm transition-all" title={(req as any).ticket_name || req.attachment_name || 'View file'}>
                                                     <Paperclip className="w-3.5 h-3.5" />
-                                                    <span className="max-w-[100px] truncate">{req.attachment_name || 'View file'}</span>
+                                                    <span className="max-w-[120px] truncate">{(req as any).ticket_name || req.attachment_name || ((req as any).ticket_number ? `Ticket #${(req as any).ticket_number}` : 'View Ticket')}</span>
                                                 </button>
                                             ) : <span className="text-slate-300 dark:text-zinc-700">—</span>}
                                         </td>

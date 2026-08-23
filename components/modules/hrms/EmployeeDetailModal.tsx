@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import {
     Users, Briefcase, Phone, DollarSign, FileText, Edit3,
     Plus, Trash2, X, TrendingUp, MoreVertical, ArrowRightLeft, Loader2,
-    Calendar, CheckCircle, Clock, AlertCircle, ShieldCheck
+    Calendar, CheckCircle, Clock, AlertCircle, ShieldCheck,
+    Ticket, Plane, Upload, ExternalLink, Download, Paperclip, MessageSquare, Save
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { Employee } from '../../hrms/types';
@@ -88,6 +89,87 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
         setLoadingComponents(false);
     };
 
+    // Ticket & Remarks Management State
+    const [selectedLeaveForTicket, setSelectedLeaveForTicket] = useState<any | null>(null);
+    const [ticketFile, setTicketFile] = useState<File | null>(null);
+    const [ticketNumber, setTicketNumber] = useState('');
+    const [airline, setAirline] = useState('');
+    const [leaveRemarks, setLeaveRemarks] = useState('');
+    const [savingTicket, setSavingTicket] = useState(false);
+
+    const handleOpenTicketModal = (leave: any) => {
+        setSelectedLeaveForTicket(leave);
+        setTicketFile(null);
+        setTicketNumber(leave.ticket_number || '');
+        setAirline(leave.airline || '');
+        setLeaveRemarks(leave.remarks || leave.manager_comment || '');
+    };
+
+    const handleViewTicketAttachment = async (url: string) => {
+        if (!url) return;
+        const path = url.split('/storage/v1/object/public/attachments/')[1];
+        if (!path) return window.open(url, '_blank');
+        try {
+            const { data, error } = await supabase.storage.from('attachments').createSignedUrl(path, 120);
+            if (error) throw error;
+            window.open(data.signedUrl, '_blank');
+        } catch (err: any) {
+            window.open(url, '_blank');
+        }
+    };
+
+    const handleSaveTicketDetails = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!selectedLeaveForTicket) return;
+        setSavingTicket(true);
+
+        try {
+            let ticketUrl = selectedLeaveForTicket.ticket_url || selectedLeaveForTicket.attachment_url || null;
+            let ticketName = selectedLeaveForTicket.ticket_name || selectedLeaveForTicket.attachment_name || null;
+
+            if (ticketFile) {
+                const companyId = emp.company_id || 'general';
+                const cleanFileName = ticketFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+                const path = `${companyId}/leaves/tickets/${Date.now()}_${cleanFileName}`;
+
+                const { error: uploadErr } = await supabase.storage
+                    .from('attachments')
+                    .upload(path, ticketFile, { upsert: true });
+
+                if (uploadErr) throw uploadErr;
+
+                const { data: urlData } = supabase.storage
+                    .from('attachments')
+                    .getPublicUrl(path);
+
+                ticketUrl = urlData.publicUrl;
+                ticketName = ticketFile.name;
+            }
+
+            const { error: updateErr } = await (supabase.from('leaves') as any)
+                .update({
+                    ticket_url: ticketUrl,
+                    ticket_name: ticketName,
+                    ticket_number: ticketNumber || null,
+                    airline: airline || null,
+                    remarks: leaveRemarks || null
+                })
+                .eq('id', selectedLeaveForTicket.id);
+
+            if (updateErr) throw updateErr;
+
+            alert('Ticket details and remarks saved successfully!');
+            setSelectedLeaveForTicket(null);
+            setTicketFile(null);
+            fetchEmployeeLeaves();
+        } catch (err: any) {
+            console.error('Error saving ticket details:', err);
+            alert('Failed to save ticket details: ' + (err.message || 'Unknown error'));
+        } finally {
+            setSavingTicket(false);
+        }
+    };
+
     // Fetch Leave Balances & History
     const fetchEmployeeLeaves = async () => {
         if (!emp?.id) return;
@@ -118,11 +200,22 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
 
             const types = typesData || [];
             const calculatedBalances = types.map((lt: any) => {
-                const custom = customBalances?.find((cb: any) => cb.leave_type_id === String(lt.id) || cb.leave_type_id === lt.code);
-                const total = custom ? Number(custom.total_balance || 0) : Number(lt.default_balance || 0);
+                const custom = customBalances?.find((cb: any) => 
+                    cb.leave_type_id?.toString() === String(lt.id) || 
+                    cb.leave_type_id?.toString() === lt.code
+                );
+                const total = custom && custom.total_balance != null 
+                    ? Number(custom.total_balance) 
+                    : Number(lt.default_balance || 0);
 
                 const takenFromHistory = leavesList
-                    .filter((l: any) => (l.leave_type_id === lt.id || l.type?.toLowerCase() === lt.name?.toLowerCase()) && (l.status === 'Approved' || l.status === 'approved'))
+                    .filter((l: any) => {
+                        const typeMatches = (l.leave_type_id != null && l.leave_type_id.toString() === lt.id.toString()) ||
+                            (l.type && l.type.trim().toLowerCase() === lt.name.trim().toLowerCase()) ||
+                            (l.type && l.type.trim().toLowerCase() === lt.code.trim().toLowerCase());
+                        const statusMatches = l.status === 'Approved' || l.status === 'approved';
+                        return typeMatches && statusMatches;
+                    })
                     .reduce((sum: number, l: any) => {
                         const start = new Date(l.start_date);
                         const end = new Date(l.end_date);
@@ -131,7 +224,7 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
                         return sum + (diffDays || 1);
                     }, 0);
 
-                const used = custom?.used !== undefined ? Number(custom.used) : takenFromHistory;
+                const used = Math.max(Number(custom?.used || 0), takenFromHistory);
                 const remaining = Math.max(0, total - used);
 
                 return {
@@ -791,8 +884,11 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
                                                             <th className="px-4 py-3">Duration</th>
                                                             <th className="px-4 py-3 text-center">Days</th>
                                                             <th className="px-4 py-3">Reason / Memo</th>
+                                                            <th className="px-4 py-3">Ticket / Attachment</th>
+                                                            <th className="px-4 py-3">Remarks</th>
                                                             <th className="px-4 py-3 text-center">Status</th>
                                                             <th className="px-4 py-3 text-right">Applied Date</th>
+                                                            <th className="px-4 py-3 text-center">Actions</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody className="divide-y divide-slate-100 dark:divide-zinc-700/40">
@@ -805,6 +901,7 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
                                                             const end = new Date(l.end_date);
                                                             const diffTime = Math.abs(end.getTime() - start.getTime());
                                                             const days = l.days || Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1 || 1;
+                                                            const hasTicket = !!(l.ticket_url || l.attachment_url);
 
                                                             return (
                                                                 <tr key={l.id} className="hover:bg-slate-50/50 dark:hover:bg-zinc-700/20">
@@ -819,6 +916,38 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
                                                                     </td>
                                                                     <td className="px-4 py-3 text-slate-500 dark:text-slate-400 max-w-xs truncate">
                                                                         {l.reason || l.manager_comment || '—'}
+                                                                    </td>
+                                                                    <td className="px-4 py-3">
+                                                                        {hasTicket ? (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => handleViewTicketAttachment(l.ticket_url || l.attachment_url)}
+                                                                                className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-lg text-xs font-bold transition-all shadow-xs"
+                                                                                title={l.ticket_name || l.attachment_name || 'View Travel Ticket'}
+                                                                            >
+                                                                                <Ticket className="w-3.5 h-3.5" />
+                                                                                <span className="max-w-[120px] truncate">
+                                                                                    {l.ticket_name || l.attachment_name || (l.ticket_number ? `#${l.ticket_number}` : 'View Ticket')}
+                                                                                </span>
+                                                                                <ExternalLink className="w-3 h-3 opacity-60" />
+                                                                            </button>
+                                                                        ) : (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => handleOpenTicketModal(l)}
+                                                                                className="inline-flex items-center gap-1 px-2 py-0.5 text-xs text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-zinc-700 rounded transition-colors"
+                                                                            >
+                                                                                <Plus className="w-3 h-3" />
+                                                                                Add Ticket
+                                                                            </button>
+                                                                        )}
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-slate-500 dark:text-slate-400 max-w-[150px] truncate" title={l.remarks || l.manager_comment || ''}>
+                                                                        {l.remarks ? (
+                                                                            <span className="text-slate-700 dark:text-slate-300 font-medium">{l.remarks}</span>
+                                                                        ) : (
+                                                                            <span className="text-slate-300 dark:text-zinc-600">—</span>
+                                                                        )}
                                                                     </td>
                                                                     <td className="px-4 py-3 text-center">
                                                                         <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold ${
@@ -837,6 +966,17 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
                                                                     <td className="px-4 py-3 text-right text-slate-400 font-mono">
                                                                         {formatDate(l.applied_on || l.created_at)}
                                                                     </td>
+                                                                    <td className="px-4 py-3 text-center">
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handleOpenTicketModal(l)}
+                                                                            className="px-2.5 py-1 text-xs font-bold text-indigo-600 hover:bg-indigo-50 dark:hover:bg-zinc-700 rounded-lg transition-colors flex items-center gap-1 mx-auto"
+                                                                            title="Upload Ticket & Edit Remarks"
+                                                                        >
+                                                                            <Ticket className="w-3.5 h-3.5" />
+                                                                            <span>Ticket & Remarks</span>
+                                                                        </button>
+                                                                    </td>
                                                                 </tr>
                                                             );
                                                         })}
@@ -850,6 +990,147 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
                                             </div>
                                         )}
                                     </div>
+
+                                    {/* Ticket & Remarks Modal */}
+                                    {selectedLeaveForTicket && (
+                                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
+                                            <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl space-y-6 animate-scale-up">
+                                                <div className="flex justify-between items-start">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                                                            <Ticket className="w-6 h-6" />
+                                                        </div>
+                                                        <div>
+                                                            <h3 className="font-bold text-lg text-slate-900 dark:text-white">
+                                                                Leave Ticket & Remarks
+                                                            </h3>
+                                                            <p className="text-xs text-slate-500">
+                                                                {emp.name} • {selectedLeaveForTicket.type || 'Leave'} ({formatDate(selectedLeaveForTicket.start_date)} → {formatDate(selectedLeaveForTicket.end_date)})
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSelectedLeaveForTicket(null)}
+                                                        className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
+                                                    >
+                                                        <X className="w-5 h-5" />
+                                                    </button>
+                                                </div>
+
+                                                <form onSubmit={handleSaveTicketDetails} className="space-y-4">
+                                                    {/* Existing Attached Ticket */}
+                                                    {(selectedLeaveForTicket.ticket_url || selectedLeaveForTicket.attachment_url) && (
+                                                        <div className="p-3 bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40 rounded-2xl flex items-center justify-between">
+                                                            <div className="flex items-center gap-2 overflow-hidden">
+                                                                <FileText className="w-4 h-4 text-indigo-600 shrink-0" />
+                                                                <span className="text-xs font-bold text-indigo-900 dark:text-indigo-200 truncate">
+                                                                    {selectedLeaveForTicket.ticket_name || selectedLeaveForTicket.attachment_name || 'Current Ticket File'}
+                                                                </span>
+                                                            </div>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleViewTicketAttachment(selectedLeaveForTicket.ticket_url || selectedLeaveForTicket.attachment_url)}
+                                                                className="px-2.5 py-1 text-xs font-bold bg-white dark:bg-zinc-800 text-indigo-600 hover:bg-indigo-100 rounded-lg transition-colors flex items-center gap-1 shadow-xs shrink-0"
+                                                            >
+                                                                <ExternalLink className="w-3 h-3" /> View
+                                                            </button>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Upload Ticket File */}
+                                                    <div>
+                                                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                                                            {selectedLeaveForTicket.ticket_url ? 'Replace / Upload New Ticket' : 'Upload Ticket / Boarding Pass (PDF / Image)'}
+                                                        </label>
+                                                        <div className="relative border-2 border-dashed border-slate-200 dark:border-zinc-700 hover:border-indigo-400 dark:hover:border-indigo-500 rounded-2xl p-4 text-center transition-all bg-slate-50/50 dark:bg-zinc-800/40">
+                                                            <input
+                                                                type="file"
+                                                                accept=".pdf,image/*,.doc,.docx"
+                                                                onChange={e => {
+                                                                    if (e.target.files && e.target.files[0]) {
+                                                                        setTicketFile(e.target.files[0]);
+                                                                    }
+                                                                }}
+                                                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                                            />
+                                                            <Upload className="w-6 h-6 mx-auto mb-2 text-indigo-500" />
+                                                            {ticketFile ? (
+                                                                <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400">
+                                                                    Selected: {ticketFile.name}
+                                                                </p>
+                                                            ) : (
+                                                                <p className="text-xs text-slate-500 dark:text-slate-400">
+                                                                    Click or drag & drop ticket file here
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Ticket # and Airline */}
+                                                    <div className="grid grid-cols-2 gap-3">
+                                                        <div>
+                                                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                                                                Ticket / PNR Number
+                                                            </label>
+                                                            <input
+                                                                type="text"
+                                                                value={ticketNumber}
+                                                                onChange={e => setTicketNumber(e.target.value)}
+                                                                placeholder="e.g. 157-92019482"
+                                                                className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-medium focus:ring-2 focus:ring-indigo-500/20 focus:outline-none"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                                                                Airline / Route
+                                                            </label>
+                                                            <input
+                                                                type="text"
+                                                                value={airline}
+                                                                onChange={e => setAirline(e.target.value)}
+                                                                placeholder="e.g. Qatar Airways (DOH → COK)"
+                                                                className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-medium focus:ring-2 focus:ring-indigo-500/20 focus:outline-none"
+                                                            />
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Remarks / Travel Notes */}
+                                                    <div>
+                                                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                                                            Remarks / Travel Notes
+                                                        </label>
+                                                        <textarea
+                                                            rows={3}
+                                                            value={leaveRemarks}
+                                                            onChange={e => setLeaveRemarks(e.target.value)}
+                                                            placeholder="Add any remarks, travel itinerary details, or HR notes..."
+                                                            className="w-full p-3 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-medium focus:ring-2 focus:ring-indigo-500/20 focus:outline-none"
+                                                        />
+                                                    </div>
+
+                                                    {/* Buttons */}
+                                                    <div className="flex justify-end gap-3 pt-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setSelectedLeaveForTicket(null)}
+                                                            className="px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-xl transition-colors"
+                                                        >
+                                                            Cancel
+                                                        </button>
+                                                        <button
+                                                            type="submit"
+                                                            disabled={savingTicket}
+                                                            className="px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md shadow-indigo-500/20 transition-all flex items-center gap-2 disabled:opacity-50"
+                                                        >
+                                                            {savingTicket ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                                                            Save Ticket Details
+                                                        </button>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    )}
                                 </>
                             )}
                         </div>
