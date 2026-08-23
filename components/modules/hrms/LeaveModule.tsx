@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
-    Calendar, Check, X, Settings, Plus, Trash2, Loader2, Save, Paperclip
+    Calendar, Check, X, Settings, Plus, Trash2, Loader2, Save, Paperclip,
+    Ticket, ExternalLink, Upload, FileText
 } from 'lucide-react';
 import { LeaveRequest } from '../../hrms/types';
 import { supabase } from '../../../lib/supabase';
@@ -226,31 +227,128 @@ const LeavePolicySettings: React.FC<{ onClose: () => void }> = ({ onClose }) => 
     );
 };
 
-// ─── Leave Module ─────────────────────────────────────────────────────────────
-
 export const LeaveModule: React.FC<LeaveModuleProps> = ({
     leaves, leaveTypes, employees: initialEmployees, setShowLeaveModal, onUpdateStatus, formatDate
 }) => {
+    const { currentCompanyId } = useAuth();
     const [showPolicySettings, setShowPolicySettings] = useState(false);
     const [employeesList, setEmployeesList] = useState<any[]>(initialEmployees || []);
 
-    // If employees prop is not passed or empty, fetch from database
+    // Ticket & Remarks Management State
+    const [selectedLeaveForTicket, setSelectedLeaveForTicket] = useState<any | null>(null);
+    const [ticketFile, setTicketFile] = useState<File | null>(null);
+    const [ticketNumber, setTicketNumber] = useState('');
+    const [airline, setAirline] = useState('');
+    const [leaveRemarks, setLeaveRemarks] = useState('');
+    const [savingTicket, setSavingTicket] = useState(false);
+
+    // Fetch and sync employees
+    const fetchEmployees = async () => {
+        let query = supabase.from('employees').select('id, name, employee_code, profile_id, profile_photo_url, company_id');
+        if (currentCompanyId) {
+            query = query.eq('company_id', currentCompanyId);
+        }
+        const { data } = await query;
+        if (data && data.length > 0) {
+            setEmployeesList(prev => {
+                const map = new Map();
+                prev.forEach(e => map.set(e.id, e));
+                data.forEach(e => map.set(e.id, e));
+                return Array.from(map.values());
+            });
+        }
+    };
+
+    useEffect(() => {
+        fetchEmployees();
+    }, [currentCompanyId]);
+
     useEffect(() => {
         if (initialEmployees && initialEmployees.length > 0) {
-            setEmployeesList(initialEmployees);
-        } else {
-            const fetchEmployees = async () => {
-                const { data } = await supabase.from('employees').select('id, name, employee_code');
-                if (data) setEmployeesList(data);
-            };
-            fetchEmployees();
+            setEmployeesList(prev => {
+                const map = new Map();
+                prev.forEach(e => map.set(e.id, e));
+                initialEmployees.forEach((e: any) => map.set(e.id, e));
+                return Array.from(map.values());
+            });
         }
     }, [initialEmployees]);
+
+    const handleOpenTicketModal = (leave: any) => {
+        setSelectedLeaveForTicket(leave);
+        setTicketFile(null);
+        setTicketNumber((leave as any).ticket_number || '');
+        setAirline((leave as any).airline || '');
+        setLeaveRemarks((leave as any).remarks || (leave as any).manager_comment || '');
+    };
+
+    const handleSaveTicketDetails = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!selectedLeaveForTicket) return;
+        setSavingTicket(true);
+
+        try {
+            let ticketUrl = (selectedLeaveForTicket as any).ticket_url || selectedLeaveForTicket.attachment_url || null;
+            let ticketName = (selectedLeaveForTicket as any).ticket_name || selectedLeaveForTicket.attachment_name || null;
+
+            if (ticketFile) {
+                const companyId = currentCompanyId || (selectedLeaveForTicket as any).company_id || 'general';
+                const cleanFileName = ticketFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+                const path = `${companyId}/leaves/tickets/${Date.now()}_${cleanFileName}`;
+
+                const { error: uploadErr } = await supabase.storage
+                    .from('attachments')
+                    .upload(path, ticketFile, { upsert: true });
+
+                if (uploadErr) throw uploadErr;
+
+                const { data: urlData } = supabase.storage
+                    .from('attachments')
+                    .getPublicUrl(path);
+
+                ticketUrl = urlData.publicUrl;
+                ticketName = ticketFile.name;
+            }
+
+            const { error: updateErr } = await (supabase.from('leaves') as any)
+                .update({
+                    ticket_url: ticketUrl,
+                    ticket_name: ticketName,
+                    ticket_number: ticketNumber || null,
+                    airline: airline || null,
+                    remarks: leaveRemarks || null
+                })
+                .eq('id', selectedLeaveForTicket.id);
+
+            if (updateErr) throw updateErr;
+
+            alert('Ticket details and remarks saved successfully!');
+            setSelectedLeaveForTicket(null);
+            setTicketFile(null);
+            window.location.reload();
+        } catch (err: any) {
+            console.error('Error saving ticket details:', err);
+            alert('Failed to save ticket details: ' + (err.message || 'Unknown error'));
+        } finally {
+            setSavingTicket(false);
+        }
+    };
 
     // Quick Stats Calculation
     const pendingCount = leaves.filter(l => l.status === 'Pending').length;
     const approvedCount = leaves.filter(l => l.status === 'Approved').length;
     const onLeaveCount = leaves.filter(l => l.status === 'Approved').length;
+
+    const safeFormatDate = (dStr?: string | null) => {
+        if (!dStr) return '—';
+        try {
+            const d = new Date(dStr);
+            if (isNaN(d.getTime())) return dStr;
+            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        } catch {
+            return String(dStr);
+        }
+    };
 
     return (
         <div className="p-8 h-full flex flex-col animate-page-enter">
@@ -310,60 +408,120 @@ export const LeaveModule: React.FC<LeaveModuleProps> = ({
                             <tr>
                                 <th className="px-6 py-4 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Employee</th>
                                 <th className="px-6 py-4 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Type</th>
-                                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Dates</th>
-                                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Reason</th>
-                                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Attachment</th>
+                                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Dates & Duration</th>
+                                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Reason / Remarks</th>
+                                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Ticket / Attachment</th>
                                 <th className="px-6 py-4 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Status</th>
                                 <th className="px-6 py-4 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-right">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100/50 dark:divide-zinc-800/50">
                             {leaves.length > 0 ? leaves.map((req, i) => {
-                                const matchedEmp = employeesList.find(e => e.id === (req as any).employee_id || e.id === (req as any).employeeId);
-                                const empName = (req as any).employees?.name || 
-                                                (req as any).employee_name || 
-                                                matchedEmp?.name || 
-                                                (req as any).name ||
-                                                `Employee #${(req as any).employee_id ? (req as any).employee_id.substring(0, 4) : (req.id ? req.id.substring(0, 4) : i + 1)}`;
-                                const empCode = (req as any).employees?.employee_code || matchedEmp?.employee_code;
+                                const rawEmp = (req as any).employees || (req as any).employee;
+                                const joinedEmp = Array.isArray(rawEmp) ? rawEmp[0] : (rawEmp && typeof rawEmp === 'object' ? rawEmp : null);
+                                const targetEmpId = (req as any).employee_id || (req as any).employeeId || (req as any).user_id || joinedEmp?.id;
 
-                                const sDate = (req as any).start_date || (req as any).startDate;
-                                const eDate = (req as any).end_date || (req as any).endDate;
+                                const matchedEmp = employeesList.find(e => 
+                                    (targetEmpId && String(e.id).toLowerCase() === String(targetEmpId).toLowerCase()) ||
+                                    (targetEmpId && e.profile_id && String(e.profile_id).toLowerCase() === String(targetEmpId).toLowerCase()) ||
+                                    ((req as any).employee_code && e.employee_code && String(e.employee_code).toLowerCase() === String((req as any).employee_code).toLowerCase())
+                                ) || joinedEmp;
+
+                                const empName = matchedEmp?.name || 
+                                                joinedEmp?.name || 
+                                                (req as any).employee_name || 
+                                                (req as any).name || 
+                                                (matchedEmp?.employee_code ? `Employee (${matchedEmp.employee_code})` : null) ||
+                                                (targetEmpId ? `Employee #${String(targetEmpId).substring(0, 6)}` : `Leave #${(req.id || '').substring(0, 4)}`);
+
+                                const empCode = matchedEmp?.employee_code || 
+                                                joinedEmp?.employee_code || 
+                                                (req as any).employee_code || 
+                                                (req as any).emp_code || '';
+
+                                const sDate = (req as any).start_date || (req as any).startDate || (req as any).from;
+                                const eDate = (req as any).end_date || (req as any).endDate || (req as any).to;
+
+                                let totalDays = (req as any).days;
+                                if (!totalDays && sDate && eDate) {
+                                    const start = new Date(sDate);
+                                    const end = new Date(eDate);
+                                    if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+                                        totalDays = Math.round(Math.abs(end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+                                    }
+                                }
+
+                                const hasTicket = !!((req as any).ticket_url || req.attachment_url);
 
                                 return (
                                     <tr key={req.id || i} className="hover:bg-indigo-50/30 dark:hover:bg-indigo-900/20 transition-colors">
                                         <td className="px-6 py-4">
                                             <div className="font-bold text-slate-800 dark:text-slate-200">{empName}</div>
                                             {empCode && (
-                                                <span className="text-[10px] font-mono text-slate-400 block mt-0.5">{empCode}</span>
+                                                <span className="text-[10px] font-mono font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-1.5 py-0.5 rounded block w-fit mt-0.5">
+                                                    {empCode}
+                                                </span>
                                             )}
                                         </td>
                                         <td className="px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300">
-                                            {leaveTypes.find(lt => lt.id === req.leave_type_id)?.name || req.type}
+                                            {leaveTypes.find(lt => String(lt.id) === String(req.leave_type_id))?.name || req.type || 'Leave'}
                                         </td>
-                                        <td className="px-6 py-4 text-sm font-mono text-slate-500 dark:text-slate-400">
+                                        <td className="px-6 py-4">
                                             {sDate ? (
-                                                <span>
-                                                    {formatDate(sDate)}
-                                                    {eDate && eDate !== sDate ? ` → ${formatDate(eDate)}` : ''}
+                                                <div>
+                                                    <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                                                        {safeFormatDate(sDate)} {eDate && eDate !== sDate ? `→ ${safeFormatDate(eDate)}` : ''}
+                                                    </div>
+                                                    {totalDays ? (
+                                                        <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mt-0.5 block">
+                                                            {totalDays} {totalDays === 1 ? 'day' : 'days'}
+                                                        </span>
+                                                    ) : null}
+                                                </div>
+                                            ) : (req as any).appliedOn || (req as any).created_at ? (
+                                                <span className="text-xs font-mono text-slate-400">
+                                                    {safeFormatDate((req as any).appliedOn || (req as any).created_at)}
                                                 </span>
-                                            ) : req.appliedOn ? (
-                                                formatDate(req.appliedOn)
-                                            ) : '—'}
+                                            ) : (
+                                                <span className="text-slate-300 dark:text-zinc-700">—</span>
+                                            )}
                                         </td>
-                                        <td className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400 max-w-xs truncate">{req.reason || 'Personal'}</td>
+                                        <td className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400 max-w-xs">
+                                            <p className="truncate font-medium">{req.reason || 'Leave'}</p>
+                                            {(req as any).remarks && (
+                                                <p className="text-xs text-slate-400 truncate mt-0.5">
+                                                    Remark: {(req as any).remarks}
+                                                </p>
+                                            )}
+                                        </td>
                                         <td className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400">
-                                            {(req as any).ticket_url || req.attachment_url ? (
-                                                <button onClick={() => handleViewAttachment(((req as any).ticket_url || req.attachment_url)!)} className="flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-800 font-bold bg-indigo-50 dark:bg-indigo-950/30 px-2 py-1 rounded-lg border border-indigo-100 dark:border-indigo-900/50 hover:shadow-sm transition-all" title={(req as any).ticket_name || req.attachment_name || 'View file'}>
-                                                    <Paperclip className="w-3.5 h-3.5" />
-                                                    <span className="max-w-[120px] truncate">{(req as any).ticket_name || req.attachment_name || ((req as any).ticket_number ? `Ticket #${(req as any).ticket_number}` : 'View Ticket')}</span>
+                                            {hasTicket ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleViewAttachment(((req as any).ticket_url || req.attachment_url)!)}
+                                                    className="flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-800 font-bold bg-indigo-50 dark:bg-indigo-950/30 px-2.5 py-1.5 rounded-lg border border-indigo-100 dark:border-indigo-900/50 hover:shadow-sm transition-all"
+                                                    title={(req as any).ticket_name || req.attachment_name || 'View Travel Ticket'}
+                                                >
+                                                    <Ticket className="w-3.5 h-3.5" />
+                                                    <span className="max-w-[120px] truncate">
+                                                        {(req as any).ticket_name || req.attachment_name || ((req as any).ticket_number ? `#${(req as any).ticket_number}` : 'View Ticket')}
+                                                    </span>
+                                                    <ExternalLink className="w-3 h-3 opacity-60" />
                                                 </button>
-                                            ) : <span className="text-slate-300 dark:text-zinc-700">—</span>}
+                                            ) : (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleOpenTicketModal(req)}
+                                                    className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-zinc-800 rounded-lg transition-colors"
+                                                >
+                                                    <Plus className="w-3 h-3" /> Add Ticket
+                                                </button>
+                                            )}
                                         </td>
                                         <td className="px-6 py-4">
                                             <div className="flex flex-col gap-1">
-                                                <span className={`px-2 py-1 rounded-lg text-xs font-bold w-fit ${req.status === 'Approved' ? 'bg-emerald-100 text-emerald-700' :
-                                                    req.status === 'Rejected' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'
+                                                <span className={`px-2 py-1 rounded-lg text-xs font-bold w-fit ${req.status === 'Approved' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' :
+                                                    req.status === 'Rejected' ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
                                                     }`}>Final: {req.status}</span>
                                                 {req.status === 'Pending' && (
                                                     <div className="flex flex-col gap-0.5 mt-1">
@@ -373,25 +531,35 @@ export const LeaveModule: React.FC<LeaveModuleProps> = ({
                                                 )}
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4 text-right flex justify-end gap-2">
-                                            {req.status === 'Pending' && (
-                                                <div className="flex flex-col gap-2 scale-90 origin-right">
-                                                    {(!req.level1_status || req.level1_status === 'Pending') && (
-                                                        <div className="flex items-center justify-end gap-1">
-                                                            <span className="text-[10px] font-bold text-slate-400 mr-1">L1:</span>
-                                                            <button title="Approve L1" onClick={() => onUpdateStatus(req.id, 'Approved', 1)} className="p-1 px-2 border border-emerald-200 bg-emerald-50 text-emerald-600 rounded flex gap-1 items-center hover:bg-emerald-100 transition-colors text-xs font-bold"><Check className="w-3 h-3" /> Approve</button>
-                                                            <button title="Reject L1" onClick={() => onUpdateStatus(req.id, 'Rejected', 1)} className="p-1 px-2 border border-rose-200 bg-rose-50 text-rose-600 rounded flex gap-1 items-center hover:bg-rose-100 transition-colors text-xs font-bold"><X className="w-3 h-3" /> Reject</button>
-                                                        </div>
-                                                    )}
-                                                    {req.level1_status === 'Approved' && (!req.level2_status || req.level2_status === 'Pending') && (
-                                                        <div className="flex items-center justify-end gap-1">
-                                                            <span className="text-[10px] font-bold text-slate-400 mr-1">L2:</span>
-                                                            <button title="Approve L2" onClick={() => onUpdateStatus(req.id, 'Approved', 2)} className="p-1 px-2 border border-emerald-200 bg-emerald-50 text-emerald-600 rounded flex gap-1 items-center hover:bg-emerald-100 transition-colors text-xs font-bold"><Check className="w-3 h-3" /> Approve</button>
-                                                            <button title="Reject L2" onClick={() => onUpdateStatus(req.id, 'Rejected', 2)} className="p-1 px-2 border border-rose-200 bg-rose-50 text-rose-600 rounded flex gap-1 items-center hover:bg-rose-100 transition-colors text-xs font-bold"><X className="w-3 h-3" /> Reject</button>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
+                                        <td className="px-6 py-4 text-right">
+                                            <div className="flex items-center justify-end gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleOpenTicketModal(req)}
+                                                    className="px-2.5 py-1 text-xs font-bold text-indigo-600 hover:bg-indigo-50 dark:hover:bg-zinc-800 rounded-lg transition-colors flex items-center gap-1"
+                                                    title="Upload Ticket & Edit Remarks"
+                                                >
+                                                    <Ticket className="w-3.5 h-3.5" />
+                                                    <span className="hidden sm:inline">Ticket & Remarks</span>
+                                                </button>
+
+                                                {req.status === 'Pending' && (
+                                                    <div className="flex items-center gap-1 scale-90 origin-right">
+                                                        {(!req.level1_status || req.level1_status === 'Pending') && (
+                                                            <>
+                                                                <button title="Approve L1" onClick={() => onUpdateStatus(req.id, 'Approved', 1)} className="p-1 px-2 border border-emerald-200 bg-emerald-50 text-emerald-600 rounded flex gap-1 items-center hover:bg-emerald-100 transition-colors text-xs font-bold"><Check className="w-3 h-3" /> Approve</button>
+                                                                <button title="Reject L1" onClick={() => onUpdateStatus(req.id, 'Rejected', 1)} className="p-1 px-2 border border-rose-200 bg-rose-50 text-rose-600 rounded flex gap-1 items-center hover:bg-rose-100 transition-colors text-xs font-bold"><X className="w-3 h-3" /> Reject</button>
+                                                            </>
+                                                        )}
+                                                        {req.level1_status === 'Approved' && (!req.level2_status || req.level2_status === 'Pending') && (
+                                                            <>
+                                                                <button title="Approve L2" onClick={() => onUpdateStatus(req.id, 'Approved', 2)} className="p-1 px-2 border border-emerald-200 bg-emerald-50 text-emerald-600 rounded flex gap-1 items-center hover:bg-emerald-100 transition-colors text-xs font-bold"><Check className="w-3 h-3" /> Approve</button>
+                                                                <button title="Reject L2" onClick={() => onUpdateStatus(req.id, 'Rejected', 2)} className="p-1 px-2 border border-rose-200 bg-rose-50 text-rose-600 rounded flex gap-1 items-center hover:bg-rose-100 transition-colors text-xs font-bold"><X className="w-3 h-3" /> Reject</button>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
                                         </td>
                                     </tr>
                                 );
@@ -404,6 +572,147 @@ export const LeaveModule: React.FC<LeaveModuleProps> = ({
                     </table>
                 </div>
             </div>
+
+            {/* Ticket & Remarks Modal */}
+            {selectedLeaveForTicket && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
+                    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl space-y-6 animate-scale-up">
+                        <div className="flex justify-between items-start">
+                            <div className="flex items-center gap-3">
+                                <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                                    <Ticket className="w-6 h-6" />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-lg text-slate-900 dark:text-white">
+                                        Leave Ticket & Remarks
+                                    </h3>
+                                    <p className="text-xs text-slate-500">
+                                        {selectedLeaveForTicket.type || 'Leave'} ({safeFormatDate(selectedLeaveForTicket.start_date || selectedLeaveForTicket.startDate)} → {safeFormatDate(selectedLeaveForTicket.end_date || selectedLeaveForTicket.endDate)})
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setSelectedLeaveForTicket(null)}
+                                className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleSaveTicketDetails} className="space-y-4">
+                            {/* Existing Attached Ticket */}
+                            {((selectedLeaveForTicket as any).ticket_url || selectedLeaveForTicket.attachment_url) && (
+                                <div className="p-3 bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40 rounded-2xl flex items-center justify-between">
+                                    <div className="flex items-center gap-2 overflow-hidden">
+                                        <FileText className="w-4 h-4 text-indigo-600 shrink-0" />
+                                        <span className="text-xs font-bold text-indigo-900 dark:text-indigo-200 truncate">
+                                            {(selectedLeaveForTicket as any).ticket_name || selectedLeaveForTicket.attachment_name || 'Current Ticket Document'}
+                                        </span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleViewAttachment(((selectedLeaveForTicket as any).ticket_url || selectedLeaveForTicket.attachment_url)!)}
+                                        className="px-2.5 py-1 text-xs font-bold bg-white dark:bg-zinc-800 text-indigo-600 hover:bg-indigo-100 rounded-lg transition-colors flex items-center gap-1 shadow-xs shrink-0"
+                                    >
+                                        <ExternalLink className="w-3 h-3" /> View
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Upload Ticket File */}
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                                    {(selectedLeaveForTicket as any).ticket_url ? 'Replace / Upload New Ticket' : 'Upload Ticket / Boarding Pass (PDF / Image)'}
+                                </label>
+                                <div className="relative border-2 border-dashed border-slate-200 dark:border-zinc-700 hover:border-indigo-400 dark:hover:border-indigo-500 rounded-2xl p-4 text-center transition-all bg-slate-50/50 dark:bg-zinc-800/40">
+                                    <input
+                                        type="file"
+                                        accept=".pdf,image/*,.doc,.docx"
+                                        onChange={e => {
+                                            if (e.target.files && e.target.files[0]) {
+                                                setTicketFile(e.target.files[0]);
+                                            }
+                                        }}
+                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                    />
+                                    <Upload className="w-6 h-6 mx-auto mb-2 text-indigo-500" />
+                                    {ticketFile ? (
+                                        <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400">
+                                            Selected: {ticketFile.name}
+                                        </p>
+                                    ) : (
+                                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                                            Click or drag & drop ticket file here
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Ticket # and Airline */}
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                                        Ticket / PNR Number
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={ticketNumber}
+                                        onChange={e => setTicketNumber(e.target.value)}
+                                        placeholder="e.g. 157-92019482"
+                                        className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-medium focus:ring-2 focus:ring-indigo-500/20 focus:outline-none"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                                        Airline / Route
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={airline}
+                                        onChange={e => setAirline(e.target.value)}
+                                        placeholder="e.g. Qatar Airways (DOH → COK)"
+                                        className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-medium focus:ring-2 focus:ring-indigo-500/20 focus:outline-none"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Remarks / Travel Notes */}
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                                    Remarks / Travel Notes
+                                </label>
+                                <textarea
+                                    rows={3}
+                                    value={leaveRemarks}
+                                    onChange={e => setLeaveRemarks(e.target.value)}
+                                    placeholder="Add any remarks, travel itinerary details, or HR notes..."
+                                    className="w-full p-3 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-medium focus:ring-2 focus:ring-indigo-500/20 focus:outline-none"
+                                />
+                            </div>
+
+                            {/* Buttons */}
+                            <div className="flex justify-end gap-3 pt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedLeaveForTicket(null)}
+                                    className="px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-xl transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={savingTicket}
+                                    className="px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md shadow-indigo-500/20 transition-all flex items-center gap-2 disabled:opacity-50"
+                                >
+                                    {savingTicket ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                                    Save Ticket Details
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
 
             {/* Policy Settings Modal */}
             {showPolicySettings && <LeavePolicySettings onClose={() => setShowPolicySettings(false)} />}
