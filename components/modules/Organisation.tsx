@@ -1066,6 +1066,50 @@ export const MASTER_CONFIG: Record<string, MasterTableConfig> = {
             { key: 'end_date', label: 'End' },
             { key: 'status', label: 'Status' }
         ]
+    },
+    'PROJECT_CATEGORIES': {
+        tableName: 'org_project_categories',
+        displayName: 'Project Category',
+        description: 'Categories for project classification (e.g. EPC, Maintenance, Fabrication, Consulting)',
+        fields: [
+            { key: 'name', label: 'Category Name', type: 'text', required: true },
+            { key: 'code', label: 'Category Code', type: 'text', required: true },
+            { key: 'description', label: 'Description', type: 'textarea' }
+        ],
+        columns: [{ key: 'name', label: 'Name' }, { key: 'code', label: 'Code' }, { key: 'description', label: 'Description' }]
+    },
+    'PROJECT_TYPES': {
+        tableName: 'org_project_types',
+        displayName: 'Project Type',
+        description: 'Types of projects (e.g. Fixed Price, T&M, Milestone-based, Retainer)',
+        fields: [
+            { key: 'name', label: 'Type Name', type: 'text', required: true },
+            { key: 'code', label: 'Type Code', type: 'text', required: true },
+            { key: 'description', label: 'Description', type: 'textarea' }
+        ],
+        columns: [{ key: 'name', label: 'Name' }, { key: 'code', label: 'Code' }, { key: 'description', label: 'Description' }]
+    },
+    'ISSUE_CATEGORIES': {
+        tableName: 'org_issue_categories',
+        displayName: 'Issue Category',
+        description: 'Project issue categories (e.g. Technical, Material, Manpower, Client, Subcontractor)',
+        fields: [
+            { key: 'name', label: 'Category Name', type: 'text', required: true },
+            { key: 'code', label: 'Category Code', type: 'text', required: true },
+            { key: 'description', label: 'Description', type: 'textarea' }
+        ],
+        columns: [{ key: 'name', label: 'Name' }, { key: 'code', label: 'Code' }, { key: 'description', label: 'Description' }]
+    },
+    'RISK_CATEGORIES': {
+        tableName: 'org_risk_categories',
+        displayName: 'Risk Category',
+        description: 'Project risk categories (e.g. Financial, Operational, Environmental, Schedule)',
+        fields: [
+            { key: 'name', label: 'Category Name', type: 'text', required: true },
+            { key: 'code', label: 'Category Code', type: 'text', required: true },
+            { key: 'description', label: 'Description', type: 'textarea' }
+        ],
+        columns: [{ key: 'name', label: 'Name' }, { key: 'code', label: 'Code' }, { key: 'description', label: 'Description' }]
     }
 };
 
@@ -1356,6 +1400,24 @@ const GenericMastersView = ({
                                 key={tab.id}
                                 onClick={() => { setActiveTab(tab.id); setSearch(''); }}
                                 className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-white dark:bg-zinc-800 text-blue-700 dark:text-blue-300 shadow-sm' : 'text-blue-600/70 hover:text-blue-800 dark:text-blue-400/70'}`}
+                            >
+                                {tab.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="flex gap-1 p-1 bg-emerald-50 dark:bg-emerald-900/10 rounded-2xl w-fit overflow-x-auto border border-emerald-100 dark:border-emerald-800/30">
+                        <span className="px-3 py-2.5 text-xs font-extrabold text-emerald-500 uppercase tracking-widest self-center">Project Masters:</span>
+                        {[
+                            { id: 'PROJECT_CATEGORIES', label: 'Project Categories' },
+                            { id: 'PROJECT_TYPES', label: 'Project Types' },
+                            { id: 'ISSUE_CATEGORIES', label: 'Issue Categories' },
+                            { id: 'RISK_CATEGORIES', label: 'Risk Categories' },
+                        ].map(tab => (
+                            <button
+                                key={tab.id}
+                                onClick={() => { setActiveTab(tab.id); setSearch(''); }}
+                                className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-white dark:bg-zinc-800 text-emerald-700 dark:text-emerald-300 shadow-sm' : 'text-emerald-600/70 hover:text-emerald-800 dark:text-emerald-400/70'}`}
                             >
                                 {tab.label}
                             </button>
@@ -2134,8 +2196,26 @@ const ALL_PERMISSIONS = {
         { id: 'inventory.manage', label: 'Manage Inventory' }
     ],
     PROJECTS: [
-        { id: 'projects.view', label: 'View Projects' },
-        { id: 'projects.manage', label: 'Manage Projects' }
+        { id: 'projects.view', label: 'View Projects & Dashboard' },
+        { id: 'projects.create', label: 'Create New Projects' },
+        { id: 'projects.edit', label: 'Edit Projects' },
+        { id: 'projects.submit', label: 'Submit Projects for Approval' },
+        { id: 'projects.approve', label: 'Approve / Reject Projects (Project Head)' },
+        { id: 'projects.assign_supervisor', label: 'Assign Supervisors' },
+        { id: 'projects.daily_activity.create', label: 'Create Daily Activities' },
+        { id: 'projects.daily_activity.review', label: 'Review Daily Activities' },
+        { id: 'projects.issues.manage', label: 'Manage Issues & Risks' },
+        { id: 'projects.safety.manage', label: 'Manage Safety Observations' },
+        { id: 'projects.complete', label: 'Submit & Review Completion' },
+        { id: 'projects.reopen', label: 'Reopen Completed Projects' },
+        { id: 'projects.documents.upload', label: 'Upload Mandatory Project Documents' },
+        { id: 'projects.documents.view', label: 'View Project Documents' },
+        { id: 'projects.reports.view', label: 'View Project Reports' },
+        { id: 'projects.reports.export', label: 'Export Project Reports' },
+        { id: 'projects.proposals.create', label: 'Create Proposals (Tech/Comm)' },
+        { id: 'projects.proposals.review', label: 'Review Proposals (First Reviewer/Finance)' },
+        { id: 'projects.proposals.approve', label: 'Final Approve Proposals (Dr Ali)' },
+        { id: 'projects.proposals.reassign', label: 'Reassign Proposal Reviewers' },
     ],
     DOCUMENTS: [
         { id: 'documents.view', label: 'View Documents' },

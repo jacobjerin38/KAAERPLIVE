@@ -328,6 +328,59 @@ export class WorkflowEngine {
                 type_label: 'Overtime Request',
                 status: data.status
             };
+        } else if (triggerType === 'TECHNICAL_PROPOSAL' || triggerType === 'COMMERCIAL_PROPOSAL') {
+            const { data } = await (supabase as any).from('project_proposals')
+                .select('*, client:client_id(name), first_reviewer:first_reviewer_id(name)')
+                .eq('id', entityId)
+                .maybeSingle();
+            if (!data) return null;
+            return {
+                reason: data.remarks || data.title,
+                subject: data.title,
+                proposal_type: data.proposal_type,
+                client_name: data.client?.name,
+                rfq_reference: data.rfq_reference,
+                currency: data.currency,
+                submission_deadline: data.submission_deadline,
+                current_revision: data.current_revision,
+                type_label: data.proposal_type === 'TECHNICAL' ? 'Technical Proposal' : 'Commercial Proposal',
+                status: data.status
+            };
+        } else if (triggerType === 'PROJECT_APPROVAL') {
+            const { data } = await (supabase as any).from('pm_projects')
+                .select('*, client:client_id(name), project_manager:project_manager_id(name)')
+                .eq('id', entityId)
+                .maybeSingle();
+            if (!data) return null;
+            return {
+                reason: data.remarks || data.name,
+                subject: data.name,
+                client_name: data.client?.name,
+                lpo_number: data.lpo_number,
+                lpo_cost: data.lpo_cost,
+                project_manager: data.project_manager?.name,
+                start_date: data.start_date,
+                end_date: data.end_date,
+                type_label: 'Project Approval',
+                status: data.status
+            };
+        } else if (triggerType === 'PROJECT_COMPLETION') {
+            const { data } = await (supabase as any).from('project_completion_requests')
+                .select('*, project:project_id(name, client:client_id(name))')
+                .eq('id', entityId)
+                .maybeSingle();
+            if (!data) return null;
+            return {
+                reason: data.completion_summary,
+                subject: `Completion: ${data.project?.name || 'Project'}`,
+                project_name: data.project?.name,
+                client_name: data.project?.client?.name,
+                actual_completion_date: data.actual_completion_date,
+                final_completion_pct: data.final_completion_pct,
+                outstanding_work: data.outstanding_work,
+                type_label: 'Project Completion',
+                status: data.status
+            };
         }
         return null;
     }
@@ -615,6 +668,76 @@ export class WorkflowEngine {
                 updateData.approved_hours = otReq?.ot_hours || 0;
             }
             await (supabase as any).from('overtime_requests').update(updateData).eq('id', entityId);
+        } else if (type === 'TECHNICAL_PROPOSAL' || type === 'COMMERCIAL_PROPOSAL') {
+            const propStatus = status === 'APPROVED' ? 'APPROVED' : status === 'REJECTED' ? 'REJECTED' : status;
+            await (supabase as any).from('project_proposals').update({
+                status: propStatus,
+                is_locked: status === 'APPROVED',
+                locked_at: status === 'APPROVED' ? new Date().toISOString() : null
+            }).eq('id', entityId);
+
+            // Audit log
+            const { data: prop } = await (supabase as any).from('project_proposals').select('company_id, current_revision').eq('id', entityId).maybeSingle();
+            if (prop) {
+                await (supabase as any).from('project_proposal_audit').insert([{
+                    company_id: prop.company_id,
+                    proposal_id: entityId,
+                    action: status === 'APPROVED' ? 'FINAL_APPROVED' : 'REJECTED',
+                    actor_id: (await supabase.auth.getUser()).data.user?.id || '00000000-0000-0000-0000-000000000000',
+                    previous_status: 'PENDING_FINAL_APPROVAL',
+                    new_status: propStatus,
+                    remarks: `Proposal ${status === 'APPROVED' ? 'fully approved and locked' : 'rejected via workflow'}`
+                }]);
+            }
+        } else if (type === 'PROJECT_APPROVAL') {
+            const projStatus = status === 'APPROVED' ? 'APPROVED' : status === 'REJECTED' ? 'REJECTED' : status;
+            await (supabase as any).from('pm_projects').update({
+                status: projStatus
+            }).eq('id', entityId);
+
+            const { data: proj } = await (supabase as any).from('pm_projects').select('company_id').eq('id', entityId).maybeSingle();
+            if (proj) {
+                await (supabase as any).from('project_audit_log').insert([{
+                    company_id: proj.company_id,
+                    project_id: entityId,
+                    entity_type: 'PROJECT',
+                    entity_id: entityId,
+                    action: status === 'APPROVED' ? 'PROJECT_APPROVED' : 'PROJECT_REJECTED',
+                    actor_id: (await supabase.auth.getUser()).data.user?.id || '00000000-0000-0000-0000-000000000000',
+                    previous_status: 'PENDING_PROJECT_HEAD_APPROVAL',
+                    new_status: projStatus,
+                    remarks: `Project ${status === 'APPROVED' ? 'approved by Project Head' : 'rejected'}`
+                }]);
+            }
+        } else if (type === 'PROJECT_COMPLETION') {
+            const compStatus = status === 'APPROVED' ? 'APPROVED' : status === 'REJECTED' ? 'REJECTED' : status;
+            await (supabase as any).from('project_completion_requests').update({
+                status: compStatus,
+                reviewed_at: new Date().toISOString()
+            }).eq('id', entityId);
+
+            const { data: compReq } = await (supabase as any).from('project_completion_requests').select('company_id, project_id').eq('id', entityId).maybeSingle();
+            if (compReq) {
+                if (status === 'APPROVED') {
+                    await (supabase as any).from('pm_projects').update({
+                        status: 'COMPLETED',
+                        is_locked: true,
+                        locked_at: new Date().toISOString(),
+                        completion_pct: 100
+                    }).eq('id', compReq.project_id);
+                }
+                await (supabase as any).from('project_audit_log').insert([{
+                    company_id: compReq.company_id,
+                    project_id: compReq.project_id,
+                    entity_type: 'COMPLETION',
+                    entity_id: entityId,
+                    action: status === 'APPROVED' ? 'COMPLETION_APPROVED' : 'COMPLETION_REJECTED',
+                    actor_id: (await supabase.auth.getUser()).data.user?.id || '00000000-0000-0000-0000-000000000000',
+                    previous_status: 'COMPLETION_REVIEW',
+                    new_status: compStatus,
+                    remarks: `Project completion ${status === 'APPROVED' ? 'approved and project locked' : 'rejected'}`
+                }]);
+            }
         }
     }
 }
