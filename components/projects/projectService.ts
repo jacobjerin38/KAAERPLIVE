@@ -135,12 +135,10 @@ export async function fetchProposals(companyId: string, type?: 'TECHNICAL' | 'CO
             first_reviewer:first_reviewer_id(id, name, email),
             revisions:project_proposal_revisions(
                 id, revision_number, technical_file_url, quotation_file_url, costing_sheet_file_url,
-                status, return_reason, rejection_reason, remarks, created_at,
-                submitter:submitted_by(id, name)
+                status, return_reason, rejection_reason, remarks, created_at, submitted_by
             ),
             audit:project_proposal_audit(
-                id, action, previous_status, new_status, remarks, created_at,
-                actor:actor_id(id, full_name)
+                id, action, previous_status, new_status, remarks, created_at, actor_id
             )
         `)
         .eq('company_id', companyId)
@@ -496,8 +494,7 @@ export async function fetchProjects(companyId: string) {
             technical_proposal:technical_proposal_id(id, title, status),
             commercial_proposal:commercial_proposal_id(id, title, status),
             documents:project_required_documents(
-                id, document_type, file_url, file_name, version, confirmed, uploaded_at,
-                uploader:uploaded_by(id, name)
+                id, document_type, file_url, file_name, version, confirmed, uploaded_at, uploaded_by, confirmed_by, confirmed_at
             ),
             supervisors:project_supervisors(
                 id, responsibilities, start_date, end_date, is_active,
@@ -526,7 +523,7 @@ export async function fetchProjectDetails(projectId: string) {
     const { data, error } = await supabase.from('pm_projects')
         .select(`
             *,
-            client:client_id(id, name, primary_email, primary_phone),
+            client:client_id(id, name, email, phone),
             deal:deal_id(id, title, value),
             manager:project_manager_id(id, name, email, designation),
             category:project_category_id(id, name),
@@ -535,8 +532,7 @@ export async function fetchProjectDetails(projectId: string) {
             technical_proposal:technical_proposal_id(id, title, status, quotation_reference),
             commercial_proposal:commercial_proposal_id(id, title, status, quotation_reference),
             documents:project_required_documents(
-                id, document_type, file_url, file_name, version, confirmed, confirmed_at, uploaded_at,
-                uploader:uploaded_by(id, name)
+                id, document_type, file_url, file_name, version, confirmed, confirmed_at, uploaded_at, uploaded_by, confirmed_by
             ),
             supervisors:project_supervisors(
                 id, responsibilities, start_date, end_date, is_active,
@@ -563,12 +559,10 @@ export async function fetchProjectDetails(projectId: string) {
             ),
             completion_request:project_completion_requests(
                 id, actual_completion_date, final_completion_pct, completion_summary, outstanding_work, final_remarks,
-                completion_report_url, handover_document_url, testing_records_url, status, return_reason, submitted_at,
-                submitter:submitted_by(id, name)
+                completion_report_url, handover_document_url, testing_records_url, status, return_reason, submitted_at, submitted_by
             ),
             audit:project_audit_log(
-                id, action, previous_status, new_status, remarks, created_at,
-                actor:actor_id(id, full_name)
+                id, action, previous_status, new_status, remarks, created_at, actor_id
             )
         `)
         .eq('id', projectId)
