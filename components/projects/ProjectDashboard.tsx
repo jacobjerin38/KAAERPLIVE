@@ -7,17 +7,24 @@ import {
 interface ProjectDashboardProps {
     projects: any[];
     proposals: any[];
+    activities?: any[];
+    issues?: any[];
+    risks?: any[];
     onSelectProject?: (proj: any) => void;
     onNewProject?: () => void;
     onNewProposal?: (type: 'TECHNICAL' | 'COMMERCIAL') => void;
+    onNewTechnicalProposal?: () => void;
+    onNewCommercialProposal?: () => void;
 }
 
 export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
-    projects,
-    proposals,
+    projects = [],
+    proposals = [],
     onSelectProject,
     onNewProject,
-    onNewProposal
+    onNewProposal,
+    onNewTechnicalProposal,
+    onNewCommercialProposal
 }) => {
     // Metrics Calculations
     const metrics = useMemo(() => {
@@ -203,13 +210,19 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                         </div>
                         <div className="flex gap-1.5">
                             <button
-                                onClick={() => onNewProposal && onNewProposal('TECHNICAL')}
+                                onClick={() => {
+                                    if (onNewProposal) onNewProposal('TECHNICAL');
+                                    else if (onNewTechnicalProposal) onNewTechnicalProposal();
+                                }}
                                 className="px-2.5 py-1 text-[11px] font-bold bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 rounded-lg hover:bg-blue-100"
                             >
                                 + Tech
                             </button>
                             <button
-                                onClick={() => onNewProposal && onNewProposal('COMMERCIAL')}
+                                onClick={() => {
+                                    if (onNewProposal) onNewProposal('COMMERCIAL');
+                                    else if (onNewCommercialProposal) onNewCommercialProposal();
+                                }}
                                 className="px-2.5 py-1 text-[11px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 rounded-lg hover:bg-emerald-100"
                             >
                                 + Comm

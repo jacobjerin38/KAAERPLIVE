@@ -8,7 +8,9 @@ interface ProposalsListProps {
     proposals: any[];
     loading: boolean;
     onSelectProposal: (proposal: any) => void;
-    onNewProposal: (type: 'TECHNICAL' | 'COMMERCIAL') => void;
+    onNewProposal?: (type: 'TECHNICAL' | 'COMMERCIAL') => void;
+    onNewTechnicalProposal?: () => void;
+    onNewCommercialProposal?: () => void;
     onRefresh: () => void;
 }
 
@@ -17,6 +19,8 @@ export const ProposalsList: React.FC<ProposalsListProps> = ({
     loading,
     onSelectProposal,
     onNewProposal,
+    onNewTechnicalProposal,
+    onNewCommercialProposal,
     onRefresh
 }) => {
     const [activeTypeTab, setActiveTypeTab] = useState<'ALL' | 'TECHNICAL' | 'COMMERCIAL'>('ALL');
@@ -107,14 +111,20 @@ export const ProposalsList: React.FC<ProposalsListProps> = ({
                 </div>
                 <div className="flex flex-wrap gap-2.5">
                     <button
-                        onClick={() => onNewProposal('TECHNICAL')}
+                        onClick={() => {
+                            if (onNewProposal) onNewProposal('TECHNICAL');
+                            else if (onNewTechnicalProposal) onNewTechnicalProposal();
+                        }}
                         className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm transition-all"
                     >
                         <Plus className="w-4 h-4" />
                         <span>New Technical Proposal</span>
                     </button>
                     <button
-                        onClick={() => onNewProposal('COMMERCIAL')}
+                        onClick={() => {
+                            if (onNewProposal) onNewProposal('COMMERCIAL');
+                            else if (onNewCommercialProposal) onNewCommercialProposal();
+                        }}
                         className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm transition-all"
                     >
                         <Plus className="w-4 h-4" />

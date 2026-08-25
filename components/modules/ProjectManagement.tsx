@@ -220,6 +220,10 @@ export const ProjectManagement: React.FC = () => {
                                 risks={hubData.risks}
                                 onSelectProject={(p) => setSelectedProject(p)}
                                 onNewProject={() => setShowProjectModal(true)}
+                                onNewProposal={(type) => {
+                                    setProposalModalType(type);
+                                    setShowProposalModal(true);
+                                }}
                                 onNewTechnicalProposal={() => {
                                     setProposalModalType('TECHNICAL');
                                     setShowProposalModal(true);
@@ -237,6 +241,10 @@ export const ProjectManagement: React.FC = () => {
                                 proposals={hubData.proposals}
                                 loading={loading}
                                 onSelectProposal={(p) => setSelectedProposal(p)}
+                                onNewProposal={(type) => {
+                                    setProposalModalType(type);
+                                    setShowProposalModal(true);
+                                }}
                                 onNewTechnicalProposal={() => {
                                     setProposalModalType('TECHNICAL');
                                     setShowProposalModal(true);
