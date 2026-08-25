@@ -39,6 +39,7 @@ export const Bills: React.FC = () => {
     const [selectedJournal, setSelectedJournal] = useState('');
     const [billDate, setBillDate] = useState(new Date().toISOString().split('T')[0]);
     const [dueDate, setDueDate] = useState(new Date().toISOString().split('T')[0]);
+    const [billReference, setBillReference] = useState('');
 
     // Edit/View State
     const [editMode, setEditMode] = useState(false);
@@ -64,7 +65,7 @@ export const Bills: React.FC = () => {
             .from('accounting_journal_entries')
             .select(`
                 *,
-                partner:accounting_partners(name),
+                partner:accounting_partners(name, reference_code, code),
                 journal:accounting_journals(code)
             `)
             .eq('company_id', currentCompanyId)
@@ -82,7 +83,7 @@ export const Bills: React.FC = () => {
         // 1. Vendors
         const { data: pData } = await supabase
             .from('accounting_partners')
-            .select('id, name')
+            .select('id, name, reference_code, code')
             .eq('company_id', currentCompanyId)
             .or('partner_type.eq.Vendor,partner_type.eq.Both')
             .order('name', { ascending: true });
@@ -145,6 +146,7 @@ export const Bills: React.FC = () => {
             setSelectedJournal(bill.journal_id || '');
             setBillDate(bill.date || '');
             setDueDate(bill.due_date || '');
+            setBillReference(bill.reference || '');
             setEditMode(!readonly);
             setViewMode(readonly);
 
@@ -192,6 +194,7 @@ export const Bills: React.FC = () => {
         } else {
             setEditingBillId(null);
             setSelectedPartner('');
+            setBillReference('');
             if (journals.length > 0) setSelectedJournal(journals[0].id);
             setBillDate(new Date().toISOString().split('T')[0]);
             setDueDate(new Date().toISOString().split('T')[0]);
@@ -293,6 +296,8 @@ export const Bills: React.FC = () => {
                 contract_cost_center_id: l.contract_cost_center_id ? String(l.contract_cost_center_id).trim() : null
             }));
 
+            const trimmedRef = billReference.trim() || null;
+
             if (editMode && editingBillId) {
                 const updatePayload = {
                     p_entry_id: editingBillId,
@@ -301,10 +306,12 @@ export const Bills: React.FC = () => {
                     p_date: billDate,
                     p_due_date: dueDate,
                     p_lines: payloadLines,
-                    p_company_id: currentCompanyId
+                    p_company_id: currentCompanyId,
+                    p_reference: trimmedRef
                 };
                 const { error } = await (supabase.rpc as any)('rpc_update_accounting_invoice', updatePayload);
                 if (error) throw error;
+                await supabase.from('accounting_journal_entries').update({ reference: trimmedRef }).eq('id', editingBillId);
                 alert('Vendor Bill updated successfully!');
             } else {
                 const payload = {
@@ -314,11 +321,15 @@ export const Bills: React.FC = () => {
                     p_due_date: dueDate,
                     p_move_type: 'in_invoice',
                     p_lines: payloadLines,
-                    p_company_id: currentCompanyId
+                    p_company_id: currentCompanyId,
+                    p_reference: trimmedRef
                 };
 
-                const { error } = await (supabase.rpc as any)('rpc_create_accounting_invoice', payload);
+                const { data: newId, error } = await (supabase.rpc as any)('rpc_create_accounting_invoice', payload);
                 if (error) throw error;
+                if (newId) {
+                    await supabase.from('accounting_journal_entries').update({ reference: trimmedRef }).eq('id', newId);
+                }
                 alert('Vendor Bill created successfully!');
             }
 
@@ -387,6 +398,8 @@ export const Bills: React.FC = () => {
         const matchesSearch = 
             (b.reference || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
             (b.partner?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (b.partner?.reference_code || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (b.partner?.code || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
             (b.id || '').toLowerCase().includes(searchTerm.toLowerCase());
         const matchesStatus = statusFilter === 'all' || b.state === statusFilter;
         return matchesSearch && matchesStatus;
@@ -424,7 +437,7 @@ export const Bills: React.FC = () => {
                     <Search className="w-4 h-4 text-slate-400" />
                     <input
                         type="text"
-                        placeholder="Search by vendor or bill number..."
+                        placeholder="Search by vendor, reference #, or ledger code..."
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
                         className="w-full bg-transparent text-sm border-none focus:outline-none placeholder:text-slate-400"
@@ -469,7 +482,14 @@ export const Bills: React.FC = () => {
                                     {bill.reference || `BILL-${bill.id.slice(0, 5).toUpperCase()}`}
                                 </td>
                                 <td className="px-6 py-4 font-medium text-slate-800 dark:text-white">
-                                    {bill.partner?.name || '—'}
+                                    <div className="flex items-center gap-1.5">
+                                        <span>{bill.partner?.name || '—'}</span>
+                                        {(bill.partner?.reference_code || bill.partner?.code) && (
+                                            <span className="font-mono text-[10px] font-bold text-slate-500 bg-slate-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded">
+                                                [{bill.partner?.reference_code || bill.partner?.code}]
+                                            </span>
+                                        )}
+                                    </div>
                                 </td>
                                 <td className="px-6 py-4 text-slate-500 text-xs">{bill.date}</td>
                                 <td className="px-6 py-4">
@@ -546,8 +566,8 @@ export const Bills: React.FC = () => {
                 >
                     <form onSubmit={handleCreateBill} className="space-y-6">
                         {/* Header Details */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 bg-slate-50 dark:bg-zinc-800/40 p-4 rounded-xl border border-slate-100 dark:border-zinc-800">
-                            <div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 bg-slate-50 dark:bg-zinc-800/40 p-4 rounded-xl border border-slate-100 dark:border-zinc-800">
+                            <div className="lg:col-span-2">
                                 <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Vendor *</label>
                                 <select
                                     required
@@ -557,8 +577,26 @@ export const Bills: React.FC = () => {
                                     className="w-full p-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:outline-none"
                                 >
                                     <option value="">Select Vendor</option>
-                                    {partners.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                    {partners.map(p => (
+                                        <option key={p.id} value={p.id}>
+                                            {p.name} {(p.reference_code || p.code) ? `[${p.reference_code || p.code}]` : ''}
+                                        </option>
+                                    ))}
                                 </select>
+                            </div>
+                            <div>
+                                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                                    Bill / Reference # *
+                                </label>
+                                <input
+                                    type="text"
+                                    required
+                                    placeholder="e.g. BILL-001, INV-882"
+                                    value={billReference}
+                                    onChange={e => setBillReference(e.target.value)}
+                                    disabled={viewMode}
+                                    className="w-full p-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm font-mono font-bold text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500/20 focus:outline-none"
+                                />
                             </div>
                             <div>
                                 <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Journal *</label>

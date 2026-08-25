@@ -25,6 +25,8 @@ export const Invoices: React.FC = () => {
     const [selectedJournal, setSelectedJournal] = useState('');
     const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0]);
     const [dueDate, setDueDate] = useState(new Date().toISOString().split('T')[0]);
+    const [invoiceReference, setInvoiceReference] = useState('');
+    const [searchTerm, setSearchTerm] = useState('');
 
     // Edit/View State
     const [editMode, setEditMode] = useState(false);
@@ -48,7 +50,7 @@ export const Invoices: React.FC = () => {
             .from('accounting_journal_entries')
             .select(`
                 *,
-                partner:accounting_partners(name),
+                partner:accounting_partners(name, reference_code, code),
                 journal:accounting_journals(code)
             `)
             .eq('company_id', currentCompanyId)
@@ -64,7 +66,7 @@ export const Invoices: React.FC = () => {
         if (!currentCompanyId) return;
         const { data: pData } = await supabase
             .from('accounting_partners')
-            .select('id, name, credit_limit, property_account_receivable_id')
+            .select('id, name, reference_code, code, credit_limit, property_account_receivable_id')
             .eq('company_id', currentCompanyId)
             .or('partner_type.eq.Customer,partner_type.eq.Both');
         setPartners(pData || []);
@@ -100,6 +102,7 @@ export const Invoices: React.FC = () => {
             setSelectedJournal(inv.journal_id || '');
             setInvoiceDate(inv.date || '');
             setDueDate(inv.due_date || '');
+            setInvoiceReference(inv.reference || '');
             setEditMode(!readonly);
             setViewMode(readonly);
 
@@ -137,6 +140,7 @@ export const Invoices: React.FC = () => {
         } else {
             setEditingInvoiceId(null);
             setSelectedPartner('');
+            setInvoiceReference('');
             if (journals.length > 0) setSelectedJournal(journals[0].id);
             setInvoiceDate(new Date().toISOString().split('T')[0]);
             setDueDate(new Date().toISOString().split('T')[0]);
@@ -206,6 +210,8 @@ export const Invoices: React.FC = () => {
                 description: l.description ? String(l.description).trim() : null
             }));
 
+            const trimmedRef = invoiceReference.trim() || null;
+
             if (editMode && editingInvoiceId) {
                 const updatePayload = {
                     p_entry_id: editingInvoiceId,
@@ -214,10 +220,12 @@ export const Invoices: React.FC = () => {
                     p_date: invoiceDate,
                     p_due_date: dueDate,
                     p_lines: payloadLines,
-                    p_company_id: currentCompanyId
+                    p_company_id: currentCompanyId,
+                    p_reference: trimmedRef
                 };
                 const { error } = await (supabase.rpc as any)('rpc_update_accounting_invoice', updatePayload);
                 if (error) throw error;
+                await supabase.from('accounting_journal_entries').update({ reference: trimmedRef }).eq('id', editingInvoiceId);
                 alert('Invoice Updated successfully!');
             } else {
                 const payload = {
@@ -227,11 +235,15 @@ export const Invoices: React.FC = () => {
                     p_due_date: dueDate,
                     p_move_type: 'out_invoice',
                     p_lines: payloadLines,
-                    p_company_id: currentCompanyId
+                    p_company_id: currentCompanyId,
+                    p_reference: trimmedRef
                 };
 
-                const { data, error } = await (supabase.rpc as any)('rpc_create_accounting_invoice', payload);
+                const { data: newId, error } = await (supabase.rpc as any)('rpc_create_accounting_invoice', payload);
                 if (error) throw error;
+                if (newId) {
+                    await supabase.from('accounting_journal_entries').update({ reference: trimmedRef }).eq('id', newId);
+                }
                 alert('Invoice Created successfully!');
             }
 
@@ -283,6 +295,16 @@ export const Invoices: React.FC = () => {
     const projectCC = costCenters.filter(cc => cc.type === 'PROJECT');
     const contractCC = costCenters.filter(cc => cc.type === 'CONTRACT');
 
+    const filteredInvoices = invoices.filter(inv => {
+        const matchesSearch = 
+            (inv.reference || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (inv.partner?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (inv.partner?.reference_code || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (inv.partner?.code || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (inv.id || '').toLowerCase().includes(searchTerm.toLowerCase());
+        return matchesSearch;
+    });
+
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
@@ -297,6 +319,18 @@ export const Invoices: React.FC = () => {
                         New Invoice
                     </button>
                 </div>
+            </div>
+
+            {/* Search Bar */}
+            <div className="flex items-center gap-2 bg-white dark:bg-zinc-900 p-4 rounded-xl border border-slate-200 dark:border-zinc-800">
+                <Search className="w-4 h-4 text-slate-400" />
+                <input
+                    type="text"
+                    placeholder="Search by customer, reference #, or ledger code..."
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                    className="w-full bg-transparent text-sm border-none focus:outline-none placeholder:text-slate-400"
+                />
             </div>
 
             {/* List */}
@@ -315,12 +349,23 @@ export const Invoices: React.FC = () => {
                     <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
                         {loading ? (
                             <tr><td colSpan={6} className="px-6 py-8 text-center text-slate-500">Loading...</td></tr>
-                        ) : invoices.map(inv => (
+                        ) : filteredInvoices.length === 0 ? (
+                            <tr><td colSpan={6} className="px-6 py-8 text-center text-slate-400">No invoices found.</td></tr>
+                        ) : filteredInvoices.map(inv => (
                             <tr key={inv.id} className="hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-colors">
-                                <td className="px-6 py-4 font-bold text-slate-700 dark:text-slate-300">
+                                <td className="px-6 py-4 font-bold text-slate-700 dark:text-slate-300 font-mono text-xs">
                                     {inv.reference || `INV-${inv.id.slice(0, 5).toUpperCase()}`}
                                 </td>
-                                <td className="px-6 py-4">{inv.partner?.name}</td>
+                                <td className="px-6 py-4">
+                                    <div className="flex items-center gap-1.5">
+                                        <span>{inv.partner?.name || '—'}</span>
+                                        {(inv.partner?.reference_code || inv.partner?.code) && (
+                                            <span className="font-mono text-[10px] font-bold text-slate-500 bg-slate-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded">
+                                                [{inv.partner?.reference_code || inv.partner?.code}]
+                                            </span>
+                                        )}
+                                    </div>
+                                </td>
                                 <td className="px-6 py-4 text-slate-500">{inv.date}</td>
                                 <td className="px-6 py-4">
                                     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${inv.state === 'Posted'
@@ -331,7 +376,7 @@ export const Invoices: React.FC = () => {
                                         {inv.state}
                                     </span>
                                 </td>
-                                <td className="px-6 py-4 text-right font-bold text-slate-800 dark:text-white">
+                                <td className="px-6 py-4 text-right font-bold text-slate-800 dark:text-white font-mono">
                                     QAR {Number(inv.amount_total).toFixed(2)}
                                 </td>
                                 <td className="px-6 py-4 text-center">
@@ -376,9 +421,9 @@ export const Invoices: React.FC = () => {
             {isModalOpen && (
                 <Modal title={viewMode ? "View Customer Invoice" : (editMode ? "Edit Customer Invoice" : "Create Customer Invoice")} onClose={() => setIsModalOpen(false)} maxWidth="5xl">
                     <form onSubmit={handleCreateInvoice} className="space-y-6">
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Customer</label>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                            <div className="lg:col-span-2">
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Customer *</label>
                                 <select
                                     required
                                     value={selectedPartner}
@@ -387,11 +432,27 @@ export const Invoices: React.FC = () => {
                                     className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm"
                                 >
                                     <option value="">Select Customer</option>
-                                    {partners.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                    {partners.map(p => (
+                                        <option key={p.id} value={p.id}>
+                                            {p.name} {(p.reference_code || p.code) ? `[${p.reference_code || p.code}]` : ''}
+                                        </option>
+                                    ))}
                                 </select>
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Journal</label>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Invoice / Reference # *</label>
+                                <input 
+                                    type="text" 
+                                    required 
+                                    placeholder="e.g. INV-001, CUST-REF-99"
+                                    value={invoiceReference} 
+                                    onChange={e => setInvoiceReference(e.target.value)} 
+                                    disabled={viewMode} 
+                                    className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm font-mono font-bold" 
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Journal *</label>
                                 <select
                                     required
                                     value={selectedJournal}
@@ -404,11 +465,11 @@ export const Invoices: React.FC = () => {
                                 </select>
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Invoice Date</label>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Invoice Date *</label>
                                 <input type="date" required value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} disabled={viewMode} className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm" />
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Due Date</label>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Due Date *</label>
                                 <input type="date" required value={dueDate} onChange={e => setDueDate(e.target.value)} disabled={viewMode} className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm" />
                             </div>
                         </div>

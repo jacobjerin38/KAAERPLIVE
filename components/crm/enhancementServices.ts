@@ -469,40 +469,75 @@ export const createGroupChatRoom = async (companyId: string, name: string, parti
 };
 
 export const getChatMessages = async (roomId: string): Promise<ChatMessage[]> => {
-    const { data, error } = await supabase
-        .from('chat_messages')
-        .select(`
-            *,
-            sender:profiles(id, full_name, avatar_url)
-        `)
-        .eq('room_id', roomId)
-        .order('created_at', { ascending: true });
+    try {
+        // 1. Fetch messages directly
+        const { data: rawMsgs, error: mErr } = await supabase
+            .from('chat_messages')
+            .select('*')
+            .eq('room_id', roomId)
+            .order('created_at', { ascending: true });
 
-    if (error) {
-        console.error('Error fetching chat messages:', error);
+        if (mErr || !rawMsgs) {
+            console.error('Error fetching chat messages:', mErr);
+            return [];
+        }
+
+        if (rawMsgs.length === 0) return [];
+
+        // 2. Fetch profiles for distinct sender IDs
+        const senderIds = Array.from(new Set(rawMsgs.map((m: any) => m.sender_id).filter(Boolean)));
+        const profileMap = new Map<string, any>();
+
+        if (senderIds.length > 0) {
+            const { data: profs } = await supabase
+                .from('profiles')
+                .select('id, full_name, avatar_url, email')
+                .in('id', senderIds);
+            if (profs) {
+                profs.forEach((p: any) => profileMap.set(p.id, p));
+            }
+        }
+
+        return rawMsgs.map((m: any) => ({
+            ...m,
+            sender: profileMap.get(m.sender_id) || { id: m.sender_id, full_name: 'Team Member' }
+        }));
+    } catch (err) {
+        console.error('Unhandled error in getChatMessages:', err);
         return [];
     }
-    return data || [];
 };
 
 export const sendChatMessage = async (roomId: string, senderId: string, message?: string, attachments: any[] = []): Promise<ChatMessage | null> => {
-    const { data, error } = await supabase
-        .from('chat_messages')
-        .insert([{
-            room_id: roomId,
-            sender_id: senderId,
-            message,
-            attachments
-        }])
-        .select(`
-            *,
-            sender:profiles(id, full_name, avatar_url)
-        `)
-        .single();
+    try {
+        const { data, error } = await supabase
+            .from('chat_messages')
+            .insert([{
+                room_id: roomId,
+                sender_id: senderId,
+                message: message || null,
+                attachments: attachments || []
+            }])
+            .select('*')
+            .single();
 
-    if (error) {
-        console.error('Error sending message:', error);
+        if (error || !data) {
+            console.error('Error sending message:', error);
+            return null;
+        }
+
+        const { data: prof } = await supabase
+            .from('profiles')
+            .select('id, full_name, avatar_url, email')
+            .eq('id', senderId)
+            .maybeSingle();
+
+        return {
+            ...data,
+            sender: prof || { id: senderId, full_name: 'You' }
+        };
+    } catch (err) {
+        console.error('Unhandled error in sendChatMessage:', err);
         return null;
     }
-    return data;
 };

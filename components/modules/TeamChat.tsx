@@ -250,22 +250,40 @@ export const TeamChat: React.FC = () => {
                     filter: `room_id=eq.${activeRoom.id}`
                 },
                 async (payload) => {
-                    const { data: newMsg } = await (supabase as any)
-                        .from('chat_messages')
-                        .select('*, sender:profiles(id, full_name, avatar_url)')
-                        .eq('id', payload.new.id)
-                        .single();
+                    const raw = payload.new as any;
+                    if (!raw) return;
 
-                    if (newMsg) {
-                        setMessages(prev => {
-                            if (prev.some(m => m.id === newMsg.id)) return prev;
-                            if (newMsg.sender_id !== user?.id && soundEnabled) {
-                                playNotificationSound();
-                            }
-                            return [...prev, newMsg];
-                        });
-                        setTimeout(scrollToBottom, 50);
+                    let sender = profiles.find(p => p.id === raw.sender_id);
+                    if (!sender && raw.sender_id === user?.id) {
+                        sender = { id: user.id, full_name: 'You', avatar_url: (user as any).avatar_url };
                     }
+                    if (!sender) {
+                        const { data: prof } = await (supabase as any)
+                            .from('profiles')
+                            .select('id, full_name, avatar_url, email')
+                            .eq('id', raw.sender_id)
+                            .maybeSingle();
+                        sender = prof;
+                    }
+
+                    const newMsg: ChatMessage = {
+                        id: raw.id,
+                        room_id: raw.room_id,
+                        sender_id: raw.sender_id,
+                        message: raw.message,
+                        attachments: raw.attachments || [],
+                        created_at: raw.created_at,
+                        sender: sender || { id: raw.sender_id, full_name: 'Team Member' }
+                    };
+
+                    setMessages(prev => {
+                        if (prev.some(m => m.id === newMsg.id)) return prev;
+                        if (newMsg.sender_id !== user?.id && soundEnabled) {
+                            playNotificationSound();
+                        }
+                        return [...prev, newMsg];
+                    });
+                    setTimeout(scrollToBottom, 50);
                 }
             )
             .subscribe();
@@ -273,7 +291,7 @@ export const TeamChat: React.FC = () => {
         return () => {
             supabase.removeChannel(roomChannel);
         };
-    }, [activeRoom?.id]);
+    }, [activeRoom?.id, profiles]);
 
     // 3. Realtime Presence Subscription
     useEffect(() => {
@@ -354,7 +372,7 @@ export const TeamChat: React.FC = () => {
         if (e) e.preventDefault();
         if (!activeRoom || !user || (!inputMessage.trim() && pendingAttachments.length === 0)) return;
 
-        const msgText = inputMessage;
+        const msgText = inputMessage.trim();
         const msgAtts = pendingAttachments;
 
         setInputMessage('');
@@ -365,6 +383,12 @@ export const TeamChat: React.FC = () => {
             alert("Failed to send message. Please try again.");
             setInputMessage(msgText);
             setPendingAttachments(msgAtts);
+        } else {
+            setMessages(prev => {
+                if (prev.some(m => m.id === sent.id)) return prev;
+                return [...prev, sent];
+            });
+            setTimeout(scrollToBottom, 50);
         }
     };
 

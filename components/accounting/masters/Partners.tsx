@@ -10,6 +10,8 @@ import { PrintButton } from '../../ui/PrintButton';
 interface Partner {
     id: string;
     name: string;
+    reference_code?: string;
+    code?: string;
     email: string;
     phone: string;
     tax_id: string;
@@ -98,9 +100,12 @@ export const Partners: React.FC<{ type?: 'Customer' | 'Vendor' }> = ({ type }) =
 
         const recId = (data.property_account_receivable_id as string) || (partnerType === 'Customer' || partnerType === 'Both' ? defaultRec?.id : null) || null;
         const payId = (data.property_account_payable_id as string) || (partnerType === 'Vendor' || partnerType === 'Both' ? defaultPay?.id : null) || null;
+        const refCode = data.reference_code ? String(data.reference_code).trim() : null;
 
         const payload = {
             name: String(data.name || '').trim(),
+            reference_code: refCode,
+            code: refCode,
             partner_type: partnerType,
             email: data.email ? String(data.email).trim() : null,
             phone: data.phone ? String(data.phone).trim() : null,
@@ -164,6 +169,7 @@ export const Partners: React.FC<{ type?: 'Customer' | 'Vendor' }> = ({ type }) =
 
             const partnersToInsert = jsonData.map(row => {
                 const partnerType = row['Partner Type'] || row['Type'] || type || 'Customer';
+                const refCode = String(row['Reference / Ledger Code'] || row['Reference Code'] || row['Code'] || row['Ref Code'] || '').trim() || null;
                 
                 const recCode = String(row['Receivable Account Code'] || row['Receivable Account'] || '').trim();
                 const payCode = String(row['Payable Account Code'] || row['Payable Account'] || '').trim();
@@ -174,6 +180,8 @@ export const Partners: React.FC<{ type?: 'Customer' | 'Vendor' }> = ({ type }) =
                 return {
                     company_id: currentCompanyId,
                     name: String(row['Name'] || '').trim(),
+                    reference_code: refCode,
+                    code: refCode,
                     email: String(row['Email'] || '').trim(),
                     phone: String(row['Phone'] || '').trim(),
                     tax_id: String(row['Tax ID'] || row['VAT'] || '').trim(),
@@ -216,6 +224,7 @@ export const Partners: React.FC<{ type?: 'Customer' | 'Vendor' }> = ({ type }) =
         const template = [
             {
                 'Name': 'John Doe Corp',
+                'Reference / Ledger Code': 'VEND-001',
                 'Email': 'john@example.com',
                 'Phone': '+9741234567',
                 'Tax ID': 'VAT123456',
@@ -244,7 +253,9 @@ export const Partners: React.FC<{ type?: 'Customer' | 'Vendor' }> = ({ type }) =
 
     const filteredPartners = partners.filter(p =>
         p.name.toLowerCase().includes(search.toLowerCase()) ||
-        p.email?.toLowerCase().includes(search.toLowerCase())
+        p.email?.toLowerCase().includes(search.toLowerCase()) ||
+        (p.reference_code && p.reference_code.toLowerCase().includes(search.toLowerCase())) ||
+        (p.code && p.code.toLowerCase().includes(search.toLowerCase()))
     );
 
     return (
@@ -254,7 +265,7 @@ export const Partners: React.FC<{ type?: 'Customer' | 'Vendor' }> = ({ type }) =
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                     <input
                         type="text"
-                        placeholder="Search partners..."
+                        placeholder="Search partners / ref code..."
                         value={search}
                         onChange={e => setSearch(e.target.value)}
                         className="w-full pl-10 pr-4 py-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -302,12 +313,19 @@ export const Partners: React.FC<{ type?: 'Customer' | 'Vendor' }> = ({ type }) =
                                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg shadow-sm">
                                     {partner.name.charAt(0)}
                                 </div>
-                                <span className={`px-2 py-1 rounded text-xs font-bold uppercase tracking-wide ${partner.partner_type === 'Customer' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
-                                        partner.partner_type === 'Vendor' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
-                                            'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                                    }`}>
-                                    {partner.partner_type}
-                                </span>
+                                <div className="flex items-center gap-1.5">
+                                    {(partner.reference_code || partner.code) && (
+                                        <span className="font-mono text-[11px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-0.5 rounded border border-indigo-100 dark:border-indigo-900/40">
+                                            {partner.reference_code || partner.code}
+                                        </span>
+                                    )}
+                                    <span className={`px-2 py-1 rounded text-xs font-bold uppercase tracking-wide ${partner.partner_type === 'Customer' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                                            partner.partner_type === 'Vendor' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+                                                'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                                        }`}>
+                                        {partner.partner_type}
+                                    </span>
+                                </div>
                             </div>
 
                             <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-1">{partner.name}</h3>
@@ -351,10 +369,10 @@ export const Partners: React.FC<{ type?: 'Customer' | 'Vendor' }> = ({ type }) =
             {isModalOpen && (
                 <Modal title={editingPartner ? 'Edit Partner' : 'New Partner'} onClose={() => setIsModalOpen(false)}>
                     <form onSubmit={handleSave} className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
+                        <div className="grid grid-cols-3 gap-3">
+                            <div className="col-span-2">
                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Name *</label>
-                                <input name="name" defaultValue={editingPartner?.name} required className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm" />
+                                <input name="name" defaultValue={editingPartner?.name} required className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm" placeholder="e.g. Al Rayyan Trading Co." />
                             </div>
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Type</label>
@@ -368,6 +386,24 @@ export const Partners: React.FC<{ type?: 'Customer' | 'Vendor' }> = ({ type }) =
 
                         <div className="grid grid-cols-2 gap-4">
                             <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                                    Reference / Ledger Code
+                                </label>
+                                <input 
+                                    name="reference_code" 
+                                    defaultValue={editingPartner?.reference_code || editingPartner?.code} 
+                                    placeholder="e.g. VEND-001, CUST-PEC-042" 
+                                    className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm font-mono font-medium focus:ring-2 focus:ring-indigo-500/20 focus:outline-none" 
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Tax ID / VAT</label>
+                                <input name="tax_id" defaultValue={editingPartner?.tax_id} className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm" placeholder="e.g. GSTIN, VAT Number" />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Email</label>
                                 <input name="email" type="email" defaultValue={editingPartner?.email} className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm" />
                             </div>
@@ -375,11 +411,6 @@ export const Partners: React.FC<{ type?: 'Customer' | 'Vendor' }> = ({ type }) =
                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Phone</label>
                                 <input name="phone" defaultValue={editingPartner?.phone} className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm" />
                             </div>
-                        </div>
-
-                        <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Tax ID / VAT</label>
-                            <input name="tax_id" defaultValue={editingPartner?.tax_id} className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm" placeholder="e.g. GSTIN, VAT Number" />
                         </div>
 
                         <div>
@@ -406,7 +437,7 @@ export const Partners: React.FC<{ type?: 'Customer' | 'Vendor' }> = ({ type }) =
                                     <select name="property_account_receivable_id" defaultValue={editingPartner?.property_account_receivable_id} className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm">
                                         <option value="">Select Account (Optional)</option>
                                         {receivableAccounts.map(acc => (
-                                            <option key={acc.id} value={acc.id}>{acc.code} - {acc.name}</option>
+                                             <option key={acc.id} value={acc.id}>{acc.code} - {acc.name}</option>
                                         ))}
                                     </select>
                                 </div>
