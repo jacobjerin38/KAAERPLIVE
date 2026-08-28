@@ -62,6 +62,7 @@ export const Bills: React.FC = () => {
     const [selectedPartner, setSelectedPartner] = useState('');
     const [selectedJournal, setSelectedJournal] = useState('');
     const [billDate, setBillDate] = useState(new Date().toISOString().split('T')[0]);
+    const [voucherDate, setVoucherDate] = useState(new Date().toISOString().split('T')[0]);
     const [creditPeriod, setCreditPeriod] = useState<string>('30');
     const [dueDate, setDueDate] = useState(new Date().toISOString().split('T')[0]);
     const [billReference, setBillReference] = useState('');
@@ -145,7 +146,8 @@ export const Bills: React.FC = () => {
             .from('accounting_purchase_ledgers')
             .select('id, name, account_id')
             .eq('company_id', currentCompanyId)
-            .eq('is_active', true);
+            .eq('is_active', true)
+            .order('name', { ascending: true });
         setPurchaseLedgers(plData || []);
 
         // 6. Chart of Accounts (All active posting accounts)
@@ -192,22 +194,24 @@ export const Bills: React.FC = () => {
 
     const handleOpenModal = async (bill?: any, readonly = false) => {
         if (bill) {
-            const bDate = bill.date || new Date().toISOString().split('T')[0];
-            const bDueDate = bill.due_date || bDate;
+            const bBillDate = bill.invoice_date || bill.date || new Date().toISOString().split('T')[0];
+            const bVoucherDate = bill.date || new Date().toISOString().split('T')[0];
+            const bDueDate = bill.due_date || bBillDate;
 
             setEditingBillId(bill.id);
             setSelectedPartner(bill.partner_id || '');
             setSelectedJournal(bill.journal_id || '');
-            setBillDate(bDate);
+            setBillDate(bBillDate);
+            setVoucherDate(bVoucherDate);
             setDueDate(bDueDate);
             setBillReference(bill.reference || '');
             setEditMode(!readonly);
             setViewMode(readonly);
 
-            const diff = getDaysBetweenDates(bDate, bDueDate);
+            const diff = getDaysBetweenDates(bBillDate, bDueDate);
             if (diff !== null && ['0', '15', '30', '45', '60', '90', '120'].includes(String(diff))) {
                 setCreditPeriod(String(diff));
-            } else if (bDueDate && bDueDate !== bDate) {
+            } else if (bDueDate && bDueDate !== bBillDate) {
                 setCreditPeriod('custom');
             } else {
                 setCreditPeriod('30');
@@ -261,6 +265,7 @@ export const Bills: React.FC = () => {
             setBillReference('');
             if (journals.length > 0) setSelectedJournal(journals[0].id);
             setBillDate(today);
+            setVoucherDate(today);
             setCreditPeriod('30');
             setDueDate(addDaysToDate(today, 30));
             setLines([
@@ -368,7 +373,8 @@ export const Bills: React.FC = () => {
                     p_entry_id: editingBillId,
                     p_partner_id: selectedPartner,
                     p_journal_id: selectedJournal,
-                    p_date: billDate,
+                    p_date: voucherDate,
+                    p_invoice_date: billDate,
                     p_due_date: dueDate,
                     p_lines: payloadLines,
                     p_company_id: currentCompanyId,
@@ -376,13 +382,19 @@ export const Bills: React.FC = () => {
                 };
                 const { error } = await (supabase.rpc as any)('rpc_update_accounting_invoice', updatePayload);
                 if (error) throw error;
-                await supabase.from('accounting_journal_entries').update({ reference: trimmedRef }).eq('id', editingBillId);
+                await supabase.from('accounting_journal_entries').update({ 
+                    date: voucherDate,
+                    invoice_date: billDate,
+                    due_date: dueDate,
+                    reference: trimmedRef 
+                }).eq('id', editingBillId);
                 alert('Vendor Bill updated successfully!');
             } else {
                 const payload = {
                     p_partner_id: selectedPartner,
                     p_journal_id: selectedJournal,
-                    p_date: billDate,
+                    p_date: voucherDate,
+                    p_invoice_date: billDate,
                     p_due_date: dueDate,
                     p_move_type: 'in_invoice',
                     p_lines: payloadLines,
@@ -393,7 +405,12 @@ export const Bills: React.FC = () => {
                 const { data: newId, error } = await (supabase.rpc as any)('rpc_create_accounting_invoice', payload);
                 if (error) throw error;
                 if (newId) {
-                    await supabase.from('accounting_journal_entries').update({ reference: trimmedRef }).eq('id', newId);
+                    await supabase.from('accounting_journal_entries').update({ 
+                        date: voucherDate,
+                        invoice_date: billDate,
+                        due_date: dueDate,
+                        reference: trimmedRef 
+                    }).eq('id', newId);
                 }
                 alert('Vendor Bill created successfully!');
             }
@@ -529,7 +546,9 @@ export const Bills: React.FC = () => {
                         <tr>
                             <th className="px-6 py-4 font-bold text-xs uppercase tracking-wider">Number</th>
                             <th className="px-6 py-4 font-bold text-xs uppercase tracking-wider">Vendor</th>
-                            <th className="px-6 py-4 font-bold text-xs uppercase tracking-wider">Date</th>
+                            <th className="px-6 py-4 font-bold text-xs uppercase tracking-wider">Bill Date</th>
+                            <th className="px-6 py-4 font-bold text-xs uppercase tracking-wider">Voucher Date</th>
+                            <th className="px-6 py-4 font-bold text-xs uppercase tracking-wider">Due Date</th>
                             <th className="px-6 py-4 font-bold text-xs uppercase tracking-wider">Status</th>
                             <th className="px-6 py-4 font-bold text-xs uppercase tracking-wider">Approval</th>
                             <th className="px-6 py-4 text-right font-bold text-xs uppercase tracking-wider">Total</th>
@@ -538,9 +557,9 @@ export const Bills: React.FC = () => {
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
                         {loading ? (
-                            <tr><td colSpan={7} className="px-6 py-12 text-center text-slate-500 font-medium">Loading bills...</td></tr>
+                            <tr><td colSpan={9} className="px-6 py-12 text-center text-slate-500 font-medium">Loading bills...</td></tr>
                         ) : filteredBills.length === 0 ? (
-                            <tr><td colSpan={7} className="px-6 py-12 text-center text-slate-400">No vendor bills found.</td></tr>
+                            <tr><td colSpan={9} className="px-6 py-12 text-center text-slate-400">No vendor bills found.</td></tr>
                         ) : filteredBills.map(bill => (
                             <tr key={bill.id} className="hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-colors">
                                 <td className="px-6 py-4 font-bold text-slate-700 dark:text-slate-300 font-mono text-xs">
@@ -556,7 +575,15 @@ export const Bills: React.FC = () => {
                                         )}
                                     </div>
                                 </td>
-                                <td className="px-6 py-4 text-slate-500 text-xs">{bill.date}</td>
+                                <td className="px-6 py-4 text-slate-700 dark:text-slate-200 text-xs font-mono font-medium">
+                                    {bill.invoice_date || bill.date || '—'}
+                                </td>
+                                <td className="px-6 py-4 text-slate-500 text-xs font-mono">
+                                    {bill.date || '—'}
+                                </td>
+                                <td className="px-6 py-4 text-slate-600 dark:text-slate-300 text-xs font-mono font-semibold">
+                                    {bill.due_date || '—'}
+                                </td>
                                 <td className="px-6 py-4">
                                     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${bill.state === 'Posted'
                                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
@@ -631,7 +658,7 @@ export const Bills: React.FC = () => {
                 >
                     <form onSubmit={handleCreateBill} className="space-y-6">
                         {/* Header Details */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 bg-slate-50 dark:bg-zinc-800/40 p-4 rounded-xl border border-slate-100 dark:border-zinc-800">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 bg-slate-50 dark:bg-zinc-800/40 p-4 rounded-xl border border-slate-100 dark:border-zinc-800">
                             <div className="lg:col-span-2">
                                 <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Vendor *</label>
                                 <select
@@ -649,7 +676,7 @@ export const Bills: React.FC = () => {
                                     ))}
                                 </select>
                             </div>
-                            <div>
+                            <div className="lg:col-span-2">
                                 <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
                                     Bill / Reference # *
                                 </label>
@@ -663,7 +690,7 @@ export const Bills: React.FC = () => {
                                     className="w-full p-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm font-mono font-bold text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500/20 focus:outline-none"
                                 />
                             </div>
-                            <div>
+                            <div className="lg:col-span-2">
                                 <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Journal *</label>
                                 <select
                                     required
@@ -676,8 +703,10 @@ export const Bills: React.FC = () => {
                                     {journals.map(j => <option key={j.id} value={j.id}>{j.name} ({j.code})</option>)}
                                 </select>
                             </div>
-                            <div>
-                                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Bill Date *</label>
+                            <div className="lg:col-span-2">
+                                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                                    Bill Date * <span className="text-[10px] font-normal text-slate-400 normal-case">(Supplier Invoice Date)</span>
+                                </label>
                                 <input 
                                     type="date" 
                                     required 
@@ -687,7 +716,20 @@ export const Bills: React.FC = () => {
                                     className="w-full p-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:outline-none" 
                                 />
                             </div>
-                            <div>
+                            <div className="lg:col-span-2">
+                                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                                    Voucher Date * <span className="text-[10px] font-normal text-slate-400 normal-case">(Keying / Entry Date)</span>
+                                </label>
+                                <input 
+                                    type="date" 
+                                    required 
+                                    value={voucherDate} 
+                                    onChange={e => setVoucherDate(e.target.value)} 
+                                    disabled={viewMode} 
+                                    className="w-full p-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:outline-none" 
+                                />
+                            </div>
+                            <div className="lg:col-span-2">
                                 <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Credit Period *</label>
                                 <select
                                     required
