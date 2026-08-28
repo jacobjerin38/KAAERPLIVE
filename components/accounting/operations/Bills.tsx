@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
-import { Plus, Search, Filter, FileText, CheckCircle, Clock, ShoppingCart, Zap, Building2, Trash2 } from 'lucide-react';
+import { Plus, Search, Filter, FileText, CheckCircle, Clock, ShoppingCart, Zap, Building2, Trash2, Scale, Copy, PlusCircle } from 'lucide-react';
 import { Modal } from '../../ui/Modal';
 import { PrintButton } from '../../ui/PrintButton';
 
@@ -30,7 +30,7 @@ const getDaysBetweenDates = (startDateStr: string, endDateStr: string): number |
 };
 
 export interface BillLine {
-    line_type: 'item' | 'expense' | 'asset';
+    line_type: 'item' | 'expense' | 'asset' | 'liability';
     item_id?: string;
     account_id?: string;
     purchase_ledger_id?: string;
@@ -162,10 +162,8 @@ export const Bills: React.FC = () => {
 
     // Filter accounts by type
     const expenseAccounts = accounts.filter(a => a.type === 'Expense');
-    const assetAccounts = accounts.filter(a => 
-        a.subtype === 'Fixed Assets' || 
-        (a.type === 'Asset' && Number(a.code) >= 1500 && Number(a.code) < 1700)
-    );
+    const assetAccounts = accounts.filter(a => a.type === 'Asset');
+    const liabilityAccounts = accounts.filter(a => a.type === 'Liability');
 
     const handlePartnerChange = (partnerId: string) => {
         setSelectedPartner(partnerId);
@@ -236,10 +234,19 @@ export const Bills: React.FC = () => {
 
             const mappedLines: BillLine[] = itemLines.map((l: any) => {
                 const isItem = !!l.item_id;
-                const isFixedAsset = assetAccounts.some(a => a.id === l.account_id) || 
-                    accounts.some(a => a.id === l.account_id && (a.subtype === 'Fixed Assets' || (a.type === 'Asset' && Number(a.code) >= 1500 && Number(a.code) < 1700)));
-                
-                const line_type: 'item' | 'expense' | 'asset' = isItem ? 'item' : (isFixedAsset ? 'asset' : 'expense');
+                const account = accounts.find(a => a.id === l.account_id);
+                let line_type: 'item' | 'expense' | 'asset' | 'liability' = 'expense';
+                if (isItem) {
+                    line_type = 'item';
+                } else if (account) {
+                    if (account.type === 'Asset' || account.subtype === 'Fixed Assets') {
+                        line_type = 'asset';
+                    } else if (account.type === 'Liability') {
+                        line_type = 'liability';
+                    } else {
+                        line_type = 'expense';
+                    }
+                }
                 const matchedLedger = purchaseLedgers.find(pl => pl.account_id === l.account_id);
 
                 return {
@@ -280,7 +287,7 @@ export const Bills: React.FC = () => {
         }
     };
 
-    const handleAddLine = (type: 'item' | 'expense' | 'asset' = 'expense') => {
+    const handleAddLine = (type: 'item' | 'expense' | 'asset' | 'liability' = 'expense') => {
         setLines([...lines, { 
             line_type: type, 
             item_id: '', 
@@ -293,6 +300,13 @@ export const Bills: React.FC = () => {
             contract_cost_center_id: '', 
             description: '' 
         }]);
+    };
+
+    const handleDuplicateLine = (index: number) => {
+        const lineToCopy = lines[index];
+        const newLines = [...lines];
+        newLines.splice(index + 1, 0, { ...lineToCopy });
+        setLines(newLines);
     };
 
     const handleLineChange = (index: number, field: keyof BillLine, value: any) => {
@@ -348,7 +362,11 @@ export const Bills: React.FC = () => {
                     return;
                 }
                 if (line.line_type === 'asset' && !line.account_id) {
-                    alert(`Line #${i + 1}: Please select a Fixed Asset Account.`);
+                    alert(`Line #${i + 1}: Please select an Asset Account (e.g. Employee Advance, Prepayment, Fixed Asset, Deposit).`);
+                    return;
+                }
+                if (line.line_type === 'liability' && !line.account_id) {
+                    alert(`Line #${i + 1}: Please select a Liability Account (e.g. Due to Related Parties, Accruals, Loans).`);
                     return;
                 }
                 if (line.line_type === 'item' && !line.item_id && !line.purchase_ledger_id && !line.account_id) {
@@ -839,18 +857,18 @@ export const Bills: React.FC = () => {
                             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
                                 <div>
                                     <h4 className="font-bold text-sm text-slate-800 dark:text-white flex items-center gap-2">
-                                        <span>Bill Lines</span>
+                                        <span>Bill Lines & Split Entries</span>
                                         <span className="text-xs font-normal text-slate-500">
-                                            (Expenses, Fixed Assets, or Item Purchases)
+                                            (Expenses, Assets / Advances, Liabilities / Related Parties, Items)
                                         </span>
                                     </h4>
                                 </div>
                                 {!viewMode && (
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex flex-wrap items-center gap-2">
                                         <button
                                             type="button"
                                             onClick={() => handleAddLine('expense')}
-                                            className="px-3 py-1.5 text-xs font-bold rounded-lg bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 hover:bg-amber-100 transition-colors flex items-center gap-1.5"
+                                            className="px-2.5 py-1.5 text-xs font-bold rounded-lg bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 hover:bg-amber-100 transition-colors flex items-center gap-1.5"
                                         >
                                             <Zap className="w-3.5 h-3.5" />
                                             + Add Expense
@@ -858,15 +876,23 @@ export const Bills: React.FC = () => {
                                         <button
                                             type="button"
                                             onClick={() => handleAddLine('asset')}
-                                            className="px-3 py-1.5 text-xs font-bold rounded-lg bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 transition-colors flex items-center gap-1.5"
+                                            className="px-2.5 py-1.5 text-xs font-bold rounded-lg bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 transition-colors flex items-center gap-1.5"
                                         >
                                             <Building2 className="w-3.5 h-3.5" />
-                                            + Add Fixed Asset
+                                            + Add Asset / Advance
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleAddLine('liability')}
+                                            className="px-2.5 py-1.5 text-xs font-bold rounded-lg bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-400 border border-purple-200 dark:border-purple-800 hover:bg-purple-100 transition-colors flex items-center gap-1.5"
+                                        >
+                                            <Scale className="w-3.5 h-3.5" />
+                                            + Add Liability / Related Party
                                         </button>
                                         <button
                                             type="button"
                                             onClick={() => handleAddLine('item')}
-                                            className="px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 transition-colors flex items-center gap-1.5"
+                                            className="px-2.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 transition-colors flex items-center gap-1.5"
                                         >
                                             <ShoppingCart className="w-3.5 h-3.5" />
                                             + Add Item
@@ -885,11 +911,13 @@ export const Bills: React.FC = () => {
                                                 ? 'bg-amber-50/40 dark:bg-amber-950/10 border-amber-200 dark:border-amber-900/30' 
                                                 : line.line_type === 'asset'
                                                 ? 'bg-blue-50/40 dark:bg-blue-950/10 border-blue-200 dark:border-blue-900/30'
+                                                : line.line_type === 'liability'
+                                                ? 'bg-purple-50/40 dark:bg-purple-950/10 border-purple-200 dark:border-purple-900/30'
                                                 : 'bg-emerald-50/40 dark:bg-emerald-950/10 border-emerald-200 dark:border-emerald-900/30'
                                         }`}
                                     >
-                                        {/* Line Category Selector Pill */}
-                                        <div className="flex justify-between items-center mb-3">
+                                        {/* Line Category Selector Pill & Line Actions */}
+                                        <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
                                             <div className="flex items-center gap-2">
                                                 <span className="text-[11px] font-bold text-slate-400 font-mono">#{idx + 1}</span>
                                                 <div className="inline-flex rounded-lg p-0.5 bg-slate-200/70 dark:bg-zinc-800 text-xs font-medium">
@@ -917,7 +945,20 @@ export const Bills: React.FC = () => {
                                                         }`}
                                                     >
                                                         <Building2 className="w-3 h-3" />
-                                                        Fixed Asset
+                                                        Asset / Advance
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        disabled={viewMode}
+                                                        onClick={() => handleLineChange(idx, 'line_type', 'liability')}
+                                                        className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all flex items-center gap-1 ${
+                                                            line.line_type === 'liability'
+                                                                ? 'bg-purple-600 text-white shadow-sm'
+                                                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-800'
+                                                        }`}
+                                                    >
+                                                        <Scale className="w-3 h-3" />
+                                                        Liability / Related Party
                                                     </button>
                                                     <button
                                                         type="button"
@@ -935,18 +976,31 @@ export const Bills: React.FC = () => {
                                                 </div>
                                             </div>
 
-                                            {!viewMode && lines.length > 1 && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        const newLines = lines.filter((_, i) => i !== idx);
-                                                        setLines(newLines);
-                                                    }}
-                                                    className="p-1.5 text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-950/40 rounded-lg transition-colors"
-                                                    title="Remove line"
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </button>
+                                            {!viewMode && (
+                                                <div className="flex items-center gap-1">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleDuplicateLine(idx)}
+                                                        className="px-2 py-1 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-zinc-700/60 rounded-lg transition-colors flex items-center gap-1"
+                                                        title="Duplicate line entry"
+                                                    >
+                                                        <Copy className="w-3.5 h-3.5" />
+                                                        <span className="hidden sm:inline">Duplicate</span>
+                                                    </button>
+                                                    {lines.length > 1 && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const newLines = lines.filter((_, i) => i !== idx);
+                                                                setLines(newLines);
+                                                            }}
+                                                            className="p-1.5 text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-950/40 rounded-lg transition-colors"
+                                                            title="Remove line"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    )}
+                                                </div>
                                             )}
                                         </div>
 
@@ -990,39 +1044,77 @@ export const Bills: React.FC = () => {
                                                 </>
                                             )}
 
-                                            {/* FIXED ASSET MODE */}
+                                            {/* ASSET / ADVANCE / PREPAYMENT / FIXED ASSET MODE */}
                                             {line.line_type === 'asset' && (
                                                 <>
                                                     <div className="md:col-span-4">
                                                         <label className="text-[10px] font-bold text-blue-700 dark:text-blue-400 uppercase tracking-wider block mb-1">
-                                                            Fixed Asset Account *
+                                                            Asset Account * <span className="text-[9px] font-normal text-slate-400 lowercase">(advance, fixed asset, prepayment, deposit)</span>
                                                         </label>
                                                         <select
                                                             required
                                                             value={line.account_id || ''}
                                                             onChange={e => handleLineChange(idx, 'account_id', e.target.value)}
                                                             disabled={viewMode}
-                                                            className="w-full p-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:outline-none"
+                                                            className="w-full p-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:outline-none font-medium"
                                                         >
                                                             <option value="">Select Asset Account</option>
                                                             {assetAccounts.map(acc => (
                                                                 <option key={acc.id} value={acc.id}>
-                                                                    [{acc.code}] {acc.name}
+                                                                    [{acc.code}] {acc.name} {acc.subtype ? `(${acc.subtype})` : ''}
                                                                 </option>
                                                             ))}
                                                         </select>
                                                     </div>
                                                     <div className="md:col-span-4">
                                                         <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                                                            Asset Description / Serial #
+                                                            Narration / Asset / Advance Note
                                                         </label>
                                                         <input
                                                             type="text"
                                                             value={line.description || ''}
                                                             onChange={e => handleLineChange(idx, 'description', e.target.value)}
                                                             disabled={viewMode}
-                                                            placeholder="e.g. MacBook Pro, Office Desk, Vehicle Plate #..."
+                                                            placeholder="e.g. Employee Advance for John, Laptop Purchase, Office Deposit..."
                                                             className="w-full p-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:outline-none"
+                                                        />
+                                                    </div>
+                                                </>
+                                            )}
+
+                                            {/* LIABILITY / RELATED PARTY / ACCRUAL MODE */}
+                                            {line.line_type === 'liability' && (
+                                                <>
+                                                    <div className="md:col-span-4">
+                                                        <label className="text-[10px] font-bold text-purple-700 dark:text-purple-400 uppercase tracking-wider block mb-1">
+                                                            Liability Account * <span className="text-[9px] font-normal text-slate-400 lowercase">(due to related parties, accruals, loans)</span>
+                                                        </label>
+                                                        <select
+                                                            required
+                                                            value={line.account_id || ''}
+                                                            onChange={e => handleLineChange(idx, 'account_id', e.target.value)}
+                                                            disabled={viewMode}
+                                                            className="w-full p-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-purple-500/20 focus:outline-none font-medium"
+                                                        >
+                                                            <option value="">Select Liability Account</option>
+                                                            {liabilityAccounts.map(acc => (
+                                                                <option key={acc.id} value={acc.id}>
+                                                                    [{acc.code}] {acc.name} {acc.subtype ? `(${acc.subtype})` : ''}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                    <div className="md:col-span-4">
+                                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                                                            Narration / Related Party Note
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            value={line.description || ''}
+                                                            onChange={e => handleLineChange(idx, 'description', e.target.value)}
+                                                            disabled={viewMode}
+                                                            placeholder="e.g. Due to Sister Co, Reimbursable, Accrued expense..."
+                                                            className="w-full p-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-purple-500/20 focus:outline-none"
                                                         />
                                                     </div>
                                                 </>
@@ -1061,7 +1153,7 @@ export const Bills: React.FC = () => {
                                                             </optgroup>
                                                             <optgroup label="Expense / COGS Accounts">
                                                                 {expenseAccounts.map(acc => (
-                                                                    <option key={`coa-${acc.id}`} value={`coa:${acc.id}`}>
+                                                                  <option key={`coa-${acc.id}`} value={`coa:${acc.id}`}>
                                                                         [{acc.code}] {acc.name}
                                                                     </option>
                                                                 ))}
@@ -1165,6 +1257,46 @@ export const Bills: React.FC = () => {
                                     </div>
                                 ))}
                             </div>
+
+                            {/* Multi-Line Quick Adder Bar */}
+                            {!viewMode && (
+                                <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-slate-50 dark:bg-zinc-800/30 rounded-xl border border-dashed border-slate-200 dark:border-zinc-700">
+                                    <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+                                        <PlusCircle className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                                        + Add Another Split / Line Entry:
+                                    </span>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => handleAddLine('expense')}
+                                            className="px-3 py-1.5 text-xs font-bold rounded-lg bg-white dark:bg-zinc-900 border border-amber-200 dark:border-amber-800/60 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/20 transition-all flex items-center gap-1 shadow-sm"
+                                        >
+                                            <Zap className="w-3 h-3" /> + Expense Line
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleAddLine('asset')}
+                                            className="px-3 py-1.5 text-xs font-bold rounded-lg bg-white dark:bg-zinc-900 border border-blue-200 dark:border-blue-800/60 text-blue-700 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-all flex items-center gap-1 shadow-sm"
+                                        >
+                                            <Building2 className="w-3 h-3" /> + Asset / Advance Line
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleAddLine('liability')}
+                                            className="px-3 py-1.5 text-xs font-bold rounded-lg bg-white dark:bg-zinc-900 border border-purple-200 dark:border-purple-800/60 text-purple-700 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/20 transition-all flex items-center gap-1 shadow-sm"
+                                        >
+                                            <Scale className="w-3 h-3" /> + Liability / Related Party Line
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleAddLine('item')}
+                                            className="px-3 py-1.5 text-xs font-bold rounded-lg bg-white dark:bg-zinc-900 border border-emerald-200 dark:border-emerald-800/60 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-all flex items-center gap-1 shadow-sm"
+                                        >
+                                            <ShoppingCart className="w-3 h-3" /> + Item Purchase Line
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Total Bar */}
                             <div className="flex justify-between items-center bg-slate-50 dark:bg-zinc-800/40 p-4 rounded-xl border border-slate-100 dark:border-zinc-800">
