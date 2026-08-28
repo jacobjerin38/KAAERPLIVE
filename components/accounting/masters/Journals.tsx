@@ -39,10 +39,10 @@ export const Journals: React.FC = () => {
     setLoading(true);
     const [{ data: j }, { data: a }] = await Promise.all([
       supabase.from('accounting_journals').select('*, accounting_chart_of_accounts!default_account_id(name,code)').eq('company_id', currentCompanyId).order('type').order('name'),
-      supabase.from('accounting_chart_of_accounts').select('id,name,code').eq('company_id', currentCompanyId).order('code'),
+      supabase.from('accounting_chart_of_accounts').select('id,name,code,is_active,is_group').eq('company_id', currentCompanyId).eq('is_active', true).eq('is_group', false).order('code'),
     ]);
     setJournals((j || []).map((x: any) => ({ ...x, account_name: x.accounting_chart_of_accounts?.name, account_code: x.accounting_chart_of_accounts?.code })));
-    setAccounts(a || []);
+    setAccounts((a || []).filter((x: any) => !x.is_group && x.is_active !== false));
     setLoading(false);
   }, [currentCompanyId]);
 

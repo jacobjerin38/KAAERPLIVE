@@ -151,13 +151,14 @@ export const Bills: React.FC = () => {
             .order('name', { ascending: true });
         setPurchaseLedgers(plData || []);
 
-        // 6. Chart of Accounts (All active posting accounts)
+        // 6. Chart of Accounts (All active posting accounts only - no groups, no inactives)
         const { data: coaData } = await (supabase.from('accounting_chart_of_accounts') as any)
-            .select('id, name, code, type, subtype')
+            .select('id, name, code, type, subtype, is_group, is_active')
             .eq('company_id', currentCompanyId)
             .eq('is_group', false)
+            .eq('is_active', true)
             .order('code', { ascending: true });
-        setAccounts((coaData as any[]) || []);
+        setAccounts(((coaData as any[]) || []).filter((a: any) => !a.is_group && a.is_active !== false));
     };
 
     // Filter accounts by type

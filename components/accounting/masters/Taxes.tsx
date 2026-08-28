@@ -36,14 +36,14 @@ export const Taxes: React.FC = () => {
         .select('*, accounting_chart_of_accounts!account_id(name,code), accounting_chart_of_accounts!refund_account_id(name,code)')
         .eq('company_id', currentCompanyId)
         .order('name'),
-      supabase.from('accounting_chart_of_accounts').select('id,name,code').eq('company_id', currentCompanyId).order('code'),
+      supabase.from('accounting_chart_of_accounts').select('id,name,code,is_active,is_group').eq('company_id', currentCompanyId).eq('is_active', true).eq('is_group', false).order('code'),
     ]);
     setTaxes((t || []).map((x: any) => ({
       ...x,
       account_name: x.accounting_chart_of_accounts?.name,
       refund_account_name: x['accounting_chart_of_accounts1']?.name ?? x.accounting_chart_of_accounts?.name,
     })));
-    setAccounts(a || []);
+    setAccounts((a || []).filter((x: any) => !x.is_group && x.is_active !== false));
     setLoading(false);
   }, [currentCompanyId]);
 

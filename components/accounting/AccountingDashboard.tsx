@@ -23,6 +23,7 @@ import { ExpenseReport } from './reporting/ExpenseReport';
 import { BudgetAnalysis } from './reporting/BudgetAnalysis';
 import { FinanceDashboard } from './FinanceDashboard';
 import { FixedAssets } from './operations/FixedAssets';
+import { AccountingMasters } from '../modules/organisation/AccountingMasters';
 
 export const AccountingDashboard: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'overview' | 'customers' | 'vendors' | 'payments' | 'journal' | 'banking' | 'assets' | 'reporting' | 'masters' | 'settings'>('overview');
@@ -48,14 +49,14 @@ export const AccountingDashboard: React.FC = () => {
                                 else if (tab === 'vendors') setSubTab('bills');
                                 else if (tab === 'banking') setSubTab('statements');
                                 else if (tab === 'reporting') setSubTab('financial');
-                                else if (tab === 'masters') setSubTab('coa');
+                                else if (tab === 'masters') setSubTab('all_masters');
                                 else setSubTab('');
                             }}
                             className={`px-2 py-1 md:px-3 md:py-1.5 rounded-md text-xs md:text-sm font-bold capitalize transition-all whitespace-nowrap ${activeTab === tab
                                 ? 'bg-white dark:bg-zinc-700 text-violet-600 dark:text-violet-400 shadow-sm'
                                 : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
                         >
-                            {tab === 'overview' ? '📊 Overview' : tab === 'assets' ? '🏢 Assets' : tab}
+                            {tab === 'overview' ? '📊 Overview' : tab === 'assets' ? '🏢 Assets' : tab === 'masters' ? '📚 Masters' : tab}
                         </button>
                     ))}
                 </div>
@@ -100,6 +101,7 @@ export const AccountingDashboard: React.FC = () => {
             {/* Sub-Header for Masters */}
             {activeTab === 'masters' && (
                 <div className="px-6 py-2 border-b border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900/50 flex gap-4 overflow-x-auto no-print">
+                    <button onClick={() => setSubTab('all_masters')} className={`text-sm font-bold whitespace-nowrap ${subTab === 'all_masters' ? 'text-violet-600 dark:text-violet-400 border-b-2 border-violet-600 pb-0.5' : 'text-slate-500 hover:text-slate-700'}`}>📚 All Masters Hub (16 Masters)</button>
                     <button onClick={() => setSubTab('coa')} className={`text-sm font-medium whitespace-nowrap ${subTab === 'coa' ? 'text-blue-600' : 'text-slate-500'}`}>Chart of Accounts</button>
                     <button onClick={() => setSubTab('all_partners')} className={`text-sm font-medium whitespace-nowrap ${subTab === 'all_partners' ? 'text-blue-600' : 'text-slate-500'}`}>All Partners</button>
                     <button onClick={() => setSubTab('taxes')} className={`text-sm font-medium whitespace-nowrap ${subTab === 'taxes' ? 'text-blue-600' : 'text-slate-500'}`}>Taxes</button>
@@ -132,6 +134,7 @@ export const AccountingDashboard: React.FC = () => {
                 {activeTab === 'reporting' && subTab === 'expenses' && <ExpenseReport />}
                 {activeTab === 'reporting' && subTab === 'budget' && <BudgetAnalysis />}
 
+                {activeTab === 'masters' && subTab === 'all_masters' && <AccountingMasters />}
                 {activeTab === 'masters' && subTab === 'coa' && <ChartOfAccounts />}
                 {activeTab === 'masters' && subTab === 'all_partners' && <Partners />}
                 {activeTab === 'masters' && subTab === 'taxes' && <Taxes />}

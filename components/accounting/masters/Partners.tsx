@@ -74,15 +74,17 @@ export const Partners: React.FC<{ type?: 'Customer' | 'Vendor' }> = ({ type }) =
         if (!currentCompanyId) return;
         const { data } = await (supabase as any)
             .from('accounting_chart_of_accounts')
-            .select('id, name, code, type, is_group')
+            .select('id, name, code, type, is_group, is_active')
             .eq('company_id', currentCompanyId)
+            .eq('is_active', true)
+            .eq('is_group', false)
             .in('type', ['Asset', 'Liability'])
             .order('code');
 
         if (data) {
             const accList = data as Account[];
-            setReceivableAccounts(accList.filter(a => a.type === 'Asset' && !a.is_group));
-            setPayableAccounts(accList.filter(a => a.type === 'Liability' && !a.is_group));
+            setReceivableAccounts(accList.filter(a => a.type === 'Asset' && !a.is_group && (a as any).is_active !== false));
+            setPayableAccounts(accList.filter(a => a.type === 'Liability' && !a.is_group && (a as any).is_active !== false));
         }
     };
 

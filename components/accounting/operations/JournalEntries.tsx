@@ -67,11 +67,11 @@ export const JournalEntries: React.FC = () => {
         if (!currentCompanyId) return;
         const [jRes, aRes, ccRes] = await Promise.all([
             supabase.from('accounting_journals').select('*').eq('company_id', currentCompanyId).eq('is_active', true),
-            supabase.from('accounting_chart_of_accounts').select('*').eq('company_id', currentCompanyId).eq('is_active', true).order('code'),
+            supabase.from('accounting_chart_of_accounts').select('*').eq('company_id', currentCompanyId).eq('is_active', true).eq('is_group', false).order('code'),
             supabase.from('accounting_cost_centers').select('*').eq('company_id', currentCompanyId).eq('is_active', true)
         ]);
         if (jRes.data) setJournals(jRes.data);
-        if (aRes.data) setAccounts(aRes.data.filter((a: any) => !a.is_group));
+        if (aRes.data) setAccounts(aRes.data.filter((a: any) => !a.is_group && a.is_active !== false));
         if (ccRes.data) setCostCenters(ccRes.data);
     };
 

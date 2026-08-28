@@ -95,14 +95,14 @@ export const Payments: React.FC = () => {
             const [pRes, jRes, aRes, bRes] = await Promise.all([
                 supabase.from('accounting_partners').select('id, name, partner_type').eq('company_id', currentCompanyId).order('name'),
                 supabase.from('accounting_journals').select('id, name, type, code').eq('company_id', currentCompanyId).in('type', ['Bank', 'Cash']).order('name'),
-                supabase.from('accounting_chart_of_accounts').select('id, code, name, type, subtype').eq('company_id', currentCompanyId).eq('is_active', true).order('code'),
+                supabase.from('accounting_chart_of_accounts').select('id, code, name, type, subtype, is_group, is_active').eq('company_id', currentCompanyId).eq('is_active', true).eq('is_group', false).order('code'),
                 supabase.from('org_bank_configs').select('id, name, bank_name, code').eq('company_id', currentCompanyId).order('name')
             ]);
 
             setPartners(pRes.data || []);
             const fetchedJournals = jRes.data || [];
             setJournals(fetchedJournals);
-            setAccounts((aRes.data || []).filter((a: any) => !a.is_group));
+            setAccounts((aRes.data || []).filter((a: any) => !a.is_group && a.is_active !== false));
             setBankConfigs(bRes.data || []);
         } catch (e) {
             console.error('Error fetching masters:', e);

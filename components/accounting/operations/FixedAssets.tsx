@@ -80,11 +80,11 @@ export const FixedAssets: React.FC = () => {
     setLoading(true);
     const [{ data: a }, { data: acc }, { data: sum }] = await Promise.all([
       supabase.from('fixed_assets').select('*').eq('company_id', currentCompanyId).order('purchase_date', { ascending: false }),
-      supabase.from('accounting_chart_of_accounts').select('id,name,code').eq('company_id', currentCompanyId).order('code'),
+      supabase.from('accounting_chart_of_accounts').select('id,name,code,is_active,is_group').eq('company_id', currentCompanyId).eq('is_active', true).eq('is_group', false).order('code'),
       supabase.rpc('rpc_fixed_assets_summary'),
     ]);
     setAssets(a || []);
-    setAccounts(acc || []);
+    setAccounts((acc || []).filter((x: any) => !x.is_group && x.is_active !== false));
     if (sum) setSummary(sum as unknown as Summary);
     setLoading(false);
   }, [currentCompanyId]);

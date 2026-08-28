@@ -475,9 +475,9 @@ export const AccountingMasters: React.FC = () => {
             const { data: groups } = await supabase.from('accounting_account_groups').select('id, name').eq('company_id', currentCompanyId);
             setAccountGroups(groups || []);
 
-            // Load Accounts
-            const { data: accounts } = await supabase.from('accounting_chart_of_accounts').select('id, name, code').eq('company_id', currentCompanyId);
-            setCoaAccounts(accounts || []);
+            // Load Accounts (Active Posting accounts only)
+            const { data: accounts } = await supabase.from('accounting_chart_of_accounts').select('id, name, code, is_group, is_active').eq('company_id', currentCompanyId).eq('is_active', true).eq('is_group', false).order('code');
+            setCoaAccounts((accounts || []).filter((a: any) => !a.is_group && a.is_active !== false));
 
             // Load Currencies
             const { data: cur } = await supabase.from('financial_masters_currencies').select('id, name, code').eq('company_id', currentCompanyId);
