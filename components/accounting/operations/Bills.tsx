@@ -376,17 +376,27 @@ export const Bills: React.FC = () => {
                 }
             }
 
-            const payloadLines = lines.map(l => ({
-                item_id: l.line_type === 'item' && l.item_id ? String(l.item_id).trim() : null,
-                purchase_ledger_id: l.line_type === 'item' && l.purchase_ledger_id ? String(l.purchase_ledger_id).trim() : null,
-                account_id: l.account_id ? String(l.account_id).trim() : null,
-                description: l.description ? String(l.description).trim() : null,
-                quantity: Number(l.quantity) || 1,
-                unit_price: Number(l.unit_price) || 0,
-                cost_center_id: l.cost_center_id ? String(l.cost_center_id).trim() : null,
-                project_cost_center_id: l.project_cost_center_id ? String(l.project_cost_center_id).trim() : null,
-                contract_cost_center_id: l.contract_cost_center_id ? String(l.contract_cost_center_id).trim() : null
-            }));
+            const payloadLines = lines.map(l => {
+                const isItemCoa = l.line_type === 'item' && l.purchase_ledger_id && l.purchase_ledger_id.startsWith('coa:');
+                const cleanPurchaseLedgerId = l.line_type === 'item' && l.purchase_ledger_id && !isItemCoa 
+                    ? String(l.purchase_ledger_id).trim() 
+                    : null;
+                const cleanAccountId = isItemCoa
+                    ? l.purchase_ledger_id.replace('coa:', '').trim()
+                    : (l.account_id ? String(l.account_id).trim() : null);
+
+                return {
+                    item_id: l.line_type === 'item' && l.item_id ? String(l.item_id).trim() : null,
+                    purchase_ledger_id: cleanPurchaseLedgerId,
+                    account_id: cleanAccountId,
+                    description: l.description ? String(l.description).trim() : null,
+                    quantity: Number(l.quantity) || 1,
+                    unit_price: Number(l.unit_price) || 0,
+                    cost_center_id: l.cost_center_id ? String(l.cost_center_id).trim() : null,
+                    project_cost_center_id: l.project_cost_center_id ? String(l.project_cost_center_id).trim() : null,
+                    contract_cost_center_id: l.contract_cost_center_id ? String(l.contract_cost_center_id).trim() : null
+                };
+            });
 
             const trimmedRef = billReference.trim() || null;
             const trimmedSupplierInvNo = supplierInvoiceNo.trim() || null;
@@ -499,9 +509,9 @@ export const Bills: React.FC = () => {
         else fetchBills();
     };
 
-    const genericCC = costCenters.filter(cc => cc.type === 'GENERIC');
-    const projectCC = costCenters.filter(cc => cc.type === 'PROJECT');
-    const contractCC = costCenters.filter(cc => cc.type === 'CONTRACT');
+    const projectCC = costCenters.filter(cc => (cc.type || '').toUpperCase() === 'PROJECT');
+    const contractCC = costCenters.filter(cc => (cc.type || '').toUpperCase() === 'CONTRACT');
+    const genericCC = costCenters.filter(cc => !cc.type || (cc.type || '').toUpperCase() === 'GENERIC' || ((cc.type || '').toUpperCase() !== 'PROJECT' && (cc.type || '').toUpperCase() !== 'CONTRACT'));
 
     const filteredBills = bills.filter(b => {
         const matchesSearch = 

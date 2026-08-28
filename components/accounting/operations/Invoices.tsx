@@ -356,9 +356,9 @@ export const Invoices: React.FC = () => {
         }
     };
 
-    const genericCC = costCenters.filter(cc => cc.type === 'GENERIC');
-    const projectCC = costCenters.filter(cc => cc.type === 'PROJECT');
-    const contractCC = costCenters.filter(cc => cc.type === 'CONTRACT');
+    const projectCC = costCenters.filter(cc => (cc.type || '').toUpperCase() === 'PROJECT');
+    const contractCC = costCenters.filter(cc => (cc.type || '').toUpperCase() === 'CONTRACT');
+    const genericCC = costCenters.filter(cc => !cc.type || (cc.type || '').toUpperCase() === 'GENERIC' || ((cc.type || '').toUpperCase() !== 'PROJECT' && (cc.type || '').toUpperCase() !== 'CONTRACT'));
 
     const filteredInvoices = invoices.filter(inv => {
         const matchesSearch = 
