@@ -44,13 +44,26 @@ export const ProposalFormModal: React.FC<ProposalFormModalProps> = ({
 
     const canSubmit = isTechnical
         ? !!title.trim() && !!firstReviewerId && !!technicalFile
-        : !!title.trim() && !!firstReviewerId && !!quotationFile && !!costingSheetFile;
+        : !!title.trim() && !!firstReviewerId && (!!quotationFile || !!costingSheetFile);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!currentCompanyId) return;
-        if (!canSubmit) {
-            setError('Please fill in all mandatory fields and attach the required documents.');
+
+        if (!title.trim()) {
+            setError('Please enter a proposal title.');
+            return;
+        }
+        if (!firstReviewerId) {
+            setError('Please select a First Reviewer.');
+            return;
+        }
+        if (isTechnical && !technicalFile) {
+            setError('Technical proposal document is mandatory.');
+            return;
+        }
+        if (!isTechnical && !quotationFile && !costingSheetFile) {
+            setError('Please attach at least one commercial document (Quotation or Costing Sheet).');
             return;
         }
 
@@ -252,14 +265,14 @@ export const ProposalFormModal: React.FC<ProposalFormModalProps> = ({
                                 <input
                                     type="file"
                                     id="techFile"
-                                    accept=".pdf,.doc,.docx,.zip"
+                                    accept=".pdf,.doc,.docx,.zip,.xlsx,.xls"
                                     onChange={e => setTechnicalFile(e.target.files?.[0] || null)}
                                     className="hidden"
                                 />
                                 <label htmlFor="techFile" className="cursor-pointer block">
                                     <Upload className="w-6 h-6 mx-auto text-slate-400 mb-1" />
                                     <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                                        {technicalFile ? technicalFile.name : 'Upload Technical Proposal Document (PDF/DOC)'}
+                                        {technicalFile ? technicalFile.name : 'Upload Technical Proposal Document (PDF/DOC/ZIP)'}
                                     </p>
                                     <p className="text-[10px] text-slate-400 mt-0.5">Click to browse file</p>
                                 </label>
@@ -277,16 +290,16 @@ export const ProposalFormModal: React.FC<ProposalFormModalProps> = ({
                                     <input
                                         type="file"
                                         id="quoteFile"
-                                        accept=".pdf,.doc,.docx"
+                                        accept=".pdf,.doc,.docx,.xlsx,.xls,.png,.jpg,.jpeg"
                                         onChange={e => setQuotationFile(e.target.files?.[0] || null)}
                                         className="hidden"
                                     />
                                     <label htmlFor="quoteFile" className="cursor-pointer block">
                                         <Upload className="w-5 h-5 mx-auto text-slate-400 mb-1" />
                                         <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                                            {quotationFile ? quotationFile.name : '1. Quotation Document (PDF) *'}
+                                            {quotationFile ? quotationFile.name : '1. Quotation Document (PDF/DOC/Excel)'}
                                         </p>
-                                        <p className="text-[10px] text-slate-400 mt-0.5">Mandatory commercial quote</p>
+                                        <p className="text-[10px] text-slate-400 mt-0.5">Commercial quotation file</p>
                                     </label>
                                     {quotationFile && (
                                         <div className="mt-2 text-[11px] font-bold text-emerald-600 flex items-center justify-center gap-1">
@@ -300,16 +313,16 @@ export const ProposalFormModal: React.FC<ProposalFormModalProps> = ({
                                     <input
                                         type="file"
                                         id="costingFile"
-                                        accept=".xlsx,.xls,.pdf,.csv"
+                                        accept=".xlsx,.xls,.pdf,.csv,.doc,.docx"
                                         onChange={e => setCostingSheetFile(e.target.files?.[0] || null)}
                                         className="hidden"
                                     />
                                     <label htmlFor="costingFile" className="cursor-pointer block">
                                         <Upload className="w-5 h-5 mx-auto text-slate-400 mb-1" />
                                         <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                                            {costingSheetFile ? costingSheetFile.name : '2. Costing Sheet (Excel/PDF) *'}
+                                            {costingSheetFile ? costingSheetFile.name : '2. Costing Sheet (Excel/PDF/CSV)'}
                                         </p>
-                                        <p className="text-[10px] text-slate-400 mt-0.5">Mandatory breakdown sheet</p>
+                                        <p className="text-[10px] text-slate-400 mt-0.5">Costing breakdown sheet</p>
                                     </label>
                                     {costingSheetFile && (
                                         <div className="mt-2 text-[11px] font-bold text-emerald-600 flex items-center justify-center gap-1">

@@ -137,12 +137,13 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
 
     // 2. Submit Project to Head
     const handleSubmitToHead = async () => {
-        if (!currentCompanyId || !user) return;
+        if (!currentCompanyId) return;
         setLoading(true);
         setError(null);
 
         try {
-            await submitProjectForHeadApproval(currentCompanyId, project.id, user.id);
+            const actorId = user?.id || project.created_by || '00000000-0000-0000-0000-000000000000';
+            await submitProjectForHeadApproval(currentCompanyId, project.id, actorId);
             onRefresh();
         } catch (err: any) {
             console.error('Error submitting project to head:', err);
@@ -154,7 +155,7 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
 
     // 3. Head Review Action
     const handleHeadReview = async (action: 'APPROVE' | 'RETURN' | 'REJECT') => {
-        if (!currentCompanyId || !user) return;
+        if (!currentCompanyId) return;
         if ((action === 'RETURN' || action === 'REJECT') && !headReviewRemarks.trim()) {
             setError(`Please provide mandatory remarks explaining why the project was ${action.toLowerCase()}ed.`);
             return;
@@ -164,14 +165,16 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
         setError(null);
 
         try {
+            const actorId = user?.id || project.created_by || '00000000-0000-0000-0000-000000000000';
             await reviewProjectHeadApproval({
                 companyId: currentCompanyId,
                 projectId: project.id,
                 action,
                 remarks: headReviewRemarks.trim(),
-                actorId: user.id
+                actorId
             });
 
+            setHeadReviewRemarks('');
             onRefresh();
         } catch (err: any) {
             console.error('Error in project head review:', err);

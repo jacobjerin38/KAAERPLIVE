@@ -157,9 +157,6 @@ export async function createProposal(payload: ProposalPayload) {
     if (!payload.firstReviewerId) {
         throw new Error('First Reviewer must be selected.');
     }
-    if (payload.firstReviewerId === payload.createdBy) {
-        throw new Error('Uploader cannot select themselves as the reviewer.');
-    }
 
     // 1. Upload files
     let techUrl: string | null = null;
@@ -170,12 +167,18 @@ export async function createProposal(payload: ProposalPayload) {
         if (!payload.technicalFile) throw new Error('Technical Proposal document is mandatory.');
         techUrl = await uploadProjectFile(payload.companyId, 'proposals/technical', payload.technicalFile);
     } else {
-        if (!payload.quotationFile || !payload.costingSheetFile) {
-            throw new Error('Both Quotation and Costing Sheet are mandatory for Commercial Proposals.');
+        if (!payload.quotationFile && !payload.costingSheetFile) {
+            throw new Error('Please attach at least one commercial document (Quotation or Costing Sheet).');
         }
-        quoteUrl = await uploadProjectFile(payload.companyId, 'proposals/commercial', payload.quotationFile);
-        costingUrl = await uploadProjectFile(payload.companyId, 'proposals/commercial', payload.costingSheetFile);
+        if (payload.quotationFile) {
+            quoteUrl = await uploadProjectFile(payload.companyId, 'proposals/commercial', payload.quotationFile);
+        }
+        if (payload.costingSheetFile) {
+            costingUrl = await uploadProjectFile(payload.companyId, 'proposals/commercial', payload.costingSheetFile);
+        }
     }
+
+    const createdByActor = payload.createdBy || '00000000-0000-0000-0000-000000000000';
 
     // 2. Insert Proposal
     const { data: prop, error: propErr } = await supabase.from('project_proposals').insert([{
@@ -192,7 +195,7 @@ export async function createProposal(payload: ProposalPayload) {
         status: 'PENDING_FIRST_REVIEW',
         current_revision: 1,
         first_reviewer_id: payload.firstReviewerId,
-        created_by: payload.createdBy
+        created_by: createdByActor
     }]).select().single();
 
     if (propErr) throw propErr;
@@ -205,7 +208,7 @@ export async function createProposal(payload: ProposalPayload) {
         technical_file_url: techUrl,
         quotation_file_url: quoteUrl,
         costing_sheet_file_url: costingUrl,
-        submitted_by: payload.createdBy,
+        submitted_by: createdByActor,
         submitted_at: new Date().toISOString(),
         reviewer_id: payload.firstReviewerId,
         status: 'PENDING_FIRST_REVIEW',
@@ -220,7 +223,7 @@ export async function createProposal(payload: ProposalPayload) {
         proposalId: prop.id,
         revisionId: rev.id,
         action: 'CREATED_AND_SUBMITTED',
-        actorId: payload.createdBy,
+        actorId: createdByActor,
         previousStatus: 'DRAFT',
         newStatus: 'PENDING_FIRST_REVIEW',
         remarks: `Initial revision 1 registered and submitted to reviewer`
@@ -259,6 +262,12 @@ export async function submitProposalRevision(payload: {
         throw new Error('This proposal is locked and cannot be revised.');
     }
 
+    const { data: latestRev } = await supabase.from('project_proposal_revisions')
+        .select('*')
+        .eq('proposal_id', prop.id)
+        .eq('revision_number', prop.current_revision)
+        .maybeSingle();
+
     const nextRevNum = (prop.current_revision || 1) + 1;
 
     let techUrl: string | null = null;
@@ -269,12 +278,18 @@ export async function submitProposalRevision(payload: {
         if (!payload.technicalFile) throw new Error('New technical document is mandatory for revision.');
         techUrl = await uploadProjectFile(payload.companyId, 'proposals/technical', payload.technicalFile);
     } else {
-        if (!payload.quotationFile || !payload.costingSheetFile) {
-            throw new Error('Both Quotation and Costing Sheet are mandatory for commercial revision.');
+        if (!payload.quotationFile && !payload.costingSheetFile) {
+            throw new Error('Please attach at least one updated document (Quotation or Costing Sheet) for revision.');
         }
-        quoteUrl = await uploadProjectFile(payload.companyId, 'proposals/commercial', payload.quotationFile);
-        costingUrl = await uploadProjectFile(payload.companyId, 'proposals/commercial', payload.costingSheetFile);
+        quoteUrl = payload.quotationFile 
+            ? await uploadProjectFile(payload.companyId, 'proposals/commercial', payload.quotationFile)
+            : (latestRev?.quotation_file_url || null);
+        costingUrl = payload.costingSheetFile
+            ? await uploadProjectFile(payload.companyId, 'proposals/commercial', payload.costingSheetFile)
+            : (latestRev?.costing_sheet_file_url || null);
     }
+
+    const submittedByActor = payload.submittedBy || prop.created_by || '00000000-0000-0000-0000-000000000000';
 
     const { data: rev, error: revErr } = await supabase.from('project_proposal_revisions').insert([{
         company_id: payload.companyId,
@@ -283,7 +298,7 @@ export async function submitProposalRevision(payload: {
         technical_file_url: techUrl,
         quotation_file_url: quoteUrl,
         costing_sheet_file_url: costingUrl,
-        submitted_by: payload.submittedBy,
+        submitted_by: submittedByActor,
         submitted_at: new Date().toISOString(),
         reviewer_id: payload.reviewerId || prop.first_reviewer_id,
         status: 'PENDING_FIRST_REVIEW',
@@ -297,7 +312,7 @@ export async function submitProposalRevision(payload: {
         status: 'PENDING_FIRST_REVIEW',
         first_reviewer_id: payload.reviewerId || prop.first_reviewer_id,
         updated_at: new Date().toISOString(),
-        updated_by: payload.submittedBy
+        updated_by: submittedByActor
     }).eq('id', prop.id);
 
     await logProposalAudit({
@@ -305,7 +320,7 @@ export async function submitProposalRevision(payload: {
         proposalId: prop.id,
         revisionId: rev.id,
         action: 'REVISION_UPLOADED',
-        actorId: payload.submittedBy,
+        actorId: submittedByActor,
         previousStatus: prop.status,
         newStatus: 'PENDING_FIRST_REVIEW',
         remarks: `Revision ${nextRevNum} submitted: ${payload.remarks || 'Updated proposal documents'}`
@@ -329,7 +344,7 @@ export async function processProposalReview(payload: {
     action: 'APPROVE' | 'RETURN' | 'REJECT';
     remarks: string;
     actorId: string;
-    currentStage: 'FIRST_REVIEW' | 'FINANCE_REVIEW' | 'FINAL_APPROVAL';
+    currentStage?: 'FIRST_REVIEW' | 'FINANCE_REVIEW' | 'FINAL_APPROVAL';
 }) {
     const { data: prop } = await supabase.from('project_proposals')
         .select('*')
@@ -345,6 +360,7 @@ export async function processProposalReview(payload: {
         throw new Error('Mandatory remarks/reason required for return or rejection.');
     }
 
+    const actor = payload.actorId || prop.created_by || '00000000-0000-0000-0000-000000000000';
     let nextStatus = prop.status;
     let isLocked = false;
 
@@ -354,17 +370,23 @@ export async function processProposalReview(payload: {
         nextStatus = 'REJECTED';
     } else if (payload.action === 'APPROVE') {
         if (prop.proposal_type === 'TECHNICAL') {
-            if (payload.currentStage === 'FIRST_REVIEW') {
+            if (prop.status === 'PENDING_FIRST_REVIEW') {
                 nextStatus = 'PENDING_FINAL_APPROVAL';
+            } else if (prop.status === 'PENDING_FINAL_APPROVAL' || prop.status === 'FIRST_REVIEW_APPROVED') {
+                nextStatus = 'APPROVED';
+                isLocked = true;
             } else {
                 nextStatus = 'APPROVED';
                 isLocked = true;
             }
-        } else {
-            if (payload.currentStage === 'FIRST_REVIEW') {
+        } else { // COMMERCIAL
+            if (prop.status === 'PENDING_FIRST_REVIEW') {
                 nextStatus = 'PENDING_FINANCE_APPROVAL';
-            } else if (payload.currentStage === 'FINANCE_REVIEW') {
+            } else if (prop.status === 'PENDING_FINANCE_APPROVAL') {
                 nextStatus = 'PENDING_FINAL_APPROVAL';
+            } else if (prop.status === 'PENDING_FINAL_APPROVAL' || prop.status === 'FINANCE_APPROVED') {
+                nextStatus = 'APPROVED';
+                isLocked = true;
             } else {
                 nextStatus = 'APPROVED';
                 isLocked = true;
@@ -372,14 +394,16 @@ export async function processProposalReview(payload: {
         }
     }
 
-    await supabase.from('project_proposals').update({
+    const { error: updateError } = await supabase.from('project_proposals').update({
         status: nextStatus,
         is_locked: isLocked,
         locked_at: isLocked ? new Date().toISOString() : null,
-        locked_by: isLocked ? payload.actorId : null,
+        locked_by: isLocked ? actor : null,
         updated_at: new Date().toISOString(),
-        updated_by: payload.actorId
+        updated_by: actor
     }).eq('id', prop.id);
+
+    if (updateError) throw updateError;
 
     const { data: latestRev } = await supabase.from('project_proposal_revisions')
         .select('id')
@@ -394,15 +418,19 @@ export async function processProposalReview(payload: {
         await supabase.from('project_proposal_revisions').update(revUpdates).eq('id', latestRev.id);
     }
 
+    const actionStage = payload.currentStage || 
+        (prop.status === 'PENDING_FIRST_REVIEW' ? 'FIRST_REVIEW' : 
+         prop.status === 'PENDING_FINANCE_APPROVAL' ? 'FINANCE_REVIEW' : 'FINAL_APPROVAL');
+
     await logProposalAudit({
         companyId: payload.companyId,
         proposalId: prop.id,
         revisionId: latestRev?.id,
-        action: `${payload.currentStage}_${payload.action}`,
-        actorId: payload.actorId,
+        action: `${actionStage}_${payload.action}`,
+        actorId: actor,
         previousStatus: prop.status,
         newStatus: nextStatus,
-        remarks: payload.remarks
+        remarks: payload.remarks || (payload.action === 'APPROVE' ? `Approved at ${actionStage}` : null)
     });
 
     if (payload.action === 'RETURN' || payload.action === 'REJECT') {
@@ -421,6 +449,15 @@ export async function processProposalReview(payload: {
             title: 'Proposal Approved & Locked',
             message: `Proposal "${prop.title}" has received final approval and is now locked for execution.`,
             type: 'SUCCESS',
+            link: '/projects'
+        });
+    } else {
+        await sendNotification({
+            companyId: payload.companyId,
+            userId: prop.created_by,
+            title: `Proposal Advanced: ${nextStatus.replace(/_/g, ' ')}`,
+            message: `Proposal "${prop.title}" has been approved at ${actionStage} and advanced to ${nextStatus.replace(/_/g, ' ')}.`,
+            type: 'INFO',
             link: '/projects'
         });
     }

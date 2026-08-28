@@ -41,15 +41,26 @@ export const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
     const [revRemarks, setRevRemarks] = useState('');
 
     const isTechnical = proposal.proposal_type === 'TECHNICAL';
-    const isLocked = proposal.is_locked;
+    const isLocked = proposal.is_locked || proposal.status === 'APPROVED';
+    const isPendingReview = 
+        proposal.status === 'PENDING_FIRST_REVIEW' || 
+        proposal.status === 'PENDING_FINANCE_APPROVAL' || 
+        proposal.status === 'PENDING_FINAL_APPROVAL';
+    const isReturned = proposal.status === 'RETURNED';
+    const isRejected = proposal.status === 'REJECTED';
 
     // Check what stage this proposal is at
     const currentStage: 'FIRST_REVIEW' | 'FINANCE_REVIEW' | 'FINAL_APPROVAL' = 
         proposal.status === 'PENDING_FIRST_REVIEW' ? 'FIRST_REVIEW' :
         proposal.status === 'PENDING_FINANCE_APPROVAL' ? 'FINANCE_REVIEW' : 'FINAL_APPROVAL';
 
+    const stageTitle = 
+        proposal.status === 'PENDING_FIRST_REVIEW' ? (isTechnical ? 'Stage 1: First Technical Review' : 'Stage 1: First Commercial Review') :
+        proposal.status === 'PENDING_FINANCE_APPROVAL' ? 'Stage 2: Finance & Margin Review' :
+        proposal.status === 'PENDING_FINAL_APPROVAL' ? 'Stage 3: Final Executive Approval' : 'Review';
+
     const handleExecuteReview = async (action: 'APPROVE' | 'RETURN' | 'REJECT') => {
-        if (!currentCompanyId || !user) return;
+        if (!currentCompanyId) return;
         if ((action === 'RETURN' || action === 'REJECT') && !reviewRemarks.trim()) {
             setError(`Please provide mandatory remarks explaining why the proposal was ${action.toLowerCase()}ed.`);
             return;
@@ -59,15 +70,18 @@ export const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
         setError(null);
 
         try {
+            const actorId = user?.id || proposal.created_by || '00000000-0000-0000-0000-000000000000';
             await processProposalReview({
                 companyId: currentCompanyId,
                 proposalId: proposal.id,
                 action,
                 remarks: reviewRemarks.trim(),
-                actorId: user.id,
+                actorId,
                 currentStage
             });
 
+            setReviewRemarks('');
+            setReviewAction(null);
             onSuccess();
         } catch (err: any) {
             console.error('Error reviewing proposal:', err);
@@ -79,7 +93,7 @@ export const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
 
     const handleReassignReviewer = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!currentCompanyId || !user) return;
+        if (!currentCompanyId) return;
         if (!newReviewerId) {
             setError('Please select a new reviewer.');
             return;
@@ -93,15 +107,18 @@ export const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
         setError(null);
 
         try {
+            const actorId = user?.id || proposal.created_by || '00000000-0000-0000-0000-000000000000';
             await reassignProposalReviewer({
                 companyId: currentCompanyId,
                 proposalId: proposal.id,
                 newReviewerId,
                 reason: reassignReason.trim(),
-                actorId: user.id
+                actorId
             });
 
             setShowReassign(false);
+            setReassignReason('');
+            setNewReviewerId('');
             onSuccess();
         } catch (err: any) {
             console.error('Error reassigning reviewer:', err);
@@ -113,14 +130,14 @@ export const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
 
     const handleUploadRevision = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!currentCompanyId || !user) return;
+        if (!currentCompanyId) return;
 
         if (isTechnical && !revTechFile) {
             setError('Technical proposal document is mandatory for revision.');
             return;
         }
-        if (!isTechnical && (!revQuoteFile || !revCostingFile)) {
-            setError('Both Quotation and Costing Sheet files are mandatory for revision.');
+        if (!isTechnical && !revQuoteFile && !revCostingFile) {
+            setError('Please attach at least one updated document (Quotation or Costing Sheet) for revision.');
             return;
         }
 
@@ -128,6 +145,7 @@ export const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
         setError(null);
 
         try {
+            const submittedBy = user?.id || proposal.created_by || '00000000-0000-0000-0000-000000000000';
             await submitProposalRevision({
                 companyId: currentCompanyId,
                 proposalId: proposal.id,
@@ -136,10 +154,14 @@ export const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
                 quotationFile: revQuoteFile,
                 costingSheetFile: revCostingFile,
                 remarks: revRemarks.trim() || 'Updated revision files',
-                submittedBy: user.id
+                submittedBy
             });
 
             setShowUploadRevision(false);
+            setRevTechFile(null);
+            setRevQuoteFile(null);
+            setRevCostingFile(null);
+            setRevRemarks('');
             onSuccess();
         } catch (err: any) {
             console.error('Error uploading revision:', err);
@@ -362,25 +384,79 @@ export const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
                             </div>
                         )}
 
-                        {/* Reviewer Action Bar (Only if not locked) */}
-                        {!isLocked && (
-                            <div className="p-5 bg-blue-50/60 dark:bg-blue-950/20 rounded-2xl border border-blue-100 dark:border-blue-900/40 space-y-4">
+                        {/* Status Banners */}
+                        {isLocked && (
+                            <div className="p-4 bg-emerald-50 dark:bg-emerald-950/30 rounded-2xl border border-emerald-200 dark:border-emerald-800 flex items-center gap-3 text-emerald-800 dark:text-emerald-300">
+                                <Lock className="w-5 h-5 shrink-0 text-emerald-600" />
+                                <div>
+                                    <h4 className="text-xs font-extrabold uppercase tracking-wider">Approved & Locked</h4>
+                                    <p className="text-xs mt-0.5">This proposal has received final executive approval and is locked for project execution.</p>
+                                </div>
+                            </div>
+                        )}
+
+                        {isReturned && (
+                            <div className="p-4 bg-amber-50 dark:bg-amber-950/30 rounded-2xl border border-amber-200 dark:border-amber-800 space-y-2 text-amber-900 dark:text-amber-300">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <RotateCcw className="w-5 h-5 shrink-0 text-amber-600" />
+                                        <h4 className="text-xs font-extrabold uppercase tracking-wider">Returned for Correction</h4>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowUploadRevision(true)}
+                                        className="px-3 py-1 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors flex items-center gap-1 shadow-sm"
+                                    >
+                                        <Upload className="w-3.5 h-3.5" />
+                                        <span>Upload Revision {(proposal.current_revision || 1) + 1}</span>
+                                    </button>
+                                </div>
+                                {latestRevision?.return_reason && (
+                                    <p className="text-xs bg-white/70 dark:bg-zinc-900/70 p-2.5 rounded-xl border border-amber-100 dark:border-amber-900/50 italic">
+                                        "{latestRevision.return_reason}"
+                                    </p>
+                                )}
+                            </div>
+                        )}
+
+                        {isRejected && (
+                            <div className="p-4 bg-rose-50 dark:bg-rose-950/30 rounded-2xl border border-rose-200 dark:border-rose-800 space-y-2 text-rose-900 dark:text-rose-300">
                                 <div className="flex items-center gap-2">
-                                    <Shield className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                                    <h4 className="text-xs font-extrabold text-slate-800 dark:text-white uppercase tracking-wider">
-                                        Workflow Review Actions ({currentStage.replace(/_/g, ' ')})
-                                    </h4>
+                                    <AlertCircle className="w-5 h-5 shrink-0 text-rose-600" />
+                                    <h4 className="text-xs font-extrabold uppercase tracking-wider">Proposal Rejected</h4>
+                                </div>
+                                {latestRevision?.rejection_reason && (
+                                    <p className="text-xs bg-white/70 dark:bg-zinc-900/70 p-2.5 rounded-xl border border-rose-100 dark:border-rose-900/50 italic">
+                                        "{latestRevision.rejection_reason}"
+                                    </p>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Reviewer Action Bar (Active review stages) */}
+                        {isPendingReview && !isLocked && (
+                            <div className="p-5 bg-blue-50/60 dark:bg-blue-950/20 rounded-2xl border border-blue-100 dark:border-blue-900/40 space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <Shield className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                                        <h4 className="text-xs font-extrabold text-slate-800 dark:text-white uppercase tracking-wider">
+                                            {stageTitle}
+                                        </h4>
+                                    </div>
+                                    <span className="text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300">
+                                        Action Required
+                                    </span>
                                 </div>
 
                                 <div>
                                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                                        Review Remarks / Reason (Mandatory for Return or Rejection)
+                                        Review Remarks / Notes (Mandatory for Return or Rejection)
                                     </label>
                                     <textarea
                                         rows={2}
                                         value={reviewRemarks}
                                         onChange={e => setReviewRemarks(e.target.value)}
-                                        placeholder="Add approval comments, or specify missing information for return/rejection..."
+                                        placeholder="Add approval remarks or explain reason for return/rejection..."
                                         className="w-full px-3 py-2 text-xs bg-white dark:bg-zinc-900 rounded-xl border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-white focus:outline-none"
                                     />
                                 </div>
@@ -410,7 +486,11 @@ export const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
                                     >
                                         <CheckCircle2 className="w-4 h-4" />
                                         <span>
-                                            {currentStage === 'FINAL_APPROVAL' ? 'Final Approve & Lock' : 'Approve & Advance Stage'}
+                                            {proposal.status === 'PENDING_FINAL_APPROVAL' 
+                                                ? 'Final Approve & Lock' 
+                                                : proposal.status === 'PENDING_FIRST_REVIEW'
+                                                    ? (isTechnical ? 'Approve & Advance to Final Approval' : 'Approve & Advance to Finance Review')
+                                                    : 'Approve & Advance to Final Approval'}
                                         </span>
                                     </button>
                                 </div>
@@ -546,12 +626,12 @@ export const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
                                 {isTechnical ? (
                                     <div>
                                         <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                                            New Technical Document (PDF/DOC) *
+                                            New Technical Document (PDF/DOC/ZIP) *
                                         </label>
                                         <input
                                             type="file"
                                             required
-                                            accept=".pdf,.doc,.docx"
+                                            accept=".pdf,.doc,.docx,.zip,.xlsx,.xls"
                                             onChange={e => setRevTechFile(e.target.files?.[0] || null)}
                                             className="w-full text-xs text-slate-600 dark:text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-blue-50 file:text-blue-700"
                                         />
@@ -560,27 +640,27 @@ export const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
                                     <>
                                         <div>
                                             <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                                                New Quotation File (PDF) *
+                                                New Quotation File (PDF/DOC/Excel)
                                             </label>
                                             <input
                                                 type="file"
-                                                required
-                                                accept=".pdf,.doc,.docx"
+                                                accept=".pdf,.doc,.docx,.xlsx,.xls,.png,.jpg,.jpeg"
                                                 onChange={e => setRevQuoteFile(e.target.files?.[0] || null)}
                                                 className="w-full text-xs text-slate-600 dark:text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-emerald-50 file:text-emerald-700"
                                             />
+                                            <p className="text-[10px] text-slate-400 mt-1">Leave empty to keep existing revision's quotation</p>
                                         </div>
                                         <div>
                                             <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                                                New Costing Sheet File (Excel/PDF) *
+                                                New Costing Sheet File (Excel/PDF/CSV)
                                             </label>
                                             <input
                                                 type="file"
-                                                required
-                                                accept=".xlsx,.xls,.pdf"
+                                                accept=".xlsx,.xls,.pdf,.csv,.doc,.docx"
                                                 onChange={e => setRevCostingFile(e.target.files?.[0] || null)}
                                                 className="w-full text-xs text-slate-600 dark:text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-emerald-50 file:text-emerald-700"
                                             />
+                                            <p className="text-[10px] text-slate-400 mt-1">Leave empty to keep existing revision's costing sheet</p>
                                         </div>
                                     </>
                                 )}
