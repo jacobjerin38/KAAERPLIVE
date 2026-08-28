@@ -765,6 +765,16 @@ export const Bills: React.FC = () => {
                                     </div>
                                 )}
                             </div>
+
+                            {/* Late / Prior-Period Invoice Helper Banner */}
+                            {billDate && voucherDate && billDate.slice(0, 7) !== voucherDate.slice(0, 7) && (
+                                <div className="lg:col-span-6 flex items-center gap-2 p-2.5 bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40 rounded-lg text-xs text-blue-800 dark:text-blue-300">
+                                    <Clock className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+                                    <span>
+                                        <strong>Late / Prior Period Invoice:</strong> Supplier bill dated <strong>{billDate}</strong> will be recognized in the general ledger under the active period of Voucher Date (<strong>{voucherDate}</strong>).
+                                    </span>
+                                </div>
+                            )}
                         </div>
 
                         {/* Bill Lines Section */}
