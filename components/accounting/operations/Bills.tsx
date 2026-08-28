@@ -66,6 +66,7 @@ export const Bills: React.FC = () => {
     const [creditPeriod, setCreditPeriod] = useState<string>('30');
     const [dueDate, setDueDate] = useState(new Date().toISOString().split('T')[0]);
     const [billReference, setBillReference] = useState('');
+    const [supplierInvoiceNo, setSupplierInvoiceNo] = useState('');
 
     // Edit/View State
     const [editMode, setEditMode] = useState(false);
@@ -205,6 +206,7 @@ export const Bills: React.FC = () => {
             setVoucherDate(bVoucherDate);
             setDueDate(bDueDate);
             setBillReference(bill.reference || '');
+            setSupplierInvoiceNo(bill.supplier_invoice_number || '');
             setEditMode(!readonly);
             setViewMode(readonly);
 
@@ -263,6 +265,7 @@ export const Bills: React.FC = () => {
             setEditingBillId(null);
             setSelectedPartner('');
             setBillReference('');
+            setSupplierInvoiceNo('');
             if (journals.length > 0) setSelectedJournal(journals[0].id);
             setBillDate(today);
             setVoucherDate(today);
@@ -367,6 +370,7 @@ export const Bills: React.FC = () => {
             }));
 
             const trimmedRef = billReference.trim() || null;
+            const trimmedSupplierInvNo = supplierInvoiceNo.trim() || null;
 
             if (editMode && editingBillId) {
                 const updatePayload = {
@@ -378,7 +382,8 @@ export const Bills: React.FC = () => {
                     p_due_date: dueDate,
                     p_lines: payloadLines,
                     p_company_id: currentCompanyId,
-                    p_reference: trimmedRef
+                    p_reference: trimmedRef,
+                    p_supplier_invoice_number: trimmedSupplierInvNo
                 };
                 const { error } = await (supabase.rpc as any)('rpc_update_accounting_invoice', updatePayload);
                 if (error) throw error;
@@ -386,7 +391,8 @@ export const Bills: React.FC = () => {
                     date: voucherDate,
                     invoice_date: billDate,
                     due_date: dueDate,
-                    reference: trimmedRef 
+                    reference: trimmedRef,
+                    supplier_invoice_number: trimmedSupplierInvNo
                 }).eq('id', editingBillId);
                 alert('Vendor Bill updated successfully!');
             } else {
@@ -399,7 +405,8 @@ export const Bills: React.FC = () => {
                     p_move_type: 'in_invoice',
                     p_lines: payloadLines,
                     p_company_id: currentCompanyId,
-                    p_reference: trimmedRef
+                    p_reference: trimmedRef,
+                    p_supplier_invoice_number: trimmedSupplierInvNo
                 };
 
                 const { data: newId, error } = await (supabase.rpc as any)('rpc_create_accounting_invoice', payload);
@@ -409,7 +416,8 @@ export const Bills: React.FC = () => {
                         date: voucherDate,
                         invoice_date: billDate,
                         due_date: dueDate,
-                        reference: trimmedRef 
+                        reference: trimmedRef,
+                        supplier_invoice_number: trimmedSupplierInvNo
                     }).eq('id', newId);
                 }
                 alert('Vendor Bill created successfully!');
@@ -479,6 +487,7 @@ export const Bills: React.FC = () => {
     const filteredBills = bills.filter(b => {
         const matchesSearch = 
             (b.reference || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (b.supplier_invoice_number || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
             (b.partner?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
             (b.partner?.reference_code || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
             (b.partner?.code || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -544,28 +553,38 @@ export const Bills: React.FC = () => {
                 <table className="w-full text-left text-sm">
                     <thead className="bg-slate-50 dark:bg-zinc-800/50 text-slate-500 font-medium border-b border-slate-100 dark:border-zinc-800">
                         <tr>
-                            <th className="px-6 py-4 font-bold text-xs uppercase tracking-wider">Number</th>
-                            <th className="px-6 py-4 font-bold text-xs uppercase tracking-wider">Vendor</th>
-                            <th className="px-6 py-4 font-bold text-xs uppercase tracking-wider">Bill Date</th>
-                            <th className="px-6 py-4 font-bold text-xs uppercase tracking-wider">Voucher Date</th>
-                            <th className="px-6 py-4 font-bold text-xs uppercase tracking-wider">Due Date</th>
-                            <th className="px-6 py-4 font-bold text-xs uppercase tracking-wider">Status</th>
-                            <th className="px-6 py-4 font-bold text-xs uppercase tracking-wider">Approval</th>
-                            <th className="px-6 py-4 text-right font-bold text-xs uppercase tracking-wider">Total</th>
-                            <th className="px-6 py-4 text-center font-bold text-xs uppercase tracking-wider">Actions</th>
+                            <th className="px-5 py-4 font-bold text-xs uppercase tracking-wider">PEC Purchase #</th>
+                            <th className="px-5 py-4 font-bold text-xs uppercase tracking-wider">Supplier Inv #</th>
+                            <th className="px-5 py-4 font-bold text-xs uppercase tracking-wider">Vendor</th>
+                            <th className="px-4 py-4 font-bold text-xs uppercase tracking-wider">Supplier Inv Date</th>
+                            <th className="px-4 py-4 font-bold text-xs uppercase tracking-wider">Voucher Date</th>
+                            <th className="px-4 py-4 font-bold text-xs uppercase tracking-wider">Due Date</th>
+                            <th className="px-4 py-4 font-bold text-xs uppercase tracking-wider">Status</th>
+                            <th className="px-4 py-4 font-bold text-xs uppercase tracking-wider">Approval</th>
+                            <th className="px-5 py-4 text-right font-bold text-xs uppercase tracking-wider">Total</th>
+                            <th className="px-5 py-4 text-center font-bold text-xs uppercase tracking-wider">Actions</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
                         {loading ? (
-                            <tr><td colSpan={9} className="px-6 py-12 text-center text-slate-500 font-medium">Loading bills...</td></tr>
+                            <tr><td colSpan={10} className="px-6 py-12 text-center text-slate-500 font-medium">Loading bills...</td></tr>
                         ) : filteredBills.length === 0 ? (
-                            <tr><td colSpan={9} className="px-6 py-12 text-center text-slate-400">No vendor bills found.</td></tr>
+                            <tr><td colSpan={10} className="px-6 py-12 text-center text-slate-400">No vendor bills found.</td></tr>
                         ) : filteredBills.map(bill => (
                             <tr key={bill.id} className="hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-colors">
-                                <td className="px-6 py-4 font-bold text-slate-700 dark:text-slate-300 font-mono text-xs">
+                                <td className="px-5 py-4 font-bold text-indigo-700 dark:text-indigo-400 font-mono text-xs">
                                     {bill.reference || `BILL-${bill.id.slice(0, 5).toUpperCase()}`}
                                 </td>
-                                <td className="px-6 py-4 font-medium text-slate-800 dark:text-white">
+                                <td className="px-5 py-4 font-semibold text-slate-800 dark:text-slate-200 font-mono text-xs">
+                                    {bill.supplier_invoice_number ? (
+                                        <span className="bg-slate-100 dark:bg-zinc-800 px-2 py-0.5 rounded text-slate-700 dark:text-slate-300">
+                                            {bill.supplier_invoice_number}
+                                        </span>
+                                    ) : (
+                                        <span className="text-slate-400">—</span>
+                                    )}
+                                </td>
+                                <td className="px-5 py-4 font-medium text-slate-800 dark:text-white">
                                     <div className="flex items-center gap-1.5">
                                         <span>{bill.partner?.name || '—'}</span>
                                         {(bill.partner?.reference_code || bill.partner?.code) && (
@@ -575,16 +594,16 @@ export const Bills: React.FC = () => {
                                         )}
                                     </div>
                                 </td>
-                                <td className="px-6 py-4 text-slate-700 dark:text-slate-200 text-xs font-mono font-medium">
+                                <td className="px-4 py-4 text-slate-700 dark:text-slate-200 text-xs font-mono font-medium">
                                     {bill.invoice_date || bill.date || '—'}
                                 </td>
-                                <td className="px-6 py-4 text-slate-500 text-xs font-mono">
+                                <td className="px-4 py-4 text-slate-500 text-xs font-mono">
                                     {bill.date || '—'}
                                 </td>
-                                <td className="px-6 py-4 text-slate-600 dark:text-slate-300 text-xs font-mono font-semibold">
+                                <td className="px-4 py-4 text-slate-600 dark:text-slate-300 text-xs font-mono font-semibold">
                                     {bill.due_date || '—'}
                                 </td>
-                                <td className="px-6 py-4">
+                                <td className="px-4 py-4">
                                     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${bill.state === 'Posted'
                                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
                                              : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
@@ -593,15 +612,15 @@ export const Bills: React.FC = () => {
                                         {bill.state}
                                     </span>
                                 </td>
-                                <td className="px-6 py-4">
+                                <td className="px-4 py-4">
                                     <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${bill.approval_status === 'approved' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'}`}>
                                         {bill.approval_status || 'pending'}
                                     </span>
                                 </td>
-                                <td className="px-6 py-4 text-right font-bold text-slate-800 dark:text-white font-mono">
+                                <td className="px-5 py-4 text-right font-bold text-slate-800 dark:text-white font-mono">
                                     QAR {Number(bill.amount_total).toFixed(2)}
                                 </td>
-                                <td className="px-6 py-4 text-center">
+                                <td className="px-5 py-4 text-center">
                                     <div className="flex gap-2 justify-center items-center">
                                         <button
                                             onClick={(e) => { e.stopPropagation(); handleOpenModal(bill, true); }}
@@ -657,41 +676,48 @@ export const Bills: React.FC = () => {
                     maxWidth="5xl"
                 >
                     <form onSubmit={handleCreateBill} className="space-y-6">
-                        {/* Header Details */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 bg-slate-50 dark:bg-zinc-800/40 p-4 rounded-xl border border-slate-100 dark:border-zinc-800">
-                            <div className="lg:col-span-2">
-                                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Vendor *</label>
-                                <select
-                                    required
-                                    value={selectedPartner}
-                                    onChange={e => handlePartnerChange(e.target.value)}
-                                    disabled={viewMode}
-                                    className="w-full p-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:outline-none"
-                                >
-                                    <option value="">Select Vendor</option>
-                                    {partners.map(p => (
-                                        <option key={p.id} value={p.id}>
-                                            {p.name} {(p.reference_code || p.code) ? `[${p.reference_code || p.code}]` : ''}
-                                        </option>
-                                    ))}
-                                </select>
+                        {/* Header Details with PEC Internal & Supplier Reference sections */}
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 bg-slate-50 dark:bg-zinc-800/40 p-4 rounded-xl border border-slate-100 dark:border-zinc-800">
+                            {/* Section 1: PEC Internal Voucher Details */}
+                            <div className="lg:col-span-12 pb-1 border-b border-slate-200/60 dark:border-zinc-700/60 flex items-center justify-between">
+                                <span className="text-xs font-bold text-indigo-700 dark:text-indigo-400 uppercase tracking-wider flex items-center gap-1.5">
+                                    <FileText className="w-3.5 h-3.5" />
+                                    1. PEC Internal Purchase Voucher
+                                </span>
+                                <span className="text-[11px] text-slate-400 font-medium">Internal accounting record & entry period</span>
                             </div>
-                            <div className="lg:col-span-2">
-                                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                                    Bill / Reference # *
+
+                            <div className="lg:col-span-4">
+                                <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider mb-1">
+                                    PEC Purchase Invoice / Voucher # *
                                 </label>
                                 <input
                                     type="text"
                                     required
-                                    placeholder="e.g. BILL-001, INV-882"
+                                    placeholder="e.g. PINV-001, 2"
                                     value={billReference}
                                     onChange={e => setBillReference(e.target.value)}
                                     disabled={viewMode}
                                     className="w-full p-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm font-mono font-bold text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500/20 focus:outline-none"
                                 />
                             </div>
-                            <div className="lg:col-span-2">
-                                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Journal *</label>
+
+                            <div className="lg:col-span-4">
+                                <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider mb-1">
+                                    Voucher Date * <span className="text-[10px] font-normal text-slate-400 normal-case">(Posting / Keying Date)</span>
+                                </label>
+                                <input 
+                                    type="date" 
+                                    required 
+                                    value={voucherDate} 
+                                    onChange={e => setVoucherDate(e.target.value)} 
+                                    disabled={viewMode} 
+                                    className="w-full p-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:outline-none font-medium" 
+                                />
+                            </div>
+
+                            <div className="lg:col-span-4">
+                                <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider mb-1">Journal *</label>
                                 <select
                                     required
                                     value={selectedJournal}
@@ -703,9 +729,52 @@ export const Bills: React.FC = () => {
                                     {journals.map(j => <option key={j.id} value={j.id}>{j.name} ({j.code})</option>)}
                                 </select>
                             </div>
+
+                            {/* Section 2: Vendor / Supplier Invoice Details */}
+                            <div className="lg:col-span-12 pt-2 pb-1 border-b border-slate-200/60 dark:border-zinc-700/60 flex items-center justify-between">
+                                <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                                    <Building2 className="w-3.5 h-3.5" />
+                                    2. Vendor Supplier Invoice & Credit Terms
+                                </span>
+                                <span className="text-[11px] text-slate-400 font-medium">Aging & due date calculate from Supplier Invoice Date</span>
+                            </div>
+
+                            <div className="lg:col-span-4">
+                                <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider mb-1">Vendor *</label>
+                                <select
+                                    required
+                                    value={selectedPartner}
+                                    onChange={e => handlePartnerChange(e.target.value)}
+                                    disabled={viewMode}
+                                    className="w-full p-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:outline-none font-medium"
+                                >
+                                    <option value="">Select Vendor</option>
+                                    {partners.map(p => (
+                                        <option key={p.id} value={p.id}>
+                                            {p.name} {(p.reference_code || p.code) ? `[${p.reference_code || p.code}]` : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div className="lg:col-span-3">
+                                <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider mb-1">
+                                    Supplier Invoice No. *
+                                </label>
+                                <input
+                                    type="text"
+                                    required
+                                    placeholder="e.g. INV-9823, BILL-882"
+                                    value={supplierInvoiceNo}
+                                    onChange={e => setSupplierInvoiceNo(e.target.value)}
+                                    disabled={viewMode}
+                                    className="w-full p-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm font-mono text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500/20 focus:outline-none"
+                                />
+                            </div>
+
                             <div className="lg:col-span-2">
-                                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                                    Bill Date * <span className="text-[10px] font-normal text-slate-400 normal-case">(Supplier Invoice Date)</span>
+                                <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider mb-1">
+                                    Supplier Inv Date *
                                 </label>
                                 <input 
                                     type="date" 
@@ -713,24 +782,12 @@ export const Bills: React.FC = () => {
                                     value={billDate} 
                                     onChange={e => handleBillDateChange(e.target.value)} 
                                     disabled={viewMode} 
-                                    className="w-full p-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:outline-none" 
+                                    className="w-full p-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:outline-none font-medium" 
                                 />
                             </div>
-                            <div className="lg:col-span-2">
-                                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                                    Voucher Date * <span className="text-[10px] font-normal text-slate-400 normal-case">(Keying / Entry Date)</span>
-                                </label>
-                                <input 
-                                    type="date" 
-                                    required 
-                                    value={voucherDate} 
-                                    onChange={e => setVoucherDate(e.target.value)} 
-                                    disabled={viewMode} 
-                                    className="w-full p-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:outline-none" 
-                                />
-                            </div>
-                            <div className="lg:col-span-2">
-                                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Credit Period *</label>
+
+                            <div className="lg:col-span-3">
+                                <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider mb-1">Credit Period *</label>
                                 <select
                                     required
                                     value={creditPeriod}
@@ -768,10 +825,10 @@ export const Bills: React.FC = () => {
 
                             {/* Late / Prior-Period Invoice Helper Banner */}
                             {billDate && voucherDate && billDate.slice(0, 7) !== voucherDate.slice(0, 7) && (
-                                <div className="lg:col-span-6 flex items-center gap-2 p-2.5 bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40 rounded-lg text-xs text-blue-800 dark:text-blue-300">
+                                <div className="lg:col-span-12 flex items-center gap-2 p-2.5 bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40 rounded-lg text-xs text-blue-800 dark:text-blue-300">
                                     <Clock className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0" />
                                     <span>
-                                        <strong>Late / Prior Period Invoice:</strong> Supplier bill dated <strong>{billDate}</strong> will be recognized in the general ledger under the active period of Voucher Date (<strong>{voucherDate}</strong>).
+                                        <strong>Late / Prior Period Supplier Invoice:</strong> Supplier bill dated <strong>{billDate}</strong> (aging and payment due date count from this date) will be recognized in the general ledger under the active period of Voucher Date (<strong>{voucherDate}</strong>).
                                     </span>
                                 </div>
                             )}
