@@ -5,6 +5,30 @@ import { Plus, Search, Filter, FileText, CheckCircle, Clock, ShoppingCart, Zap, 
 import { Modal } from '../../ui/Modal';
 import { PrintButton } from '../../ui/PrintButton';
 
+// Helper to add days to ISO date string YYYY-MM-DD safely
+const addDaysToDate = (dateStr: string, days: number): string => {
+    if (!dateStr) return '';
+    const [year, month, day] = dateStr.split('-').map(Number);
+    if (!year || !month || !day) return '';
+    const d = new Date(year, month - 1, day);
+    d.setDate(d.getDate() + days);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+};
+
+const getDaysBetweenDates = (startDateStr: string, endDateStr: string): number | null => {
+    if (!startDateStr || !endDateStr) return null;
+    const [sy, sm, sd] = startDateStr.split('-').map(Number);
+    const [ey, em, ed] = endDateStr.split('-').map(Number);
+    if (!sy || !sm || !sd || !ey || !em || !ed) return null;
+    const s = new Date(sy, sm - 1, sd);
+    const e = new Date(ey, em - 1, ed);
+    const diffTime = e.getTime() - s.getTime();
+    return Math.round(diffTime / (1000 * 60 * 60 * 24));
+};
+
 export interface BillLine {
     line_type: 'item' | 'expense' | 'asset';
     item_id?: string;
@@ -38,6 +62,7 @@ export const Bills: React.FC = () => {
     const [selectedPartner, setSelectedPartner] = useState('');
     const [selectedJournal, setSelectedJournal] = useState('');
     const [billDate, setBillDate] = useState(new Date().toISOString().split('T')[0]);
+    const [creditPeriod, setCreditPeriod] = useState<string>('30');
     const [dueDate, setDueDate] = useState(new Date().toISOString().split('T')[0]);
     const [billReference, setBillReference] = useState('');
 
@@ -83,7 +108,7 @@ export const Bills: React.FC = () => {
         // 1. Vendors
         const { data: pData } = await supabase
             .from('accounting_partners')
-            .select('id, name, reference_code, code')
+            .select('id, name, reference_code, code, payment_term_days')
             .eq('company_id', currentCompanyId)
             .or('partner_type.eq.Vendor,partner_type.eq.Both')
             .order('name', { ascending: true });
@@ -139,16 +164,54 @@ export const Bills: React.FC = () => {
         (a.type === 'Asset' && Number(a.code) >= 1500 && Number(a.code) < 1700)
     );
 
+    const handlePartnerChange = (partnerId: string) => {
+        setSelectedPartner(partnerId);
+        const p = partners.find(item => item.id === partnerId);
+        if (p && p.payment_term_days !== undefined && p.payment_term_days !== null && p.payment_term_days !== '') {
+            const days = String(p.payment_term_days);
+            setCreditPeriod(days);
+            if (billDate) {
+                setDueDate(addDaysToDate(billDate, Number(days) || 0));
+            }
+        }
+    };
+
+    const handleCreditPeriodChange = (newPeriod: string) => {
+        setCreditPeriod(newPeriod);
+        if (newPeriod !== 'custom' && billDate) {
+            setDueDate(addDaysToDate(billDate, Number(newPeriod) || 0));
+        }
+    };
+
+    const handleBillDateChange = (newDate: string) => {
+        setBillDate(newDate);
+        if (creditPeriod !== 'custom' && newDate) {
+            setDueDate(addDaysToDate(newDate, Number(creditPeriod) || 0));
+        }
+    };
+
     const handleOpenModal = async (bill?: any, readonly = false) => {
         if (bill) {
+            const bDate = bill.date || new Date().toISOString().split('T')[0];
+            const bDueDate = bill.due_date || bDate;
+
             setEditingBillId(bill.id);
             setSelectedPartner(bill.partner_id || '');
             setSelectedJournal(bill.journal_id || '');
-            setBillDate(bill.date || '');
-            setDueDate(bill.due_date || '');
+            setBillDate(bDate);
+            setDueDate(bDueDate);
             setBillReference(bill.reference || '');
             setEditMode(!readonly);
             setViewMode(readonly);
+
+            const diff = getDaysBetweenDates(bDate, bDueDate);
+            if (diff !== null && ['0', '15', '30', '45', '60', '90', '120'].includes(String(diff))) {
+                setCreditPeriod(String(diff));
+            } else if (bDueDate && bDueDate !== bDate) {
+                setCreditPeriod('custom');
+            } else {
+                setCreditPeriod('30');
+            }
 
             // Fetch lines for this bill
             const { data, error } = await supabase
@@ -192,12 +255,14 @@ export const Bills: React.FC = () => {
             ]);
             setIsModalOpen(true);
         } else {
+            const today = new Date().toISOString().split('T')[0];
             setEditingBillId(null);
             setSelectedPartner('');
             setBillReference('');
             if (journals.length > 0) setSelectedJournal(journals[0].id);
-            setBillDate(new Date().toISOString().split('T')[0]);
-            setDueDate(new Date().toISOString().split('T')[0]);
+            setBillDate(today);
+            setCreditPeriod('30');
+            setDueDate(addDaysToDate(today, 30));
             setLines([
                 { line_type: 'expense', item_id: '', account_id: '', purchase_ledger_id: '', quantity: 1, unit_price: 0, cost_center_id: '', project_cost_center_id: '', contract_cost_center_id: '', description: '' }
             ]);
@@ -572,7 +637,7 @@ export const Bills: React.FC = () => {
                                 <select
                                     required
                                     value={selectedPartner}
-                                    onChange={e => setSelectedPartner(e.target.value)}
+                                    onChange={e => handlePartnerChange(e.target.value)}
                                     disabled={viewMode}
                                     className="w-full p-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:outline-none"
                                 >
@@ -617,21 +682,46 @@ export const Bills: React.FC = () => {
                                     type="date" 
                                     required 
                                     value={billDate} 
-                                    onChange={e => setBillDate(e.target.value)} 
+                                    onChange={e => handleBillDateChange(e.target.value)} 
                                     disabled={viewMode} 
                                     className="w-full p-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:outline-none" 
                                 />
                             </div>
                             <div>
-                                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Due Date *</label>
-                                <input 
-                                    type="date" 
-                                    required 
-                                    value={dueDate} 
-                                    onChange={e => setDueDate(e.target.value)} 
-                                    disabled={viewMode} 
-                                    className="w-full p-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:outline-none" 
-                                />
+                                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Credit Period *</label>
+                                <select
+                                    required
+                                    value={creditPeriod}
+                                    onChange={e => handleCreditPeriodChange(e.target.value)}
+                                    disabled={viewMode}
+                                    className="w-full p-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm font-semibold text-slate-800 dark:text-white focus:outline-none"
+                                >
+                                    <option value="30">30 Days</option>
+                                    <option value="45">45 Days</option>
+                                    <option value="60">60 Days</option>
+                                    <option value="90">90 Days</option>
+                                    <option value="15">15 Days</option>
+                                    <option value="0">Immediate / Cash (0 Days)</option>
+                                    <option value="120">120 Days</option>
+                                    <option value="custom">Custom Due Date</option>
+                                </select>
+                                {creditPeriod === 'custom' ? (
+                                    <input
+                                        type="date"
+                                        required
+                                        value={dueDate}
+                                        onChange={e => setDueDate(e.target.value)}
+                                        disabled={viewMode}
+                                        className="w-full mt-1.5 p-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-xs font-mono"
+                                    />
+                                ) : (
+                                    <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 flex items-center justify-between">
+                                        <span>Due Date:</span>
+                                        <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                                            {dueDate || '—'}
+                                        </span>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
