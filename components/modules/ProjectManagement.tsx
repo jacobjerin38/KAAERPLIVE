@@ -15,13 +15,14 @@ import { ProjectsList } from '../projects/ProjectsList';
 import { ProjectFormModal } from '../projects/ProjectFormModal';
 import { ProjectDetailView } from '../projects/ProjectDetailView';
 import { DailyActivityModal } from '../projects/DailyActivityModal';
+import { ProjectReportsView } from '../projects/ProjectReportsView';
 
 export const ProjectManagement: React.FC = () => {
     const { currentCompanyId, user } = useAuth();
     
     // Top-Level Hub Tabs
     const [activeTab, setActiveTab] = useState<
-        'DASHBOARD' | 'PROPOSALS' | 'PROJECTS' | 'DAILY_ACTIVITIES' | 'ISSUES_RISKS' | 'TASKS_TIMESHEETS'
+        'DASHBOARD' | 'PROPOSALS' | 'PROJECTS' | 'DAILY_ACTIVITIES' | 'ISSUES_RISKS' | 'TASKS_TIMESHEETS' | 'REPORTS'
     >('DASHBOARD');
 
     // Hub State
@@ -178,6 +179,7 @@ export const ProjectManagement: React.FC = () => {
                         { id: 'DAILY_ACTIVITIES', label: `Site Activity Feed (${hubData.activities.length})`, icon: ShieldCheck },
                         { id: 'ISSUES_RISKS', label: `Issues & Risks (${hubData.issues.length + hubData.risks.length})`, icon: AlertTriangle },
                         { id: 'TASKS_TIMESHEETS', label: 'Tasks & Timesheets', icon: CheckSquare },
+                        { id: 'REPORTS', label: 'Reports & Analytics', icon: BarChart3 },
                     ].map(tab => (
                         <button
                             key={tab.id}
@@ -517,6 +519,19 @@ export const ProjectManagement: React.FC = () => {
                                     </div>
                                 </div>
                             </div>
+                        )}
+
+                        {/* 8. TAB: REPORTS & ANALYTICS */}
+                        {activeTab === 'REPORTS' && (
+                            <ProjectReportsView
+                                projects={hubData.projects}
+                                proposals={hubData.proposals}
+                                activities={hubData.activities}
+                                issues={hubData.issues}
+                                risks={hubData.risks}
+                                employees={hubData.employees}
+                                clients={hubData.clients}
+                            />
                         )}
                     </>
                 )}
