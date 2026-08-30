@@ -88,6 +88,34 @@ export const MonthlyAttendanceReport: React.FC = () => {
         }
     };
 
+    const [evaluating, setEvaluating] = useState(false);
+
+    const handleRecalculateShiftRules = async () => {
+        if (!currentCompanyId) return;
+        setEvaluating(true);
+        try {
+            const [year, month] = selectedMonth.split('-').map(Number);
+            const startDate = `${selectedMonth}-01`;
+            const lastDay = new Date(year, month, 0).getDate();
+            const endDate = `${selectedMonth}-${String(lastDay).padStart(2, '0')}`;
+
+            const { data, error } = await (supabase as any).rpc('rpc_recalculate_attendance_shift_rules', {
+                p_company_id: currentCompanyId,
+                p_start_date: startDate,
+                p_end_date: endDate
+            });
+
+            if (error) throw error;
+            await fetchReport();
+            alert(`Shift Evaluation Completed: ${data?.updated_records || 0} attendance punch records synchronized against shift schedules!`);
+        } catch (err: any) {
+            console.error('Error recalculating shift rules:', err);
+            alert('Failed to evaluate shift rules: ' + err.message);
+        } finally {
+            setEvaluating(false);
+        }
+    };
+
     const toggleExpand = (empId: string) => {
         setExpandedEmpIds(prev => ({ ...prev, [empId]: !prev[empId] }));
     };
@@ -260,6 +288,16 @@ export const MonthlyAttendanceReport: React.FC = () => {
                             className="px-4 py-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-cyan-500/20 outline-none"
                         />
                     </div>
+
+                    <button
+                        onClick={handleRecalculateShiftRules}
+                        disabled={evaluating || loading}
+                        className="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-sm font-bold shadow-lg shadow-purple-500/20 transition-all flex items-center gap-2"
+                        title="Recalculate all punches against shift start/end times, grace period, and overtime rules"
+                    >
+                        <Clock className={`w-4 h-4 ${evaluating ? 'animate-spin' : ''}`} />
+                        <span>{evaluating ? 'Evaluating...' : 'Run Shift Evaluation'}</span>
+                    </button>
 
                     <button
                         onClick={fetchReport}
