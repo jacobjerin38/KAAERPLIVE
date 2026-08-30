@@ -258,10 +258,11 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
         if (!newComponentId || !newAmount) return;
 
         const { error } = await (supabase as any).from('employee_salary_components').insert([{
+            company_id: (emp as any).company_id,
             employee_id: emp.id,
             salary_component_id: parseInt(newComponentId),
             amount: parseFloat(newAmount),
-            effective_from: newEffectiveDate,
+            effective_from: newEffectiveDate || new Date().toISOString().split('T')[0],
             is_active: true
         }]);
 
@@ -682,13 +683,25 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
                             <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-6">Financial Information</h3>
 
                             {/* Base Info */}
-                            <div className="grid grid-cols-2 gap-6">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
                                 <ViewField label="Pay Group" value={payGroups.find(p => p.id === emp.pay_group_id)?.name || '-'} />
                                 <ViewField label="Base Salary (CTC)" value={`QAR ${Number(emp.salary_amount || 0).toLocaleString()}`} />
                                 <ViewField label="Bank Name" value={emp.bank_name || '-'} />
                                 <ViewField label="Account Number" value={emp.account_number || '-'} />
                                 <ViewField label="IFSC Code" value={emp.ifsc_code || '-'} />
                                 <ViewField label="OT Applicable" value={(emp as any).ot_applicable !== false ? 'Yes' : 'No'} />
+                                {(emp as any).ot_applicable !== false && (
+                                    <>
+                                        <ViewField 
+                                            label="OT Calculation Formula" 
+                                            value={(emp as any).ot_calculation_basis === 'BASIC_DA' ? 'Basic + DA' : (emp as any).ot_calculation_basis === 'GROSS' ? 'Gross CTC' : 'Basic Salary (Default)'} 
+                                        />
+                                        <ViewField 
+                                            label="OT Multiplier" 
+                                            value={`${(emp as any).ot_rate_multiplier || 1.25}x`} 
+                                        />
+                                    </>
+                                )}
                             </div>
 
                             <hr className="border-slate-100 dark:border-zinc-800 my-6" />

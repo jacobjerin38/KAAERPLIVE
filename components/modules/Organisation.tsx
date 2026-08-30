@@ -3632,7 +3632,13 @@ export const Organisation: React.FC = () => {
                                     ...config,
                                     fields: config.fields.map(f =>
                                         f.key === 'financial_year_id'
-                                            ? { ...f, options: financialYears.map(fy => ({ label: fy.code, value: fy.id })) }
+                                            ? { 
+                                                ...f, 
+                                                options: financialYears.map(fy => ({ 
+                                                    label: fy.code ? `${fy.code} (${fy.start_date || ''} to ${fy.end_date || ''})` : (fy.name || `${fy.start_date} to ${fy.end_date}`), 
+                                                    value: fy.id 
+                                                })) 
+                                              }
                                             : f
                                     )
                                 };
@@ -3656,7 +3662,13 @@ export const Organisation: React.FC = () => {
                                     ...config,
                                     fields: config.fields.map(f =>
                                         f.key === 'financial_year_id'
-                                            ? { ...f, options: financialYears.map(fy => ({ label: fy.code, value: fy.id })) }
+                                            ? { 
+                                                ...f, 
+                                                options: financialYears.map(fy => ({ 
+                                                    label: fy.code ? `${fy.code} (${fy.start_date || ''} to ${fy.end_date || ''})` : (fy.name || `${fy.start_date} to ${fy.end_date}`), 
+                                                    value: fy.id 
+                                                })) 
+                                              }
                                             : f
                                     )
                                 };
