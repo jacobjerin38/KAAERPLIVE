@@ -190,8 +190,8 @@ export const MonthlyAttendanceReport: React.FC = () => {
         // Summary Sheet
         const summaryRows = filteredEmployees.map(item => {
             const s = item.summary;
-            const paidDays = (s.present_days || 0) + (s.leave_days || 0);
             const lopDays = (s.absent_days || 0) + ((s.half_days || 0) * 0.5);
+            const paidDays = Math.max(0, Number(s.calendar_days || kpiSummary.daysInMonth) - lopDays);
             return {
                 'Employee Code': s.employee_code || '—',
                 'Employee Name': s.employee_name || '—',
@@ -479,8 +479,8 @@ export const MonthlyAttendanceReport: React.FC = () => {
                                 {filteredEmployees.map((item: any) => {
                                     const s = item.summary;
                                     const isExpanded = !!expandedEmpIds[s.employee_id];
-                                    const paidDays = (s.present_days || 0) + (s.leave_days || 0);
                                     const lopDays = (s.absent_days || 0) + ((s.half_days || 0) * 0.5);
+                                    const paidDays = Math.max(0, Number(s.calendar_days || kpiSummary.daysInMonth) - lopDays);
 
                                     return (
                                         <React.Fragment key={s.employee_id}>
