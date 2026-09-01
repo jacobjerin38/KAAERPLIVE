@@ -476,29 +476,51 @@ export const ESSP: React.FC = () => {
         const locStr = coords ? `${coords.lat},${coords.lng}` : null;
 
         if (punchStatus === 'Out') {
-            // PUNCH IN
-            const insertPayload = {
-                employee_id: currentEmployee.id,
-                company_id: currentEmployee.company_id,
-                date: today,
-                check_in: isoNow,
-                check_in_lat: coords ? coords.lat : null,
-                check_in_lng: coords ? coords.lng : null,
-                check_in_location: locStr,
-                punch_method: 'ONLINE',
-                status: 'Present',
-                total_hours: 0,
-                source: 'punch'
-            };
+            // First check if there is an open overnight session from yesterday
+            const sixteenHoursAgo = new Date(Date.now() - 16 * 60 * 60 * 1000).toISOString();
+            const { data: openSessions } = await (supabase as any).from('attendance')
+                .select('id, check_in, date')
+                .eq('employee_id', currentEmployee.id)
+                .is('check_out', null)
+                .not('check_in', 'is', null)
+                .gte('check_in', sixteenHoursAgo)
+                .order('check_in', { ascending: false })
+                .limit(1);
 
-            const { data, error } = await (supabase as any).from('attendance').upsert([insertPayload], { onConflict: 'employee_id,date' }).select().single();
+            const openNightSession = openSessions && openSessions.length > 0 ? openSessions[0] : null;
 
-            if (error) {
-                console.error("Punch In Error:", error);
-                alert("Failed to punch in. Please try again.");
+            if (openNightSession && openNightSession.date !== today) {
+                await performPunchOut(openNightSession.id, openNightSession.check_in, isoNow, locStr, coords);
+                setPunchStatus('Out');
+                setLastAttendanceId(null);
+                setActivePunchTime(null);
+                alert("Night shift check-out recorded successfully!");
             } else {
-                setPunchStatus('In');
-                setLastAttendanceId(data.id);
+                // Standard PUNCH IN
+                const insertPayload = {
+                    employee_id: currentEmployee.id,
+                    company_id: currentEmployee.company_id,
+                    date: today,
+                    check_in: isoNow,
+                    check_in_lat: coords ? coords.lat : null,
+                    check_in_lng: coords ? coords.lng : null,
+                    check_in_location: locStr,
+                    punch_method: 'ONLINE',
+                    status: 'Present',
+                    total_hours: 0,
+                    source: 'punch'
+                };
+
+                const { data, error } = await (supabase as any).from('attendance').upsert([insertPayload], { onConflict: 'employee_id,date' }).select().single();
+
+                if (error) {
+                    console.error("Punch In Error:", error);
+                    alert("Failed to punch in. Please try again.");
+                } else {
+                    setPunchStatus('In');
+                    setLastAttendanceId(data.id);
+                    setActivePunchTime(isoNow);
+                }
             }
         } else {
             // PUNCH OUT - Always query active open punch directly within the 16-hour session window
