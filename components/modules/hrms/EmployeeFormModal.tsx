@@ -115,6 +115,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
         air_ticket: (initialData as any)?.air_ticket || '',
         memo: (initialData as any)?.memo || '',
         remarks: (initialData as any)?.remarks || '',
+        salary_remarks: (initialData as any)?.salary_remarks || '',
         // Attendance & Location Settings
         punch_mode: (initialData as any)?.punch_mode || 'BOTH',
         ot_applicable: (initialData as any)?.ot_applicable ?? true,
@@ -194,6 +195,14 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
         else {
             // update local state optimistically or refetch
             setEmpSalaryComponents(prev => prev.map(p => p.id === id ? { ...p, amount } : p));
+        }
+    };
+
+    const handleUpdateComponentRemarks = async (id: string, remarks: string) => {
+        const { error } = await (supabase as any).from('employee_salary_components').update({ remarks }).eq('id', id);
+        if (error) alert(error.message);
+        else {
+            setEmpSalaryComponents(prev => prev.map(p => p.id === id ? { ...p, remarks } : p));
         }
     };
 
@@ -389,6 +398,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                 air_ticket: formData.air_ticket || null,
                 memo: formData.memo?.trim() || null,
                 remarks: formData.remarks?.trim() || null,
+                salary_remarks: formData.salary_remarks?.trim() || null,
                 // Attendance & Location Settings
                 punch_mode: formData.punch_mode || 'BOTH',
                 ot_applicable: formData.ot_applicable,
@@ -971,6 +981,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                                                             <th className="p-3 font-bold text-slate-500">Component</th>
                                                             <th className="p-3 font-bold text-slate-500">Type</th>
                                                             <th className="p-3 font-bold text-slate-500">Amount</th>
+                                                            <th className="p-3 font-bold text-slate-500">Comments / Notes</th>
                                                             <th className="p-3 text-right">Action</th>
                                                         </tr>
                                                     </thead>
@@ -994,16 +1005,40 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                                                                         />
                                                                     </div>
                                                                 </td>
+                                                                <td className="p-3">
+                                                                    <input
+                                                                        type="text"
+                                                                        defaultValue={comp.remarks || ''}
+                                                                        placeholder="Optional comment / note..."
+                                                                        onBlur={(e) => handleUpdateComponentRemarks(comp.id, e.target.value)}
+                                                                        className="w-full bg-transparent text-xs text-slate-600 dark:text-slate-300 placeholder:text-slate-300 dark:placeholder:text-zinc-600 focus:outline-none focus:border-b focus:border-blue-500"
+                                                                    />
+                                                                </td>
                                                                 <td className="p-3 text-right">
                                                                     <button type="button" onClick={() => handleRemoveComponent(comp.id)} className="text-rose-400 hover:text-rose-600"><X className="w-4 h-4" /></button>
                                                                 </td>
                                                             </tr>
                                                         ))}
                                                         {empSalaryComponents.length === 0 && (
-                                                            <tr><td colSpan={4} className="p-8 text-center text-slate-400 italic">No salary components assigned. Add above.</td></tr>
+                                                            <tr><td colSpan={5} className="p-8 text-center text-slate-400 italic">No salary components assigned. Add above.</td></tr>
                                                         )}
                                                     </tbody>
                                                 </table>
+                                            </div>
+
+                                            {/* Overall Salary / Compensation Remarks */}
+                                            <div className="space-y-1.5 mt-4">
+                                                <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                                                    Overall Salary & Compensation Comments / Remarks
+                                                </label>
+                                                <textarea
+                                                    name="salary_remarks"
+                                                    value={formData.salary_remarks}
+                                                    onChange={handleChange}
+                                                    rows={2}
+                                                    placeholder="Add overall compensation notes, approval references, special allowance conditions, or comments..."
+                                                    className="w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-xs outline-none resize-none focus:border-blue-500 text-slate-800 dark:text-white"
+                                                />
                                             </div>
                                         </div>
                                     )}

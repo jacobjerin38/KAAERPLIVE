@@ -118,52 +118,51 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
         }
     };
 
-    const handleSaveTicketDetails = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleSaveTicket = async () => {
         if (!selectedLeaveForTicket) return;
         setSavingTicket(true);
-
         try {
-            let ticketUrl = selectedLeaveForTicket.ticket_url || selectedLeaveForTicket.attachment_url || null;
-            let ticketName = selectedLeaveForTicket.ticket_name || selectedLeaveForTicket.attachment_name || null;
+            let uploadedUrl = selectedLeaveForTicket.ticket_attachment_url || null;
 
             if (ticketFile) {
-                const companyId = emp.company_id || 'general';
-                const cleanFileName = ticketFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-                const path = `${companyId}/leaves/tickets/${Date.now()}_${cleanFileName}`;
-
-                const { error: uploadErr } = await supabase.storage
+                const fileExt = ticketFile.name.split('.').pop();
+                const fileName = `leave_tickets/${emp.company_id || 'general'}/${selectedLeaveForTicket.id}_${Date.now()}.${fileExt}`;
+                const { error: uploadError } = await supabase.storage
                     .from('attachments')
-                    .upload(path, ticketFile, { upsert: true });
+                    .upload(fileName, ticketFile, { upsert: true });
 
-                if (uploadErr) throw uploadErr;
+                if (uploadError) throw uploadError;
 
-                const { data: urlData } = supabase.storage
+                const { data: { publicUrl } } = supabase.storage
                     .from('attachments')
-                    .getPublicUrl(path);
-
-                ticketUrl = urlData.publicUrl;
-                ticketName = ticketFile.name;
+                    .getPublicUrl(fileName);
+                uploadedUrl = publicUrl;
             }
 
-            const { error: updateErr } = await (supabase.from('leaves') as any)
+            const { error: updateError } = await supabase
+                .from('leaves')
                 .update({
-                    ticket_url: ticketUrl,
-                    ticket_name: ticketName,
-                    ticket_number: ticketNumber || null,
-                    airline: airline || null,
-                    remarks: leaveRemarks || null
+                    ticket_number: ticketNumber.trim() || null,
+                    airline: airline.trim() || null,
+                    ticket_attachment_url: uploadedUrl,
+                    remarks: leaveRemarks.trim() || null,
+                    updated_at: new Date().toISOString()
                 })
                 .eq('id', selectedLeaveForTicket.id);
 
-            if (updateErr) throw updateErr;
+            if (updateError) throw updateError;
 
-            alert('Ticket details and remarks saved successfully!');
+            // Update local leaves state
+            setEmployeeLeaves(prev => prev.map(l => l.id === selectedLeaveForTicket.id ? {
+                ...l,
+                ticket_number: ticketNumber.trim() || null,
+                airline: airline.trim() || null,
+                ticket_attachment_url: uploadedUrl,
+                remarks: leaveRemarks.trim() || null
+            } : l));
+
             setSelectedLeaveForTicket(null);
-            setTicketFile(null);
-            fetchEmployeeLeaves();
         } catch (err: any) {
-            console.error('Error saving ticket details:', err);
             alert('Failed to save ticket details: ' + (err.message || 'Unknown error'));
         } finally {
             setSavingTicket(false);
@@ -718,7 +717,7 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
                                 {showAddComponent && (
                                     <div className="p-4 bg-slate-50 dark:bg-zinc-800 rounded-xl mb-4 border border-slate-200 dark:border-zinc-700 animate-fade-in-down">
                                         <h5 className="text-xs font-bold uppercase text-slate-500 mb-3">New Allocation</h5>
-                                        <div className="grid grid-cols-3 gap-3 mb-3">
+                                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-3">
                                             <select
                                                 value={newComponentId}
                                                 onChange={e => setNewComponentId(e.target.value)}
@@ -731,9 +730,16 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
                                             </select>
                                             <input
                                                 type="number"
-                                                placeholder="Amount"
+                                                placeholder="Amount (QAR)"
                                                 value={newAmount}
                                                 onChange={e => setNewAmount(e.target.value)}
+                                                className="p-2 rounded-lg text-sm border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900"
+                                            />
+                                            <input
+                                                type="text"
+                                                placeholder="Comments / Notes"
+                                                value={newRemarks}
+                                                onChange={e => setNewRemarks(e.target.value)}
                                                 className="p-2 rounded-lg text-sm border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900"
                                             />
                                             <input
@@ -744,7 +750,7 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
                                             />
                                         </div>
                                         <div className="flex gap-2 justify-end">
-                                            <button onClick={() => setShowAddComponent(false)} className="px-3 py-1.5 text-slate-500 text-xs font-bold hover:bg-slate-200 rounded-lg">Cancel</button>
+                                            <button onClick={() => { setShowAddComponent(false); setNewRemarks(''); }} className="px-3 py-1.5 text-slate-500 text-xs font-bold hover:bg-slate-200 rounded-lg">Cancel</button>
                                             <button onClick={handleAddComponent} className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700">Save Allocation</button>
                                         </div>
                                     </div>
@@ -757,6 +763,7 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
                                                 <th className="px-4 py-3">Component</th>
                                                 <th className="px-4 py-3">Type</th>
                                                 <th className="px-4 py-3">Amount</th>
+                                                <th className="px-4 py-3">Comments / Notes</th>
                                                 <th className="px-4 py-3">Effective Since</th>
                                                 <th className="px-4 py-3 text-right">Action</th>
                                             </tr>
@@ -779,6 +786,9 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
                                                     <td className="px-4 py-3 font-mono font-bold text-slate-700 dark:text-slate-300">
                                                         QAR {Number(comp.amount || 0).toLocaleString()}
                                                     </td>
+                                                    <td className="px-4 py-3 text-xs text-slate-500 max-w-xs truncate">
+                                                        {comp.remarks || '—'}
+                                                    </td>
                                                     <td className="px-4 py-3 text-slate-500">
                                                         {formatDate(comp.effective_from)}
                                                     </td>
@@ -791,7 +801,7 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
                                             ))}
                                             {empSalaryComponents.length === 0 && (
                                                 <tr>
-                                                    <td colSpan={5} className="px-4 py-8 text-center text-slate-400 italic">
+                                                    <td colSpan={6} className="px-4 py-8 text-center text-slate-400 italic">
                                                         No salary components allocated yet.
                                                     </td>
                                                 </tr>
@@ -799,6 +809,14 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
                                         </tbody>
                                     </table>
                                 </div>
+
+                                {/* Overall Salary / Compensation Remarks Card */}
+                                {(emp as any).salary_remarks && (
+                                    <div className="mt-4 p-4 bg-slate-50 dark:bg-zinc-800/60 rounded-xl border border-slate-200 dark:border-zinc-700 space-y-1">
+                                        <h5 className="text-xs font-bold uppercase text-slate-400">Compensation Notes / Comments</h5>
+                                        <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap font-medium">{(emp as any).salary_remarks}</p>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
