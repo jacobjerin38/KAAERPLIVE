@@ -585,6 +585,8 @@ export const MonthlyAttendanceReport: React.FC = () => {
                                                                                                 r.status === 'Absent' ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/30' :
                                                                                                 r.status === 'Half Day' ? 'bg-amber-50 text-amber-600 dark:bg-amber-950/30' :
                                                                                                 r.status === 'On Leave' ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/30' :
+                                                                                                r.status === 'Weekend' ? 'bg-slate-100 text-slate-500 border border-slate-200 dark:bg-zinc-800 dark:text-zinc-400 dark:border-zinc-700' :
+                                                                                                r.status === 'Holiday' ? 'bg-purple-50 text-purple-600 dark:bg-purple-950/30' :
                                                                                                 'bg-slate-100 text-slate-600 dark:bg-zinc-800'
                                                                                             }`}>
                                                                                                 {r.status || 'Present'}
