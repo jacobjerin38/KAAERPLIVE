@@ -259,14 +259,15 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
 
     const handleUpdateLeaveBalance = async (bal: any, newBalance: number) => {
         setLeaveSaveMsg(null);
+        const safeBalance = isNaN(newBalance) || newBalance < 0 ? 0 : newBalance;
         const { error } = await supabase
             .from('employee_leave_balances')
-            .update({ total_balance: newBalance })
+            .update({ total_balance: safeBalance })
             .eq('id', bal.id);
         if (error) {
             setLeaveSaveMsg('Error: ' + error.message);
         } else {
-            setLeaveBalances(prev => prev.map(b => b.id === bal.id ? { ...b, total_balance: newBalance } : b));
+            setLeaveBalances(prev => prev.map(b => b.id === bal.id ? { ...b, total_balance: safeBalance } : b));
             setLeaveSaveMsg('Balance updated');
             setTimeout(() => setLeaveSaveMsg(null), 2000);
         }
@@ -892,8 +893,11 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                                 <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         <div className="space-y-2">
-                                            <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">CTC / Salary</label>
-                                            <input name="salary_amount" type="number" value={formData.salary_amount} onChange={handleChange} className="w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm outline-none" />
+                                            <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Base Salary / CTC (QAR)</label>
+                                            <div className="relative">
+                                                <span className="absolute left-3 top-3 text-slate-400 font-bold text-xs">QAR</span>
+                                                <input name="salary_amount" type="number" placeholder="0.00" value={formData.salary_amount} onChange={handleChange} className="w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 pl-12 text-sm outline-none font-mono font-bold" />
+                                            </div>
                                         </div>
                                         <div className="space-y-2">
                                             <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Pay Group</label>
