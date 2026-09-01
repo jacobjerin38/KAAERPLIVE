@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-    Edit3, Clock, Users, TrendingUp, AlertTriangle, Check, X, Plus, Download,
+    Edit3, Clock, Users, User, Building2, Filter, TrendingUp, AlertTriangle, Check, X, Plus, Download,
     ChevronLeft, ChevronRight, Calendar, Save, Loader2, Eye, Search, BarChart3,
     Lock, Unlock, ShieldCheck, RefreshCcw, AlertCircle, Layers, ClipboardList, MapPin,
     Upload, ExternalLink, FileSpreadsheet, CheckCircle2, XCircle, Globe, Settings, FileText
@@ -1199,6 +1199,20 @@ export const DutyRosterTab: React.FC<{ employees: Employee[]; companyId: string;
     const [bulkShiftId, setBulkShiftId] = useState('');
     const [bulkFromDate, setBulkFromDate] = useState('');
     const [bulkToDate, setBulkToDate] = useState('');
+    const [bulkTargetType, setBulkTargetType] = useState<'ALL' | 'SPECIFIC' | 'DEPARTMENT' | 'MULTIPLE'>('ALL');
+    const [bulkSelectedEmpId, setBulkSelectedEmpId] = useState('');
+    const [bulkSelectedDept, setBulkSelectedDept] = useState('');
+    const [bulkSelectedEmpIds, setBulkSelectedEmpIds] = useState<string[]>([]);
+    const [bulkEmpSearch, setBulkEmpSearch] = useState('');
+
+    const departmentList = useMemo(() => {
+        const depts = new Set<string>();
+        employees.forEach(e => {
+            const d = e.department || (e as any).department_name;
+            if (d && typeof d === 'string' && d.trim()) depts.add(d.trim());
+        });
+        return Array.from(depts).sort();
+    }, [employees]);
 
     // CSV Upload Modal
     const [showCSVModal, setShowCSVModal] = useState(false);
@@ -1279,7 +1293,27 @@ export const DutyRosterTab: React.FC<{ employees: Employee[]; companyId: string;
 
     const handleBulkAssign = async () => {
         if (!companyId || !bulkShiftId || !bulkFromDate || !bulkToDate) return;
-        if (!confirm(`Assign shift to ALL ${employees.length} employees from ${bulkFromDate} to ${bulkToDate}?`)) return;
+
+        let targetEmps: Employee[] = [];
+        if (bulkTargetType === 'ALL') {
+            targetEmps = employees;
+        } else if (bulkTargetType === 'SPECIFIC') {
+            targetEmps = employees.filter(e => e.id === bulkSelectedEmpId);
+        } else if (bulkTargetType === 'DEPARTMENT') {
+            targetEmps = employees.filter(e => ((e.department || (e as any).department_name || '') as string).trim() === bulkSelectedDept);
+        } else if (bulkTargetType === 'MULTIPLE') {
+            targetEmps = employees.filter(e => bulkSelectedEmpIds.includes(e.id));
+        }
+
+        if (targetEmps.length === 0) {
+            alert('Please select at least one employee for the shift assignment.');
+            return;
+        }
+
+        const selShift = shifts.find(s => s.id?.toString() === bulkShiftId);
+        const shiftName = selShift ? selShift.name : 'Shift';
+
+        if (!confirm(`Assign ${shiftName} to ${targetEmps.length} employee(s) from ${bulkFromDate} to ${bulkToDate}?`)) return;
         setSaving(true);
 
         const dates: string[] = [];
@@ -1290,7 +1324,7 @@ export const DutyRosterTab: React.FC<{ employees: Employee[]; companyId: string;
             d.setDate(d.getDate() + 1);
         }
 
-        const inserts = employees.flatMap(emp =>
+        const inserts = targetEmps.flatMap(emp =>
             dates.map(date => ({
                 company_id: companyId,
                 employee_id: emp.id,
@@ -1540,38 +1574,250 @@ export const DutyRosterTab: React.FC<{ employees: Employee[]; companyId: string;
 
             {/* Bulk Assign Modal */}
             {showBulkModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/30 backdrop-blur-md animate-fade-in" onClick={() => setShowBulkModal(false)}>
-                    <div className="bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl w-full max-w-md rounded-[2rem] shadow-2xl border border-white/50 dark:border-zinc-800 animate-slide-up" onClick={e => e.stopPropagation()}>
-                        <div className="p-6 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center">
-                            <h3 className="text-lg font-bold text-slate-900 dark:text-white">Bulk Assign Shift</h3>
-                            <button onClick={() => setShowBulkModal(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-xl"><X className="w-5 h-5 text-slate-500" /></button>
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md animate-fade-in" onClick={() => setShowBulkModal(false)}>
+                    <div className="bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl w-full max-w-lg rounded-[2rem] shadow-2xl border border-white/50 dark:border-zinc-800 animate-slide-up flex flex-col max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+                        <div className="p-6 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center bg-slate-50/50 dark:bg-zinc-800/30">
+                            <div>
+                                <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                    <Clock className="w-5 h-5 text-indigo-600" /> Bulk Assign Shift
+                                </h3>
+                                <p className="text-xs text-slate-500 mt-0.5">Assign shift schedule to all or selected employees across a date range.</p>
+                            </div>
+                            <button onClick={() => setShowBulkModal(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-xl transition-colors"><X className="w-5 h-5 text-slate-500" /></button>
                         </div>
-                        <div className="p-6 space-y-5">
-                            <div className="space-y-2">
-                                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Shift</label>
-                                <select value={bulkShiftId} onChange={e => setBulkShiftId(e.target.value)}
-                                    className="w-full p-3 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm outline-none text-slate-900 dark:text-white">
-                                    <option value="">Select Shift</option>
-                                    {shifts.map(s => <option key={s.id} value={s.id}>{s.name} ({s.code})</option>)}
+                        
+                        <div className="p-6 space-y-4 overflow-y-auto flex-1">
+                            {/* Shift Selector */}
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Shift Timing</label>
+                                <select 
+                                    value={bulkShiftId} 
+                                    onChange={e => setBulkShiftId(e.target.value)}
+                                    className="w-full p-3 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm outline-none text-slate-900 dark:text-white font-medium focus:ring-2 focus:ring-indigo-500"
+                                >
+                                    <option value="">Select Shift Timing</option>
+                                    {shifts.map(s => (
+                                        <option key={s.id} value={s.id}>
+                                            {s.name} ({s.start_time?.slice(0, 5)} – {s.end_time?.slice(0, 5)}) {(s.is_overnight || s.shift_type === 'NIGHT' || s.start_time > s.end_time) ? '🌙 (Night)' : '☀️ (Day)'}
+                                        </option>
+                                    ))}
                                 </select>
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">From Date</label>
-                                    <input type="date" value={bulkFromDate} onChange={e => setBulkFromDate(e.target.value)}
-                                        className="w-full p-3 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm outline-none text-slate-900 dark:text-white" />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">To Date</label>
-                                    <input type="date" value={bulkToDate} onChange={e => setBulkToDate(e.target.value)}
-                                        className="w-full p-3 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm outline-none text-slate-900 dark:text-white" />
+
+                            {/* Target Employees Mode Selector */}
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Assign To</label>
+                                <div className="grid grid-cols-4 gap-1 p-1 bg-slate-100 dark:bg-zinc-800/90 rounded-xl">
+                                    <button
+                                        type="button"
+                                        onClick={() => setBulkTargetType('ALL')}
+                                        className={`py-2 px-1 text-xs font-bold rounded-lg transition-all text-center flex items-center justify-center gap-1 ${bulkTargetType === 'ALL' ? 'bg-white dark:bg-zinc-900 text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                                    >
+                                        <Users className="w-3.5 h-3.5" /> All ({employees.length})
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setBulkTargetType('SPECIFIC')}
+                                        className={`py-2 px-1 text-xs font-bold rounded-lg transition-all text-center flex items-center justify-center gap-1 ${bulkTargetType === 'SPECIFIC' ? 'bg-white dark:bg-zinc-900 text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                                    >
+                                        <User className="w-3.5 h-3.5" /> Single
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setBulkTargetType('DEPARTMENT')}
+                                        className={`py-2 px-1 text-xs font-bold rounded-lg transition-all text-center flex items-center justify-center gap-1 ${bulkTargetType === 'DEPARTMENT' ? 'bg-white dark:bg-zinc-900 text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                                    >
+                                        <Building2 className="w-3.5 h-3.5" /> Dept
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setBulkTargetType('MULTIPLE')}
+                                        className={`py-2 px-1 text-xs font-bold rounded-lg transition-all text-center flex items-center justify-center gap-1 ${bulkTargetType === 'MULTIPLE' ? 'bg-white dark:bg-zinc-900 text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                                    >
+                                        <Filter className="w-3.5 h-3.5" /> Select ({bulkSelectedEmpIds.length})
+                                    </button>
                                 </div>
                             </div>
-                            <p className="text-xs text-slate-500 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 p-3 rounded-xl flex items-center gap-2">
-                                <AlertCircle className="w-4 h-4 shrink-0" /> This will assign the selected shift to ALL {employees.length} active employees for the selected date range.
-                            </p>
-                            <button onClick={handleBulkAssign} disabled={saving || !bulkShiftId || !bulkFromDate || !bulkToDate}
-                                className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-500/30 hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50">
+
+                            {/* Conditional Target UI */}
+                            {bulkTargetType === 'SPECIFIC' && (
+                                <div className="space-y-1.5 bg-slate-50 dark:bg-zinc-800/50 p-3 rounded-xl border border-slate-200 dark:border-zinc-700">
+                                    <label className="text-xs font-bold text-slate-600 dark:text-slate-300">Choose Employee</label>
+                                    <select
+                                        value={bulkSelectedEmpId}
+                                        onChange={e => setBulkSelectedEmpId(e.target.value)}
+                                        className="w-full p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm outline-none text-slate-900 dark:text-white font-medium focus:ring-2 focus:ring-indigo-500"
+                                    >
+                                        <option value="">-- Choose Employee --</option>
+                                        {employees.map(emp => (
+                                            <option key={emp.id} value={emp.id}>
+                                                {emp.name} {emp.employee_code ? `(${emp.employee_code})` : ''} - {emp.department || (emp as any).department_name || 'General'}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+
+                            {bulkTargetType === 'DEPARTMENT' && (
+                                <div className="space-y-1.5 bg-slate-50 dark:bg-zinc-800/50 p-3 rounded-xl border border-slate-200 dark:border-zinc-700">
+                                    <label className="text-xs font-bold text-slate-600 dark:text-slate-300">Choose Department</label>
+                                    <select
+                                        value={bulkSelectedDept}
+                                        onChange={e => setBulkSelectedDept(e.target.value)}
+                                        className="w-full p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm outline-none text-slate-900 dark:text-white font-medium focus:ring-2 focus:ring-indigo-500"
+                                    >
+                                        <option value="">-- Choose Department --</option>
+                                        {departmentList.map(dept => {
+                                            const count = employees.filter(e => ((e.department || (e as any).department_name || '') as string).trim() === dept).length;
+                                            return (
+                                                <option key={dept} value={dept}>
+                                                    {dept} ({count} employee{count === 1 ? '' : 's'})
+                                                </option>
+                                            );
+                                        })}
+                                    </select>
+                                </div>
+                            )}
+
+                            {bulkTargetType === 'MULTIPLE' && (
+                                <div className="space-y-2 bg-slate-50 dark:bg-zinc-800/50 p-3 rounded-xl border border-slate-200 dark:border-zinc-700">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                                            Select Employees ({bulkSelectedEmpIds.length}/{employees.length})
+                                        </span>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setBulkSelectedEmpIds(employees.map(e => e.id))}
+                                                className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
+                                            >
+                                                Select All
+                                            </button>
+                                            <span className="text-slate-300 dark:text-zinc-600">|</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => setBulkSelectedEmpIds([])}
+                                                className="text-[11px] font-bold text-rose-500 hover:underline"
+                                            >
+                                                Clear
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="relative">
+                                        <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                        <input
+                                            type="text"
+                                            placeholder="Search by name, code or department..."
+                                            value={bulkEmpSearch}
+                                            onChange={e => setBulkEmpSearch(e.target.value)}
+                                            className="w-full pl-8 pr-3 py-2 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-xs outline-none text-slate-900 dark:text-white"
+                                        />
+                                    </div>
+                                    <div className="max-h-40 overflow-y-auto space-y-1 bg-white dark:bg-zinc-900 p-2 rounded-lg border border-slate-200 dark:border-zinc-700 divide-y divide-slate-100 dark:divide-zinc-800">
+                                        {employees.filter(emp => {
+                                            if (!bulkEmpSearch) return true;
+                                            const q = bulkEmpSearch.toLowerCase();
+                                            return emp.name.toLowerCase().includes(q) || 
+                                                   (emp.employee_code || '').toLowerCase().includes(q) ||
+                                                   (emp.department || (emp as any).department_name || '').toLowerCase().includes(q);
+                                        }).map(emp => {
+                                            const isSelected = bulkSelectedEmpIds.includes(emp.id);
+                                            return (
+                                                <label key={emp.id} className="flex items-center gap-2.5 p-1.5 hover:bg-slate-50 dark:hover:bg-zinc-800/80 rounded-md cursor-pointer transition-colors pt-2">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isSelected}
+                                                        onChange={() => {
+                                                            if (isSelected) setBulkSelectedEmpIds(prev => prev.filter(id => id !== emp.id));
+                                                            else setBulkSelectedEmpIds(prev => [...prev, emp.id]);
+                                                        }}
+                                                        className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4"
+                                                    />
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">{emp.name}</p>
+                                                        <p className="text-[10px] text-slate-400 truncate">{emp.employee_code || ''} • {emp.department || (emp as any).department_name || 'General'}</p>
+                                                    </div>
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Date Range */}
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">From Date</label>
+                                    <input 
+                                        type="date" 
+                                        value={bulkFromDate} 
+                                        onChange={e => setBulkFromDate(e.target.value)}
+                                        className="w-full p-3 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm outline-none text-slate-900 dark:text-white font-medium focus:ring-2 focus:ring-indigo-500" 
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">To Date</label>
+                                    <input 
+                                        type="date" 
+                                        value={bulkToDate} 
+                                        onChange={e => setBulkToDate(e.target.value)}
+                                        className="w-full p-3 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm outline-none text-slate-900 dark:text-white font-medium focus:ring-2 focus:ring-indigo-500" 
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Dynamic Helper Notice */}
+                            <div className="text-xs bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900 text-indigo-800 dark:text-indigo-300 p-3.5 rounded-xl flex items-start gap-2.5">
+                                <AlertCircle className="w-4 h-4 shrink-0 text-indigo-600 mt-0.5" />
+                                <div>
+                                    {bulkTargetType === 'ALL' && (
+                                        <p>This will assign the shift to <strong>ALL {employees.length} active employees</strong> for the selected dates.</p>
+                                    )}
+                                    {bulkTargetType === 'SPECIFIC' && (
+                                        <p>
+                                            {bulkSelectedEmpId ? (
+                                                <>This will assign the shift to <strong>{employees.find(e => e.id === bulkSelectedEmpId)?.name}</strong>.</>
+                                            ) : (
+                                                <span className="text-rose-600 dark:text-rose-400 font-semibold">Please select an employee above.</span>
+                                            )}
+                                        </p>
+                                    )}
+                                    {bulkTargetType === 'DEPARTMENT' && (
+                                        <p>
+                                            {bulkSelectedDept ? (
+                                                <>This will assign the shift to <strong>{employees.filter(e => ((e.department || (e as any).department_name || '') as string).trim() === bulkSelectedDept).length} employees</strong> in <strong>{bulkSelectedDept}</strong>.</>
+                                            ) : (
+                                                <span className="text-rose-600 dark:text-rose-400 font-semibold">Please select a department above.</span>
+                                            )}
+                                        </p>
+                                    )}
+                                    {bulkTargetType === 'MULTIPLE' && (
+                                        <p>
+                                            {bulkSelectedEmpIds.length > 0 ? (
+                                                <>This will assign the shift to <strong>{bulkSelectedEmpIds.length} selected employee(s)</strong>.</>
+                                            ) : (
+                                                <span className="text-rose-600 dark:text-rose-400 font-semibold">Please check at least one employee above.</span>
+                                            )}
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-4 border-t border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-800/30">
+                            <button 
+                                onClick={handleBulkAssign} 
+                                disabled={
+                                    saving || 
+                                    !bulkShiftId || 
+                                    !bulkFromDate || 
+                                    !bulkToDate || 
+                                    (bulkTargetType === 'SPECIFIC' && !bulkSelectedEmpId) ||
+                                    (bulkTargetType === 'DEPARTMENT' && !bulkSelectedDept) ||
+                                    (bulkTargetType === 'MULTIPLE' && bulkSelectedEmpIds.length === 0)
+                                }
+                                className="w-full py-3.5 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-500/30 hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                            >
                                 {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Save className="w-5 h-5" /> Assign Shift</>}
                             </button>
                         </div>
