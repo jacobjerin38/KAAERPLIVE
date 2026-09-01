@@ -189,19 +189,24 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
         else fetchEmpSalaryComponents();
     };
 
-    const handleUpdateComponentAmount = async (id: string, amount: number) => {
+    const handleUpdateComponentAmount = async (id: string, rawVal: any) => {
+        const parsed = parseFloat(rawVal);
+        const amount = isNaN(parsed) || parsed < 0 ? 0 : parsed;
         const { error } = await (supabase as any).from('employee_salary_components').update({ amount }).eq('id', id);
-        if (error) alert(error.message);
-        else {
+        if (error) {
+            console.error('Error updating component amount:', error);
+        } else {
             // update local state optimistically or refetch
             setEmpSalaryComponents(prev => prev.map(p => p.id === id ? { ...p, amount } : p));
         }
     };
 
-    const handleUpdateComponentRemarks = async (id: string, remarks: string) => {
+    const handleUpdateComponentRemarks = async (id: string, rawRemarks: string) => {
+        const remarks = (rawRemarks || '').trim() || null;
         const { error } = await (supabase as any).from('employee_salary_components').update({ remarks }).eq('id', id);
-        if (error) alert(error.message);
-        else {
+        if (error) {
+            console.error('Error updating component remarks:', error);
+        } else {
             setEmpSalaryComponents(prev => prev.map(p => p.id === id ? { ...p, remarks } : p));
         }
     };
@@ -1000,7 +1005,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                                                                         <input
                                                                             type="number"
                                                                             defaultValue={comp.amount}
-                                                                            onBlur={(e) => handleUpdateComponentAmount(comp.id, parseFloat(e.target.value))}
+                                                                            onBlur={(e) => handleUpdateComponentAmount(comp.id, e.target.value)}
                                                                             className="w-28 bg-transparent font-mono font-bold text-slate-800 dark:text-white focus:outline-none focus:border-b-2 focus:border-blue-500"
                                                                         />
                                                                     </div>

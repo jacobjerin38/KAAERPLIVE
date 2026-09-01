@@ -254,13 +254,16 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
     }, [tab, emp.id]);
 
     const handleAddComponent = async () => {
-        if (!newComponentId || !newAmount) return;
+        if (!newComponentId) return;
+        const parsedAmount = parseFloat(newAmount);
+        const safeAmount = isNaN(parsedAmount) || parsedAmount < 0 ? 0 : parsedAmount;
 
         const { error } = await (supabase as any).from('employee_salary_components').insert([{
             company_id: (emp as any).company_id,
             employee_id: emp.id,
             salary_component_id: parseInt(newComponentId),
-            amount: parseFloat(newAmount),
+            amount: safeAmount,
+            remarks: newRemarks?.trim() || null,
             effective_from: newEffectiveDate || new Date().toISOString().split('T')[0],
             is_active: true
         }]);
@@ -271,6 +274,7 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
             setShowAddComponent(false);
             setNewComponentId('');
             setNewAmount('');
+            setNewRemarks('');
             fetchSalaryMapping();
         }
     };
