@@ -491,7 +491,7 @@ export const ESSP: React.FC = () => {
                 source: 'punch'
             };
 
-            const { data, error } = await (supabase as any).from('attendance').insert([insertPayload]).select().single();
+            const { data, error } = await (supabase as any).from('attendance').upsert([insertPayload], { onConflict: 'employee_id,date' }).select().single();
 
             if (error) {
                 console.error("Punch In Error:", error);

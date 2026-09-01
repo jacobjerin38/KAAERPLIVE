@@ -385,7 +385,7 @@ export const DailyTab: React.FC<{ employees: Employee[]; companyId: string }> = 
                 shift_id: rosterShift
             }).eq('id', punchTarget.attendance.id);
         } else {
-            await supabase.from('attendance').insert([{
+            await (supabase as any).from('attendance').upsert([{
                 company_id: companyId,
                 employee_id: punchTarget.id,
                 date: selectedDate,
@@ -396,7 +396,7 @@ export const DailyTab: React.FC<{ employees: Employee[]; companyId: string }> = 
                 source: 'manual',
                 notes: punchForm.reason || null,
                 shift_id: rosterShift
-            }]);
+            }], { onConflict: 'employee_id,date' });
         }
 
         setShowPunchModal(false);
@@ -423,7 +423,7 @@ export const DailyTab: React.FC<{ employees: Employee[]; companyId: string }> = 
             shift_id: rosterMap[emp.id]?.shift_id || null
         }));
 
-        const { error } = await supabase.from('attendance').insert(inserts);
+        const { error } = await (supabase as any).from('attendance').upsert(inserts, { onConflict: 'employee_id,date' });
         if (error) alert('Error: ' + error.message);
         else fetchDaily();
     };
@@ -845,7 +845,7 @@ export const MonthlyTab: React.FC<{ employees: Employee[]; companyId: string; co
                 source: 'manual'
             }).eq('id', existing.id);
         } else {
-            await supabase.from('attendance').insert([{
+            await (supabase as any).from('attendance').upsert([{
                 company_id: companyId,
                 employee_id: selectedEmpId,
                 date: dateStr,
@@ -855,7 +855,7 @@ export const MonthlyTab: React.FC<{ employees: Employee[]; companyId: string; co
                 total_hours: duration,
                 source: 'manual',
                 notes: editForm.reason || null
-            }]);
+            }], { onConflict: 'employee_id,date' });
         }
 
         setEditDay(null);
