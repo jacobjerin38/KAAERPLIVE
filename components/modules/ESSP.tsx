@@ -1445,10 +1445,16 @@ export const ESSP: React.FC = () => {
 
         const fetchAttendance = async () => {
             setLoading(true);
+            if (!filterDate || !/^\d{4}-(0[1-9]|1[0-2])$/.test(filterDate)) {
+                setLoading(false);
+                return;
+            }
+            const [year, month] = filterDate.split('-').map(Number);
+            const lastDay = new Date(year, month, 0).getDate();
             const startOfMonth = `${filterDate}-01`;
-            const endOfMonth = `${filterDate}-31`;
+            const endOfMonth = `${filterDate}-${String(lastDay).padStart(2, '0')}`;
 
-            const { data } = await supabase.from('attendance')
+            const { data, error } = await supabase.from('attendance')
                 .select('*')
                 .eq('employee_id', currentEmployee.id)
                 .gte('date', startOfMonth)
@@ -1461,9 +1467,12 @@ export const ESSP: React.FC = () => {
                     if (curr.status === 'Present') acc.present++;
                     else if (curr.status === 'Absent') acc.absent++;
                     else if (curr.status === 'Half Day') acc.halfDay++;
+                    if ((curr.late_minutes || 0) > 0) acc.late++;
                     return acc;
                 }, { present: 0, absent: 0, late: 0, halfDay: 0 });
                 setStats(stats);
+            } else if (error) {
+                console.error('Fetch attendance error:', error);
             }
             setLoading(false);
         };
