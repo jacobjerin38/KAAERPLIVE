@@ -44,6 +44,8 @@ export const MonthlyAttendanceReport: React.FC = () => {
         }
     }, [currentCompanyId, selectedMonth, selectedDept, selectedLocation, selectedShift]);
 
+    const isValidMonthFormat = (val: string) => /^\d{4}-(0[1-9]|1[0-2])$/.test(val || '');
+
     const fetchMasters = async () => {
         try {
             const [deptRes, locRes, shiftRes] = await Promise.all([
@@ -61,12 +63,16 @@ export const MonthlyAttendanceReport: React.FC = () => {
 
     const fetchReport = async () => {
         if (!currentCompanyId) return;
+        if (!isValidMonthFormat(selectedMonth)) return; // Guard against partial typing like '2026-0'
         setLoading(true);
         try {
-            const [year, month] = selectedMonth.split('-').map(Number);
-            const startDate = `${selectedMonth}-01`;
+            const [yearStr, monthStr] = selectedMonth.split('-');
+            const year = parseInt(yearStr, 10);
+            const month = parseInt(monthStr, 10);
+            const formattedMonth = String(month).padStart(2, '0');
+            const startDate = `${year}-${formattedMonth}-01`;
             const lastDay = new Date(year, month, 0).getDate();
-            const endDate = `${selectedMonth}-${String(lastDay).padStart(2, '0')}`;
+            const endDate = `${year}-${formattedMonth}-${String(lastDay).padStart(2, '0')}`;
 
             const { data, error } = await (supabase as any).rpc('rpc_get_monthly_attendance_report', {
                 p_company_id: currentCompanyId,
@@ -82,7 +88,9 @@ export const MonthlyAttendanceReport: React.FC = () => {
             setReportData(data);
         } catch (err: any) {
             console.error('Error loading Monthly Attendance Report:', err);
-            alert('Failed to load Monthly Attendance Report: ' + err.message);
+            if (!err.message?.includes('out of range')) {
+                alert('Failed to load Monthly Attendance Report: ' + err.message);
+            }
         } finally {
             setLoading(false);
         }
@@ -92,12 +100,19 @@ export const MonthlyAttendanceReport: React.FC = () => {
 
     const handleRecalculateShiftRules = async () => {
         if (!currentCompanyId) return;
+        if (!isValidMonthFormat(selectedMonth)) {
+            alert('Please select a valid month (YYYY-MM) first.');
+            return;
+        }
         setEvaluating(true);
         try {
-            const [year, month] = selectedMonth.split('-').map(Number);
-            const startDate = `${selectedMonth}-01`;
+            const [yearStr, monthStr] = selectedMonth.split('-');
+            const year = parseInt(yearStr, 10);
+            const month = parseInt(monthStr, 10);
+            const formattedMonth = String(month).padStart(2, '0');
+            const startDate = `${year}-${formattedMonth}-01`;
             const lastDay = new Date(year, month, 0).getDate();
-            const endDate = `${selectedMonth}-${String(lastDay).padStart(2, '0')}`;
+            const endDate = `${year}-${formattedMonth}-${String(lastDay).padStart(2, '0')}`;
 
             const { data, error } = await (supabase as any).rpc('rpc_recalculate_attendance_shift_rules', {
                 p_company_id: currentCompanyId,
@@ -164,8 +179,11 @@ export const MonthlyAttendanceReport: React.FC = () => {
         const totalOtHours = list.reduce((sum, item) => sum + (Number(item.summary.total_ot_hours) || 0), 0);
         const totalLop = totalAbsent + (totalHalf * 0.5);
 
-        const [y, m] = selectedMonth.split('-').map(Number);
-        const daysInMonth = new Date(y, m, 0).getDate();
+        let daysInMonth = 30;
+        if (isValidMonthFormat(selectedMonth)) {
+            const [y, m] = selectedMonth.split('-').map(Number);
+            daysInMonth = new Date(y, m, 0).getDate();
+        }
         const totalPotentialDays = totalEmployees * daysInMonth;
         const avgAttendancePct = totalPotentialDays > 0 ? ((totalPresent + totalLeave) / totalPotentialDays) * 100 : 0;
 

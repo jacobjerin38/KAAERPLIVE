@@ -10,11 +10,16 @@ export const SalaryStatementReport: React.FC = () => {
     const [statements, setStatements] = useState<any[]>([]);
     const [summary, setSummary] = useState({ totalGross: 0, totalDeduction: 0, totalNet: 0, employeeCount: 0 });
 
+    const isValidMonth = (val: string) => /^\d{4}-(0[1-9]|1[0-2])$/.test(val || '');
+
     useEffect(() => {
-        if (currentCompanyId) fetchReportData();
+        if (currentCompanyId && isValidMonth(selectedMonth)) {
+            fetchReportData();
+        }
     }, [currentCompanyId, selectedMonth]);
 
     const fetchReportData = async () => {
+        if (!isValidMonth(selectedMonth)) return;
         setLoading(true);
         try {
             // 1. Fetch completed payroll runs for the selected month
