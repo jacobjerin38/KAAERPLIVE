@@ -550,7 +550,7 @@ export class WorkflowEngine {
                 reviewed_at: new Date().toISOString()
             }).eq('id', entityId);
 
-            if (status === 'APPROVED') {
+            if (status?.toUpperCase() === 'APPROVED' || dbStatus === 'Approved') {
                 const { data: mpReq } = await (supabase as any).from('missed_punch_requests')
                     .select('*')
                     .eq('id', entityId)
@@ -565,7 +565,10 @@ export class WorkflowEngine {
                         .maybeSingle();
 
                     if (existingAtt) {
-                        const updatePayload: any = {};
+                        const updatePayload: any = {
+                            source: 'missed_punch_approval',
+                            edit_reason: 'Approved Missed Punch'
+                        };
                         if (mpReq.punch_type === 'check_in') {
                             updatePayload.check_in = reqTime;
                         } else {
@@ -586,15 +589,25 @@ export class WorkflowEngine {
                             employee_id: mpReq.employee_id,
                             date: mpReq.request_date,
                             status: 'Present',
-                            source: 'manual',
-                            punch_method: 'ONLINE'
+                            source: 'missed_punch_approval',
+                            punch_method: 'ONLINE',
+                            edit_reason: 'Approved Missed Punch'
                         };
                         if (mpReq.punch_type === 'check_in') {
                             insertPayload.check_in = reqTime;
                         } else {
                             insertPayload.check_out = reqTime;
                         }
-                        await (supabase as any).from('attendance').insert([insertPayload]);
+                        await (supabase as any).from('attendance').upsert([insertPayload], { onConflict: 'employee_id,date' });
+                    }
+
+                    // Recalculate shift rules for this day
+                    if (mpReq.company_id) {
+                        await (supabase as any).rpc('rpc_recalculate_attendance_shift_rules', {
+                            p_company_id: mpReq.company_id,
+                            p_start_date: mpReq.request_date,
+                            p_end_date: mpReq.request_date
+                        });
                     }
                 }
             }
