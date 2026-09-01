@@ -283,9 +283,98 @@ export const MonthlyAttendanceReport: React.FC = () => {
     };
 
     return (
-        <div className="space-y-6 animate-page-enter">
-            {/* Header & Main Controls */}
-            <div className="bg-white dark:bg-zinc-900 p-6 rounded-[2rem] border border-slate-200 dark:border-zinc-800 shadow-sm flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+        <div className="space-y-6 animate-page-enter print:space-y-3 print:m-0 print:p-0">
+            {/* Embedded Print Stylesheet for Landscape Full A4 Layout */}
+            <style>{`
+                @media print {
+                    @page {
+                        size: A4 landscape;
+                        margin: 8mm 6mm 8mm 6mm;
+                    }
+                    html, body {
+                        background: white !important;
+                        color: #0f172a !important;
+                        font-size: 8.5pt !important;
+                        -webkit-print-color-adjust: exact !important;
+                        print-color-adjust: exact !important;
+                    }
+                    aside, nav, header, .no-print, button, input, select, svg.lucide-search {
+                        display: none !important;
+                    }
+                    .print-only {
+                        display: block !important;
+                    }
+                    .overflow-x-auto, .overflow-hidden, .overflow-y-auto {
+                        overflow: visible !important;
+                        max-height: none !important;
+                        height: auto !important;
+                    }
+                    .rounded-\\[2rem\\], .rounded-2xl, .rounded-xl, .shadow-sm, .shadow-lg {
+                        border-radius: 0 !important;
+                        box-shadow: none !important;
+                    }
+                    table {
+                        width: 100% !important;
+                        border-collapse: collapse !important;
+                        font-size: 8pt !important;
+                        page-break-inside: auto !important;
+                    }
+                    thead {
+                        display: table-header-group !important;
+                    }
+                    tr {
+                        page-break-inside: avoid !important;
+                        page-break-after: auto !important;
+                    }
+                    th {
+                        background-color: #f1f5f9 !important;
+                        color: #1e293b !important;
+                        font-weight: 700 !important;
+                        font-size: 7.5pt !important;
+                        padding: 3px 4px !important;
+                        border: 1px solid #cbd5e1 !important;
+                    }
+                    td {
+                        padding: 2.5px 4px !important;
+                        border: 1px solid #e2e8f0 !important;
+                        color: #0f172a !important;
+                        font-size: 8pt !important;
+                    }
+                    .badge-print {
+                        border: 1px solid #cbd5e1 !important;
+                        padding: 1px 3px !important;
+                    }
+                }
+            `}</style>
+
+            {/* Print-Only Executive Header */}
+            <div className="hidden print:block mb-3 pb-2 border-b-2 border-slate-800">
+                <div className="flex justify-between items-start">
+                    <div>
+                        <h1 className="text-lg font-black uppercase tracking-tight text-slate-900">KAA ERP — MONTHLY ATTENDANCE STATEMENT</h1>
+                        <p className="text-xs font-bold text-slate-600">
+                            Statement Period: <span className="font-black text-cyan-800">{selectedMonth}</span> | Generated: {new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        </p>
+                    </div>
+                    <div className="text-right text-[10px] text-slate-500 font-mono">
+                        <div>Filtered Staff: <strong>{filteredEmployees.length} of {reportData?.employees?.length || 0}</strong></div>
+                        <div>Dept: <strong>{departments.find(d => String(d.id) === selectedDept)?.name || 'All'}</strong> | Loc: <strong>{locations.find(l => String(l.id) === selectedLocation)?.name || 'All'}</strong></div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Print-Only Compact KPI Summary Bar */}
+            <div className="hidden print:grid grid-cols-6 gap-2 mb-2 p-1.5 bg-slate-50 border border-slate-300 rounded text-[9px]">
+                <div><span className="text-slate-500">Total Staff:</span> <strong>{kpiSummary.totalEmployees}</strong></div>
+                <div><span className="text-slate-500">Present Days:</span> <strong className="text-emerald-700">{kpiSummary.totalPresent}</strong> ({kpiSummary.avgAttendancePct}%)</div>
+                <div><span className="text-slate-500">Absent / LOP:</span> <strong className="text-rose-700">{kpiSummary.totalLop}</strong></div>
+                <div><span className="text-slate-500">Approved Leaves:</span> <strong className="text-indigo-700">{kpiSummary.totalLeave}</strong></div>
+                <div><span className="text-slate-500">Worked Hours:</span> <strong className="text-cyan-800">{kpiSummary.totalWorkedHours}h</strong></div>
+                <div><span className="text-slate-500">Overtime Hours:</span> <strong className="text-amber-800">{kpiSummary.totalOtHours}h</strong></div>
+            </div>
+
+            {/* Header & Main Controls (Screen Only) */}
+            <div className="no-print bg-white dark:bg-zinc-900 p-6 rounded-[2rem] border border-slate-200 dark:border-zinc-800 shadow-sm flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                 <div>
                     <div className="flex items-center gap-2">
                         <Calendar className="w-6 h-6 text-cyan-600" />
@@ -343,7 +432,7 @@ export const MonthlyAttendanceReport: React.FC = () => {
             </div>
 
             {/* Filter Bar */}
-            <div className="bg-slate-50 dark:bg-zinc-900/60 p-4 rounded-2xl border border-slate-200 dark:border-zinc-800 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            <div className="no-print bg-slate-50 dark:bg-zinc-900/60 p-4 rounded-2xl border border-slate-200 dark:border-zinc-800 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
                 {/* Search */}
                 <div className="relative">
                     <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -400,8 +489,8 @@ export const MonthlyAttendanceReport: React.FC = () => {
                 </select>
             </div>
 
-            {/* KPI Summary Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+            {/* KPI Summary Cards (Screen Only) */}
+            <div className="no-print grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
                 <div className="bg-white dark:bg-zinc-900 p-4 rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-sm">
                     <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Staff</p>
                     <h3 className="text-2xl font-black text-slate-900 dark:text-white mt-1">{kpiSummary.totalEmployees}</h3>
@@ -440,8 +529,8 @@ export const MonthlyAttendanceReport: React.FC = () => {
             </div>
 
             {/* Table Area */}
-            <div className="bg-white dark:bg-zinc-900 rounded-[2rem] border border-slate-200 dark:border-zinc-800 shadow-sm overflow-hidden">
-                <div className="p-4 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center bg-slate-50/50 dark:bg-zinc-800/30">
+            <div className="bg-white dark:bg-zinc-900 rounded-[2rem] border border-slate-200 dark:border-zinc-800 shadow-sm overflow-hidden print:border-none print:shadow-none print:rounded-none print:m-0 print:p-0">
+                <div className="no-print p-4 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center bg-slate-50/50 dark:bg-zinc-800/30">
                     <div className="flex items-center gap-3">
                         <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
                             Showing {filteredEmployees.length} of {reportData?.employees?.length || 0} Employees
@@ -473,11 +562,11 @@ export const MonthlyAttendanceReport: React.FC = () => {
                         No attendance records found for this period and filter selection.
                     </div>
                 ) : (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left text-xs border-collapse">
+                    <div className="overflow-x-auto print:overflow-visible">
+                        <table className="w-full text-left text-xs border-collapse print:text-[8pt]">
                             <thead>
-                                <tr className="bg-slate-100/70 dark:bg-zinc-800 text-slate-600 dark:text-slate-300 font-bold uppercase border-b border-slate-200 dark:border-zinc-700">
-                                    <th className="p-3 w-10"></th>
+                                <tr className="bg-slate-100/70 dark:bg-zinc-800 text-slate-600 dark:text-slate-300 font-bold uppercase border-b border-slate-200 dark:border-zinc-700 print:bg-slate-100">
+                                    <th className="p-3 w-10 no-print"></th>
                                     <th className="p-3">Employee</th>
                                     <th className="p-3">Department / Role</th>
                                     <th className="p-3 text-center">Calendar</th>
@@ -503,7 +592,7 @@ export const MonthlyAttendanceReport: React.FC = () => {
                                     return (
                                         <React.Fragment key={s.employee_id}>
                                             <tr className={`hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-colors ${isExpanded ? 'bg-cyan-50/30 dark:bg-cyan-950/10' : ''}`}>
-                                                <td className="p-3 text-center">
+                                                <td className="p-3 text-center no-print">
                                                     <button
                                                         onClick={() => toggleExpand(s.employee_id)}
                                                         className="p-1 text-slate-400 hover:text-cyan-600 rounded transition-colors"
@@ -648,6 +737,22 @@ export const MonthlyAttendanceReport: React.FC = () => {
                         </table>
                     </div>
                 )}
+            </div>
+
+            {/* Print-Only Signature & Approval Block */}
+            <div className="hidden print:flex justify-between items-end pt-10 mt-6 border-t border-slate-400 text-[8.5pt] font-bold text-slate-800">
+                <div className="text-center w-48">
+                    <div className="border-b border-slate-700 pb-8 mb-1"></div>
+                    <div>Prepared By (HR)</div>
+                </div>
+                <div className="text-center w-48">
+                    <div className="border-b border-slate-700 pb-8 mb-1"></div>
+                    <div>Verified By (Department Head)</div>
+                </div>
+                <div className="text-center w-48">
+                    <div className="border-b border-slate-700 pb-8 mb-1"></div>
+                    <div>Approved By (Managing Director)</div>
+                </div>
             </div>
         </div>
     );
