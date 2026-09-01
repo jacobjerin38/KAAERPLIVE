@@ -984,13 +984,13 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                                                                     </span>
                                                                 </td>
                                                                 <td className="p-3">
-                                                                    <div className="flex items-center gap-1">
-                                                                        <span className="text-slate-400">$</span>
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <span className="text-slate-400 font-bold text-xs">QAR</span>
                                                                         <input
                                                                             type="number"
                                                                             defaultValue={comp.amount}
                                                                             onBlur={(e) => handleUpdateComponentAmount(comp.id, parseFloat(e.target.value))}
-                                                                            className="w-24 bg-transparent font-mono font-bold text-slate-800 dark:text-white focus:outline-none focus:border-b-2 focus:border-blue-500"
+                                                                            className="w-28 bg-transparent font-mono font-bold text-slate-800 dark:text-white focus:outline-none focus:border-b-2 focus:border-blue-500"
                                                                         />
                                                                     </div>
                                                                 </td>

@@ -94,13 +94,13 @@ export const CompensationChangeModal: React.FC<CompensationChangeModalProps> = (
                         <div>
                             <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">New CTC (Annual)</label>
                             <div className="relative">
-                                <span className="absolute left-3 top-2.5 text-slate-400 font-bold">$</span>
+                                <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">QAR</span>
                                 <input
                                     type="number"
                                     required
                                     value={newCtc}
                                     onChange={(e) => setNewCtc(e.target.value)}
-                                    className="w-full pl-8 p-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/50 font-mono font-bold text-slate-900 dark:text-white"
+                                    className="w-full pl-12 p-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/50 font-mono font-bold text-slate-900 dark:text-white"
                                     placeholder="0.00"
                                 />
                             </div>
