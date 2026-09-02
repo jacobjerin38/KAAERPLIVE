@@ -277,9 +277,33 @@ export const MonthlyAttendanceReport: React.FC = () => {
         URL.revokeObjectURL(url);
     };
 
-    // Print Report
-    const handlePrint = () => {
-        window.print();
+    // Print Menu State
+    const [showPrintMenu, setShowPrintMenu] = useState(false);
+
+    // Print Handler with Multiple Format Modes
+    const handlePrintAction = (mode: 'summary' | 'detailed_all' | 'current') => {
+        setShowPrintMenu(false);
+
+        if (mode === 'detailed_all') {
+            // Expand all employees so complete 31-day punch breakdown is populated for every employee
+            const allExpanded: Record<string, boolean> = {};
+            reportData?.employees?.forEach((item: any) => {
+                allExpanded[item.summary.employee_id] = true;
+            });
+            setExpandedEmpIds(allExpanded);
+            setTimeout(() => {
+                window.print();
+            }, 300);
+        } else if (mode === 'summary') {
+            // Collapse all drill-downs so only the executive summary statement matrix prints
+            setExpandedEmpIds({});
+            setTimeout(() => {
+                window.print();
+            }, 150);
+        } else {
+            // Print active current on-screen view
+            window.print();
+        }
     };
 
     return (
@@ -344,6 +368,11 @@ export const MonthlyAttendanceReport: React.FC = () => {
                         border: 1px solid #cbd5e1 !important;
                         padding: 1px 3px !important;
                     }
+                    .print-employee-breakdown {
+                        page-break-inside: avoid !important;
+                        margin-top: 4px !important;
+                        margin-bottom: 8px !important;
+                    }
                 }
             `}</style>
 
@@ -357,7 +386,7 @@ export const MonthlyAttendanceReport: React.FC = () => {
                         </p>
                     </div>
                     <div className="text-right text-[10px] text-slate-500 font-mono">
-                        <div>Filtered Staff: <strong>{filteredEmployees.length} of {reportData?.employees?.length || 0}</strong></div>
+                        <div>Total Filtered Staff: <strong>{filteredEmployees.length} of {reportData?.employees?.length || 0}</strong></div>
                         <div>Dept: <strong>{departments.find(d => String(d.id) === selectedDept)?.name || 'All'}</strong> | Loc: <strong>{locations.find(l => String(l.id) === selectedLocation)?.name || 'All'}</strong></div>
                     </div>
                 </div>
@@ -422,12 +451,67 @@ export const MonthlyAttendanceReport: React.FC = () => {
                         <FileSpreadsheet className="w-4 h-4" /> Export Excel
                     </button>
 
-                    <button
-                        onClick={handlePrint}
-                        className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-500/20 transition-all flex items-center gap-2"
-                    >
-                        <Printer className="w-4 h-4" /> Print
-                    </button>
+                    {/* Print Dropdown Menu */}
+                    <div className="relative">
+                        <button
+                            onClick={() => setShowPrintMenu(!showPrintMenu)}
+                            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-500/20 transition-all flex items-center gap-2"
+                        >
+                            <Printer className="w-4 h-4" />
+                            <span>Print Report</span>
+                            <ChevronDown className="w-3.5 h-3.5 opacity-80" />
+                        </button>
+
+                        {showPrintMenu && (
+                            <>
+                                <div className="fixed inset-0 z-40" onClick={() => setShowPrintMenu(false)} />
+                                <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-zinc-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-zinc-700 py-2 z-50 animate-in fade-in zoom-in-95">
+                                    <div className="px-4 py-2 border-b border-slate-100 dark:border-zinc-700 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                                        Select Print Format
+                                    </div>
+
+                                    <button
+                                        onClick={() => handlePrintAction('summary')}
+                                        className="w-full px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-zinc-700/50 flex items-start gap-3 transition-colors"
+                                    >
+                                        <div className="p-2 bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 rounded-xl mt-0.5">
+                                            <FileSpreadsheet className="w-4 h-4" />
+                                        </div>
+                                        <div>
+                                            <div className="text-xs font-bold text-slate-800 dark:text-white">Print Monthly Summary Statement</div>
+                                            <div className="text-[11px] text-slate-500">Clean landscape matrix for all {reportData?.employees?.length || 0} employees</div>
+                                        </div>
+                                    </button>
+
+                                    <button
+                                        onClick={() => handlePrintAction('detailed_all')}
+                                        className="w-full px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-zinc-700/50 flex items-start gap-3 transition-colors"
+                                    >
+                                        <div className="p-2 bg-purple-50 dark:bg-purple-950/30 text-purple-600 rounded-xl mt-0.5">
+                                            <Clock className="w-4 h-4" />
+                                        </div>
+                                        <div>
+                                            <div className="text-xs font-bold text-slate-800 dark:text-white">Print Complete Detailed Dossier</div>
+                                            <div className="text-[11px] text-slate-500">Full 31-day punch breakdown for all {reportData?.employees?.length || 0} employees</div>
+                                        </div>
+                                    </button>
+
+                                    <button
+                                        onClick={() => handlePrintAction('current')}
+                                        className="w-full px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-zinc-700/50 flex items-start gap-3 transition-colors"
+                                    >
+                                        <div className="p-2 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 rounded-xl mt-0.5">
+                                            <Printer className="w-4 h-4" />
+                                        </div>
+                                        <div>
+                                            <div className="text-xs font-bold text-slate-800 dark:text-white">Print Current Screen Selection</div>
+                                            <div className="text-[11px] text-slate-500">Prints only the active filtered/viewing employees</div>
+                                        </div>
+                                    </button>
+                                </div>
+                            </>
+                        )}
+                    </div>
                 </div>
             </div>
 
