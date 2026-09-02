@@ -242,7 +242,7 @@ export const PayrollDashboard: React.FC = () => {
             .from('payroll_records')
             .select(`
                 *,
-                employee:employees(name, department_id, employee_code, passport_number, visa_number, account_number, bank_name)
+                employee:employees(name, department, department_id, employee_code, qid_number, passport_number, visa_number, account_number, bank_name)
             `)
             .eq('payroll_run_id', run.id);
 
@@ -319,7 +319,7 @@ export const PayrollDashboard: React.FC = () => {
         
         runDetails.forEach(rec => {
             const emp = rec.employee || {};
-            const qid = (emp as any).passport_number || 'N/A';
+            const qid = (emp as any).qid_number || (emp as any).passport_number || 'N/A';
             const visa = (emp as any).visa_number || 'N/A';
             const name = emp.name || 'Unknown';
             const bankName = (emp as any).bank_name || '';

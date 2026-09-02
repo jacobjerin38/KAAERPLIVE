@@ -713,6 +713,8 @@ export const MonthlyTab: React.FC<{ employees: Employee[]; companyId: string; co
         const now = new Date();
         return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     });
+    const [yearNum, monthNum] = currentMonth.split('-').map(Number);
+    const monthName = new Date(yearNum, monthNum - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
     const [records, setRecords] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [period, setPeriod] = useState<any>(null);
@@ -986,8 +988,6 @@ export const MonthlyTab: React.FC<{ employees: Employee[]; companyId: string; co
     };
 
     const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const [yearNum, monthNum] = currentMonth.split('-').map(Number);
-    const monthName = new Date(yearNum, monthNum - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
     return (
         <div className="h-full flex flex-col overflow-hidden">
