@@ -23,10 +23,11 @@ export const MonthlyAttendanceReport: React.FC = () => {
     const [selectedShift, setSelectedShift] = useState<string>('');
     const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
 
-    // Master Data for Dropdowns
+    // Master Data for Dropdowns & Company Info
     const [departments, setDepartments] = useState<any[]>([]);
     const [locations, setLocations] = useState<any[]>([]);
     const [shifts, setShifts] = useState<any[]>([]);
+    const [companyInfo, setCompanyInfo] = useState<{ name: string; display_name: string; logo_url: string | null } | null>(null);
 
     // Report Data State
     const [reportData, setReportData] = useState<any>(null);
@@ -48,17 +49,93 @@ export const MonthlyAttendanceReport: React.FC = () => {
 
     const fetchMasters = async () => {
         try {
-            const [deptRes, locRes, shiftRes] = await Promise.all([
+            const [deptRes, locRes, shiftRes, compRes] = await Promise.all([
                 supabase.from('departments').select('id, name').eq('company_id', currentCompanyId).order('name'),
                 supabase.from('locations').select('id, name').eq('company_id', currentCompanyId).order('name'),
-                supabase.from('org_shift_timings').select('id, name, code').eq('company_id', currentCompanyId).order('name')
+                supabase.from('org_shift_timings').select('id, name, code').eq('company_id', currentCompanyId).order('name'),
+                supabase.from('companies').select('name, display_name, logo_url').eq('id', currentCompanyId).maybeSingle()
             ]);
             setDepartments(deptRes.data || []);
             setLocations(locRes.data || []);
             setShifts(shiftRes.data || []);
+            if (compRes.data) setCompanyInfo(compRes.data);
         } catch (e) {
             console.error('Error fetching masters:', e);
         }
+    };
+
+    // Synthesize full 30/31 calendar days for an employee so timesheets are 100% complete
+    const getFullMonthRecords = (item: any, rData: any, selMonth: string) => {
+        if (!selMonth || !/^\d{4}-\d{2}$/.test(selMonth)) return item?.records || [];
+        const [yearStr, monthStr] = selMonth.split('-');
+        const year = parseInt(yearStr, 10);
+        const month = parseInt(monthStr, 10);
+        const totalDays = new Date(year, month, 0).getDate();
+
+        const existingRecordsMap: Record<string, any> = {};
+        (item?.records || []).forEach((r: any) => {
+            if (r.date) existingRecordsMap[r.date] = r;
+        });
+
+        const holidaysMap: Record<string, string> = {};
+        (rData?.holidays || []).forEach((h: any) => {
+            if (h.date) holidaysMap[h.date] = h.name;
+        });
+
+        const offDays = (rData?.default_off_days || '5,6')
+            .split(',')
+            .map((d: string) => parseInt(d.trim(), 10));
+
+        const todayStr = new Date().toISOString().split('T')[0];
+
+        const fullRecords = [];
+        for (let day = 1; day <= totalDays; day++) {
+            const dayStr = String(day).padStart(2, '0');
+            const dateKey = `${yearStr}-${monthStr}-${dayStr}`;
+            const dateObj = new Date(year, month - 1, day);
+            const dayOfWeek = dateObj.getDay();
+
+            if (existingRecordsMap[dateKey]) {
+                fullRecords.push(existingRecordsMap[dateKey]);
+            } else {
+                const isHoliday = holidaysMap[dateKey];
+                const isWeekend = offDays.includes(dayOfWeek);
+                const isFuture = dateKey > todayStr;
+
+                let status = 'Absent';
+                let remarks = 'No Punch Logged';
+                if (isHoliday) {
+                    status = 'Holiday';
+                    remarks = isHoliday;
+                } else if (isWeekend) {
+                    status = 'Weekend';
+                    remarks = 'Weekly Off';
+                } else if (isFuture) {
+                    status = 'Scheduled';
+                    remarks = 'Upcoming';
+                }
+
+                fullRecords.push({
+                    id: `auto_${dateKey}`,
+                    date: dateKey,
+                    shift_name: 'Standard',
+                    shift_start: '08:00:00',
+                    shift_end: '16:00:00',
+                    scheduled_hours: 8.0,
+                    check_in: null,
+                    check_out: null,
+                    total_hours: 0,
+                    status: status,
+                    late_minutes: 0,
+                    early_minutes: 0,
+                    ot_hours: 0,
+                    source: 'SYSTEM',
+                    edit_reason: remarks
+                });
+            }
+        }
+
+        return fullRecords;
     };
 
     const fetchReport = async () => {
@@ -238,7 +315,8 @@ export const MonthlyAttendanceReport: React.FC = () => {
         const dailyRows: any[] = [];
         filteredEmployees.forEach(item => {
             const s = item.summary;
-            (item.records || []).forEach((r: any) => {
+            const fullRecords = getFullMonthRecords(item, reportData, selectedMonth);
+            fullRecords.forEach((r: any) => {
                 dailyRows.push({
                     'Employee Code': s.employee_code,
                     'Employee Name': s.employee_name,
@@ -350,7 +428,9 @@ export const MonthlyAttendanceReport: React.FC = () => {
                 const lopDays = (s.absent_days || 0) + ((s.half_days || 0) * 0.5);
                 const paidDays = Math.max(0, Number(s.calendar_days || kpiSummary.daysInMonth) - lopDays);
 
-                const dailyRows = (item.records || []).map((r: any) => {
+                const fullRecords = getFullMonthRecords(item, reportData, selectedMonth);
+
+                const dailyRows = fullRecords.map((r: any) => {
                     const dateObj = new Date(r.date);
                     const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
                     const isLate = (r.late_minutes || 0) > 0;
@@ -363,13 +443,17 @@ export const MonthlyAttendanceReport: React.FC = () => {
                     let statusClass = 'badge-present';
                     if (r.status === 'Absent') statusClass = 'badge-absent';
                     else if (r.status === 'Half Day') statusClass = 'badge-half';
-                    else if (r.status === 'On Leave') statusClass = 'badge-leave';
+                    else if (r.status === 'On Leave' || r.status === 'Leave') statusClass = 'badge-leave';
                     else if (r.status === 'Weekend') statusClass = 'badge-weekend';
                     else if (r.status === 'Holiday') statusClass = 'badge-holiday';
+                    else if (r.status === 'Scheduled') statusClass = 'badge-scheduled';
 
                     let lateEarlyText = 'On Time';
                     if (isLate) lateEarlyText = `+${r.late_minutes}m Late`;
                     if (isEarly) lateEarlyText = isLate ? `${lateEarlyText}, -${r.early_minutes}m Early` : `-${r.early_minutes}m Early`;
+                    if (r.status === 'Weekend' || r.status === 'Holiday' || r.status === 'Scheduled' || r.status === 'On Leave') {
+                        lateEarlyText = '—';
+                    }
 
                     return `
                         <tr>
@@ -464,15 +548,15 @@ export const MonthlyAttendanceReport: React.FC = () => {
                         margin-bottom: 6px;
                     }
                     .company-name {
-                        font-size: 14pt;
+                        font-size: 13pt;
                         font-weight: 900;
                         text-transform: uppercase;
-                        letter-spacing: -0.5px;
+                        letter-spacing: -0.3px;
                         color: #0f172a;
                         margin: 0;
                     }
                     .report-subtitle {
-                        font-size: 9pt;
+                        font-size: 8.5pt;
                         font-weight: 700;
                         color: #475569;
                         margin-top: 2px;
@@ -555,6 +639,7 @@ export const MonthlyAttendanceReport: React.FC = () => {
                     .badge-leave { background: #e0e7ff; color: #3730a3; border: 1px solid #c7d2fe; }
                     .badge-weekend { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
                     .badge-holiday { background: #f3e8ff; color: #6b21a8; border: 1px solid #e9d5ff; }
+                    .badge-scheduled { background: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd; }
 
                     .signature-block {
                         display: flex;
@@ -583,9 +668,12 @@ export const MonthlyAttendanceReport: React.FC = () => {
             </head>
             <body>
                 <div class="report-header">
-                    <div>
-                        <div class="company-name">KAA ERP</div>
-                        <div class="report-subtitle">Monthly Attendance Statement — Period: ${monthTitle}</div>
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        ${companyInfo?.logo_url ? `<img src="${companyInfo.logo_url}" alt="Logo" style="height: 36px; width: auto; max-width: 140px; object-fit: contain; border-radius: 4px; background: white; padding: 1px;" />` : ''}
+                        <div>
+                            <div class="company-name">${companyInfo?.display_name || companyInfo?.name || 'POWER ENGINEERING CORPORATION'}</div>
+                            <div class="report-subtitle">Monthly Attendance Statement — Period: ${monthTitle}</div>
+                        </div>
                     </div>
                     <div class="header-meta">
                         <div>Generated: ${generatedDate}</div>
@@ -728,11 +816,22 @@ export const MonthlyAttendanceReport: React.FC = () => {
             {/* Print-Only Executive Header */}
             <div className="hidden print:block mb-3 pb-2 border-b-2 border-slate-800">
                 <div className="flex justify-between items-start">
-                    <div>
-                        <h1 className="text-lg font-black uppercase tracking-tight text-slate-900">KAA ERP — MONTHLY ATTENDANCE STATEMENT</h1>
-                        <p className="text-xs font-bold text-slate-600">
-                            Statement Period: <span className="font-black text-cyan-800">{selectedMonth}</span> | Generated: {new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })}
-                        </p>
+                    <div className="flex items-center gap-3">
+                        {companyInfo?.logo_url && (
+                            <img
+                                src={companyInfo.logo_url}
+                                alt="Company Logo"
+                                className="h-9 w-auto max-w-[130px] object-contain rounded bg-white p-0.5 border border-slate-300"
+                            />
+                        )}
+                        <div>
+                            <h1 className="text-base font-black uppercase tracking-tight text-slate-900">
+                                {companyInfo?.display_name || companyInfo?.name || 'POWER ENGINEERING CORPORATION'}
+                            </h1>
+                            <p className="text-xs font-bold text-slate-600">
+                                Monthly Attendance Statement — Period: <span className="font-black text-cyan-800">{selectedMonth}</span> | Generated: {new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })}
+                            </p>
+                        </div>
                     </div>
                     <div className="text-right text-[10px] text-slate-500 font-mono">
                         <div>Total Filtered Staff: <strong>{filteredEmployees.length} of {reportData?.employees?.length || 0}</strong></div>
@@ -754,9 +853,24 @@ export const MonthlyAttendanceReport: React.FC = () => {
             {/* Header & Main Controls (Screen Only) */}
             <div className="no-print bg-white dark:bg-zinc-900 p-6 rounded-[2rem] border border-slate-200 dark:border-zinc-800 shadow-sm flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                 <div>
-                    <div className="flex items-center gap-2">
-                        <Calendar className="w-6 h-6 text-cyan-600" />
-                        <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Monthly Attendance Report</h2>
+                    <div className="flex items-center gap-3">
+                        {companyInfo?.logo_url ? (
+                            <img
+                                src={companyInfo.logo_url}
+                                alt="Company Logo"
+                                className="h-10 w-auto max-w-[140px] object-contain rounded-xl border border-slate-200 dark:border-zinc-700 bg-white p-1 shadow-sm"
+                            />
+                        ) : (
+                            <div className="p-2 bg-cyan-50 dark:bg-cyan-950/30 text-cyan-600 rounded-xl">
+                                <Calendar className="w-6 h-6" />
+                            </div>
+                        )}
+                        <div>
+                            <div className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                                {companyInfo?.display_name || companyInfo?.name || 'POWER ENGINEERING CORPORATION'}
+                            </div>
+                            <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Monthly Attendance Report</h2>
+                        </div>
                     </div>
                     <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">
                         Comprehensive employee-wise monthly statement with shifts, leaves, working days, and daily punch audit trail.
@@ -1086,8 +1200,19 @@ export const MonthlyAttendanceReport: React.FC = () => {
                                                                         </tr>
                                                                     </thead>
                                                                     <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
-                                                                        {(item.records && item.records.length > 0) ? (
-                                                                            item.records.map((r: any) => {
+                                                                        {(() => {
+                                                                            const fullRecords = getFullMonthRecords(item, reportData, selectedMonth);
+                                                                            if (!fullRecords || fullRecords.length === 0) {
+                                                                                return (
+                                                                                    <tr>
+                                                                                        <td colSpan={11} className="p-4 text-center text-slate-400">
+                                                                                            No punch transactions logged for this employee this month.
+                                                                                        </td>
+                                                                                    </tr>
+                                                                                );
+                                                                            }
+
+                                                                            return fullRecords.map((r: any) => {
                                                                                 const dateObj = new Date(r.date);
                                                                                 const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
                                                                                 const isLate = (r.late_minutes || 0) > 0;
@@ -1124,9 +1249,10 @@ export const MonthlyAttendanceReport: React.FC = () => {
                                                                                                 r.status === 'Present' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30' :
                                                                                                 r.status === 'Absent' ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/30' :
                                                                                                 r.status === 'Half Day' ? 'bg-amber-50 text-amber-600 dark:bg-amber-950/30' :
-                                                                                                r.status === 'On Leave' ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/30' :
+                                                                                                (r.status === 'On Leave' || r.status === 'Leave') ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/30' :
                                                                                                 r.status === 'Weekend' ? 'bg-slate-100 text-slate-500 border border-slate-200 dark:bg-zinc-800 dark:text-zinc-400 dark:border-zinc-700' :
                                                                                                 r.status === 'Holiday' ? 'bg-purple-50 text-purple-600 dark:bg-purple-950/30' :
+                                                                                                r.status === 'Scheduled' ? 'bg-sky-50 text-sky-600 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800' :
                                                                                                 'bg-slate-100 text-slate-600 dark:bg-zinc-800'
                                                                                             }`}>
                                                                                                 {r.status || 'Present'}
@@ -1135,7 +1261,7 @@ export const MonthlyAttendanceReport: React.FC = () => {
                                                                                         <td className="p-2.5 text-center">
                                                                                             {isLate && <span className="text-rose-600 font-bold mr-1">+{r.late_minutes}m Late</span>}
                                                                                             {isEarly && <span className="text-amber-600 font-bold">-{r.early_minutes}m Early</span>}
-                                                                                            {!isLate && !isEarly && <span className="text-slate-300 dark:text-slate-600">On Time</span>}
+                                                                                            {!isLate && !isEarly && (r.status === 'Weekend' || r.status === 'Holiday' || r.status === 'Scheduled' || r.status === 'On Leave' ? <span className="text-slate-300 dark:text-slate-600">—</span> : <span className="text-slate-300 dark:text-slate-600">On Time</span>)}
                                                                                         </td>
                                                                                         <td className="p-2.5 text-center font-bold text-amber-600">
                                                                                             {(r.ot_hours || 0) > 0 ? `${Number(r.ot_hours).toFixed(1)}h` : '—'}
@@ -1148,14 +1274,8 @@ export const MonthlyAttendanceReport: React.FC = () => {
                                                                                         </td>
                                                                                     </tr>
                                                                                 );
-                                                                            })
-                                                                        ) : (
-                                                                            <tr>
-                                                                                <td colSpan={11} className="p-4 text-center text-slate-400">
-                                                                                    No punch transactions logged for this employee this month.
-                                                                                </td>
-                                                                            </tr>
-                                                                        )}
+                                                                            });
+                                                                        })()}
                                                                     </tbody>
                                                                 </table>
                                                             </div>

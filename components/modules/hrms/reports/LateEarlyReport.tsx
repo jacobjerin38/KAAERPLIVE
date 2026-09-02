@@ -38,9 +38,15 @@ export const LateEarlyReport: React.FC = () => {
     // Data State
     const [departments, setDepartments] = useState<any[]>([]);
     const [reportData, setReportData] = useState<any>(null);
+    const [companyInfo, setCompanyInfo] = useState<{ name: string; display_name: string; logo_url: string | null } | null>(null);
 
     useEffect(() => {
-        if (currentCompanyId) fetchDepartments();
+        if (currentCompanyId) {
+            fetchDepartments();
+            supabase.from('companies').select('name, display_name, logo_url').eq('id', currentCompanyId).maybeSingle().then(({ data }) => {
+                if (data) setCompanyInfo(data);
+            });
+        }
     }, [currentCompanyId]);
 
     useEffect(() => {
@@ -175,9 +181,24 @@ export const LateEarlyReport: React.FC = () => {
             {/* Header */}
             <div className="bg-white dark:bg-zinc-900 p-6 rounded-[2rem] border border-slate-200 dark:border-zinc-800 shadow-sm flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                 <div>
-                    <div className="flex items-center gap-2">
-                        <AlertTriangle className="w-6 h-6 text-rose-600" />
-                        <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Late In / Early Out Report</h2>
+                    <div className="flex items-center gap-3">
+                        {companyInfo?.logo_url ? (
+                            <img
+                                src={companyInfo.logo_url}
+                                alt="Company Logo"
+                                className="h-10 w-auto max-w-[140px] object-contain rounded-xl border border-slate-200 dark:border-zinc-700 bg-white p-1 shadow-sm"
+                            />
+                        ) : (
+                            <div className="p-2 bg-rose-50 dark:bg-rose-950/30 text-rose-600 rounded-xl">
+                                <AlertTriangle className="w-6 h-6" />
+                            </div>
+                        )}
+                        <div>
+                            <div className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                                {companyInfo?.display_name || companyInfo?.name || 'POWER ENGINEERING CORPORATION'}
+                            </div>
+                            <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Late In / Early Out Report</h2>
+                        </div>
                     </div>
                     <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">
                         Punctuality tracking analyzing scheduled shift timings, configured grace periods, and actual punch timestamps.
