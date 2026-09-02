@@ -280,29 +280,378 @@ export const MonthlyAttendanceReport: React.FC = () => {
     // Print Menu State
     const [showPrintMenu, setShowPrintMenu] = useState(false);
 
-    // Print Handler with Multiple Format Modes
+    // Standalone HTML Generator for 100% Reliable Multi-Page Landscape Printing
+    const generatePrintHTML = (mode: 'summary' | 'detailed_all' | 'current') => {
+        const listToPrint = mode === 'current' ? filteredEmployees : (reportData?.employees || filteredEmployees);
+        const monthTitle = selectedMonth;
+        const generatedDate = new Date().toLocaleString('en-US', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+        let contentHtml = '';
+
+        if (mode === 'summary' || (mode === 'current' && Object.keys(expandedEmpIds).length === 0)) {
+            // SUMMARY TABLE FOR ALL EMPLOYEES
+            const rowsHtml = listToPrint.map((item: any, idx: number) => {
+                const s = item.summary;
+                const lopDays = (s.absent_days || 0) + ((s.half_days || 0) * 0.5);
+                const paidDays = Math.max(0, Number(s.calendar_days || kpiSummary.daysInMonth) - lopDays);
+                return `
+                    <tr>
+                        <td style="text-align: center; color: #64748b;">${idx + 1}</td>
+                        <td style="font-family: monospace; font-weight: bold;">${s.employee_code || '—'}</td>
+                        <td style="font-weight: bold; color: #0f172a;">${s.employee_name || '—'}</td>
+                        <td>${s.department_name || '—'}</td>
+                        <td style="color: #475569;">${s.designation || '—'}</td>
+                        <td style="text-align: center;">${s.calendar_days || kpiSummary.daysInMonth}</td>
+                        <td style="text-align: center; font-weight: bold; color: #059669;">${s.present_days || 0}</td>
+                        <td style="text-align: center; font-weight: bold; color: #dc2626;">${s.absent_days || 0}</td>
+                        <td style="text-align: center; font-weight: bold; color: #4f46e5;">${s.leave_days || 0}</td>
+                        <td style="text-align: center; font-weight: bold; color: #d97706;">${s.half_days || 0}</td>
+                        <td style="text-align: center; color: #94a3b8;">${s.missing_punch_days || 0}</td>
+                        <td style="text-align: center; color: #ea580c; font-weight: bold;">${s.late_days || 0}</td>
+                        <td style="text-align: center; color: #b45309; font-weight: bold;">${Number(s.total_ot_hours || 0).toFixed(1)}</td>
+                        <td style="text-align: center; font-weight: bold;">${Number(s.total_worked_hours || 0).toFixed(1)}</td>
+                        <td style="text-align: center; font-weight: 900; background: #ecfdf5; color: #065f46;">${paidDays}</td>
+                        <td style="text-align: center; font-weight: 900; background: #fff1f2; color: #9f1239;">${lopDays}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            contentHtml = `
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 30px; text-align: center;">#</th>
+                            <th style="width: 70px;">Emp Code</th>
+                            <th>Employee Name</th>
+                            <th>Department</th>
+                            <th>Designation</th>
+                            <th style="text-align: center; width: 45px;">Cal</th>
+                            <th style="text-align: center; width: 45px; color: #059669;">Pres</th>
+                            <th style="text-align: center; width: 45px; color: #dc2626;">Abs</th>
+                            <th style="text-align: center; width: 45px; color: #4f46e5;">Leave</th>
+                            <th style="text-align: center; width: 45px; color: #d97706;">Half</th>
+                            <th style="text-align: center; width: 45px;">Miss</th>
+                            <th style="text-align: center; width: 45px; color: #ea580c;">Late</th>
+                            <th style="text-align: center; width: 50px; color: #b45309;">OT Hrs</th>
+                            <th style="text-align: center; width: 60px;">Worked</th>
+                            <th style="text-align: center; width: 55px; background: #d1fae5; color: #065f46;">Paid Days</th>
+                            <th style="text-align: center; width: 45px; background: #ffe4e6; color: #9f1239;">LOP</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rowsHtml}
+                    </tbody>
+                </table>
+            `;
+        } else {
+            // DETAILED DAILY TIMESHEET DOSSIER FOR EMPLOYEES
+            contentHtml = listToPrint.map((item: any, empIdx: number) => {
+                const s = item.summary;
+                const lopDays = (s.absent_days || 0) + ((s.half_days || 0) * 0.5);
+                const paidDays = Math.max(0, Number(s.calendar_days || kpiSummary.daysInMonth) - lopDays);
+
+                const dailyRows = (item.records || []).map((r: any) => {
+                    const dateObj = new Date(r.date);
+                    const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
+                    const isLate = (r.late_minutes || 0) > 0;
+                    const isEarly = (r.early_minutes || 0) > 0;
+
+                    const cin = r.check_in ? new Date(r.check_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
+                    const cout = r.check_out ? new Date(r.check_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
+                    const sched = r.shift_start ? `${r.shift_start.slice(0, 5)} - ${r.shift_end.slice(0, 5)}` : '08:00 - 16:00';
+
+                    let statusClass = 'badge-present';
+                    if (r.status === 'Absent') statusClass = 'badge-absent';
+                    else if (r.status === 'Half Day') statusClass = 'badge-half';
+                    else if (r.status === 'On Leave') statusClass = 'badge-leave';
+                    else if (r.status === 'Weekend') statusClass = 'badge-weekend';
+                    else if (r.status === 'Holiday') statusClass = 'badge-holiday';
+
+                    let lateEarlyText = 'On Time';
+                    if (isLate) lateEarlyText = `+${r.late_minutes}m Late`;
+                    if (isEarly) lateEarlyText = isLate ? `${lateEarlyText}, -${r.early_minutes}m Early` : `-${r.early_minutes}m Early`;
+
+                    return `
+                        <tr>
+                            <td style="font-weight: bold; white-space: nowrap;">${r.date} <span style="font-weight: normal; color: #64748b;">(${dayName})</span></td>
+                            <td>${r.shift_name || 'Standard'}</td>
+                            <td style="font-family: monospace; color: #64748b;">${sched}</td>
+                            <td style="font-family: monospace; font-weight: bold;">${cin}</td>
+                            <td style="font-family: monospace; font-weight: bold;">${cout}</td>
+                            <td style="text-align: center; font-weight: bold;">${Number(r.total_hours || 0).toFixed(1)}</td>
+                            <td><span class="badge ${statusClass}">${r.status || 'Present'}</span></td>
+                            <td style="text-align: center; font-size: 8pt; color: ${isLate ? '#dc2626' : isEarly ? '#d97706' : '#64748b'};">${lateEarlyText}</td>
+                            <td style="text-align: center; font-weight: bold; color: #b45309;">${(r.ot_hours || 0) > 0 ? Number(r.ot_hours).toFixed(1) + 'h' : '—'}</td>
+                            <td style="font-size: 7.5pt; color: #64748b; text-transform: uppercase;">${r.source || 'MANUAL'}</td>
+                            <td style="font-size: 8pt; color: #475569;">${r.edit_reason || '—'}</td>
+                        </tr>
+                    `;
+                }).join('');
+
+                return `
+                    <div class="employee-page" style="${empIdx > 0 ? 'page-break-before: always;' : ''}">
+                        <div class="emp-header-card">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <span class="emp-name">${s.employee_name || '—'}</span>
+                                    <span class="emp-code">(${s.employee_code || '—'})</span>
+                                    <span class="emp-meta">· Dept: <strong>${s.department_name || '—'}</strong> · Role: <strong>${s.designation || '—'}</strong></span>
+                                </div>
+                                <div class="emp-stats-pill">
+                                    <span>Present: <strong>${s.present_days || 0}</strong></span> |
+                                    <span>Absent: <strong style="color: #dc2626;">${s.absent_days || 0}</strong></span> |
+                                    <span>Half: <strong style="color: #d97706;">${s.half_days || 0}</strong></span> |
+                                    <span>Worked: <strong>${Number(s.total_worked_hours || 0).toFixed(1)}h</strong></span> |
+                                    <span>OT: <strong style="color: #b45309;">${Number(s.total_ot_hours || 0).toFixed(1)}h</strong></span> |
+                                    <span style="background: #ecfdf5; color: #065f46; padding: 2px 6px; border-radius: 4px;">Paid Days: <strong>${paidDays}</strong></span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 85px;">Date</th>
+                                    <th style="width: 75px;">Shift</th>
+                                    <th style="width: 85px;">Scheduled</th>
+                                    <th style="width: 65px;">Check In</th>
+                                    <th style="width: 65px;">Check Out</th>
+                                    <th style="width: 45px; text-align: center;">Hours</th>
+                                    <th style="width: 65px;">Status</th>
+                                    <th style="width: 80px; text-align: center;">Late / Early</th>
+                                    <th style="width: 50px; text-align: center;">OT Hrs</th>
+                                    <th style="width: 65px;">Source</th>
+                                    <th>Remarks</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${dailyRows || '<tr><td colspan="11" style="text-align: center; padding: 12px; color: #94a3b8;">No records logged</td></tr>'}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        return `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Monthly Attendance Report - ${monthTitle}</title>
+                <meta charset="utf-8" />
+                <style>
+                    @page {
+                        size: A4 landscape;
+                        margin: 8mm 6mm 8mm 6mm;
+                    }
+                    * { box-sizing: border-box; }
+                    body {
+                        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                        color: #0f172a;
+                        background: white;
+                        margin: 0;
+                        padding: 0;
+                        font-size: 8.5pt;
+                        -webkit-print-color-adjust: exact !important;
+                        print-color-adjust: exact !important;
+                    }
+                    .report-header {
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: flex-start;
+                        border-bottom: 2px solid #0f172a;
+                        padding-bottom: 6px;
+                        margin-bottom: 6px;
+                    }
+                    .company-name {
+                        font-size: 14pt;
+                        font-weight: 900;
+                        text-transform: uppercase;
+                        letter-spacing: -0.5px;
+                        color: #0f172a;
+                        margin: 0;
+                    }
+                    .report-subtitle {
+                        font-size: 9pt;
+                        font-weight: 700;
+                        color: #475569;
+                        margin-top: 2px;
+                    }
+                    .header-meta {
+                        text-align: right;
+                        font-size: 8pt;
+                        color: #64748b;
+                        font-family: monospace;
+                    }
+                    .kpi-strip {
+                        display: grid;
+                        grid-template-columns: repeat(6, 1fr);
+                        gap: 6px;
+                        background: #f8fafc;
+                        border: 1px solid #cbd5e1;
+                        border-radius: 4px;
+                        padding: 4px 8px;
+                        margin-bottom: 8px;
+                        font-size: 8pt;
+                    }
+                    .kpi-item span { color: #64748b; }
+                    .kpi-item strong { color: #0f172a; font-size: 8.5pt; }
+
+                    .emp-header-card {
+                        background: #f1f5f9;
+                        border: 1px solid #cbd5e1;
+                        border-bottom: none;
+                        border-radius: 4px 4px 0 0;
+                        padding: 4px 8px;
+                        margin-top: 8px;
+                    }
+                    .emp-name { font-weight: 900; font-size: 9.5pt; color: #0f172a; }
+                    .emp-code { font-family: monospace; font-weight: bold; color: #475569; margin-left: 4px; }
+                    .emp-meta { font-size: 8pt; color: #64748b; margin-left: 8px; }
+                    .emp-stats-pill { font-size: 7.5pt; color: #475569; }
+
+                    table.data-table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        font-size: 8pt;
+                        margin-bottom: 8px;
+                    }
+                    table.data-table thead {
+                        display: table-header-group;
+                    }
+                    table.data-table tr {
+                        page-break-inside: avoid;
+                    }
+                    table.data-table th {
+                        background-color: #f1f5f9;
+                        color: #1e293b;
+                        font-weight: 700;
+                        font-size: 7.5pt;
+                        text-transform: uppercase;
+                        padding: 3.5px 4px;
+                        border: 1px solid #cbd5e1;
+                        text-align: left;
+                    }
+                    table.data-table td {
+                        padding: 2.5px 4px;
+                        border: 1px solid #e2e8f0;
+                        color: #0f172a;
+                    }
+                    table.data-table tbody tr:nth-child(even) {
+                        background-color: #f8fafc;
+                    }
+
+                    .badge {
+                        display: inline-block;
+                        padding: 1px 4px;
+                        border-radius: 3px;
+                        font-size: 7pt;
+                        font-weight: bold;
+                        text-transform: uppercase;
+                    }
+                    .badge-present { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+                    .badge-absent { background: #ffe4e6; color: #9f1239; border: 1px solid #fecdd3; }
+                    .badge-half { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+                    .badge-leave { background: #e0e7ff; color: #3730a3; border: 1px solid #c7d2fe; }
+                    .badge-weekend { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+                    .badge-holiday { background: #f3e8ff; color: #6b21a8; border: 1px solid #e9d5ff; }
+
+                    .signature-block {
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: flex-end;
+                        padding-top: 30px;
+                        margin-top: 15px;
+                        border-top: 1px solid #cbd5e1;
+                        page-break-inside: avoid;
+                    }
+                    .sig-box {
+                        text-align: center;
+                        width: 180px;
+                    }
+                    .sig-line {
+                        border-bottom: 1px solid #475569;
+                        padding-bottom: 25px;
+                        margin-bottom: 4px;
+                    }
+                    .sig-title {
+                        font-size: 8pt;
+                        font-weight: bold;
+                        color: #1e293b;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="report-header">
+                    <div>
+                        <div class="company-name">KAA ERP</div>
+                        <div class="report-subtitle">Monthly Attendance Statement — Period: ${monthTitle}</div>
+                    </div>
+                    <div class="header-meta">
+                        <div>Generated: ${generatedDate}</div>
+                        <div>Total Staff: ${listToPrint.length} Employees</div>
+                    </div>
+                </div>
+
+                <div class="kpi-strip">
+                    <div class="kpi-item"><span>Staff:</span> <strong>${kpiSummary.totalEmployees}</strong></div>
+                    <div class="kpi-item"><span>Present:</span> <strong style="color: #059669;">${kpiSummary.totalPresent}</strong> (${kpiSummary.avgAttendancePct}%)</div>
+                    <div class="kpi-item"><span>Absent / LOP:</span> <strong style="color: #dc2626;">${kpiSummary.totalLop}</strong></div>
+                    <div class="kpi-item"><span>Approved Leaves:</span> <strong style="color: #4f46e5;">${kpiSummary.totalLeave}</strong></div>
+                    <div class="kpi-item"><span>Worked Hours:</span> <strong>${kpiSummary.totalWorkedHours}h</strong></div>
+                    <div class="kpi-item"><span>Overtime:</span> <strong style="color: #b45309;">${kpiSummary.totalOtHours}h</strong></div>
+                </div>
+
+                ${contentHtml}
+
+                <div class="signature-block">
+                    <div class="sig-box">
+                        <div class="sig-line"></div>
+                        <div class="sig-title">Prepared By (HR)</div>
+                    </div>
+                    <div class="sig-box">
+                        <div class="sig-line"></div>
+                        <div class="sig-title">Verified By (Department Head)</div>
+                    </div>
+                    <div class="sig-box">
+                        <div class="sig-line"></div>
+                        <div class="sig-title">Approved By (Managing Director)</div>
+                    </div>
+                </div>
+            </body>
+            </html>
+        `;
+    };
+
+    // Print Execution using Clean Isolated Iframe (Generates Full Multi-Page Document)
     const handlePrintAction = (mode: 'summary' | 'detailed_all' | 'current') => {
         setShowPrintMenu(false);
+        const html = generatePrintHTML(mode);
 
-        if (mode === 'detailed_all') {
-            // Expand all employees so complete 31-day punch breakdown is populated for every employee
-            const allExpanded: Record<string, boolean> = {};
-            reportData?.employees?.forEach((item: any) => {
-                allExpanded[item.summary.employee_id] = true;
-            });
-            setExpandedEmpIds(allExpanded);
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'fixed';
+        iframe.style.right = '0';
+        iframe.style.bottom = '0';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = '0';
+        document.body.appendChild(iframe);
+
+        const doc = iframe.contentWindow?.document || iframe.contentDocument;
+        if (doc) {
+            doc.open();
+            doc.write(html);
+            doc.close();
+
             setTimeout(() => {
-                window.print();
+                iframe.contentWindow?.focus();
+                iframe.contentWindow?.print();
+                setTimeout(() => {
+                    if (document.body.contains(iframe)) {
+                        document.body.removeChild(iframe);
+                    }
+                }, 2000);
             }, 300);
-        } else if (mode === 'summary') {
-            // Collapse all drill-downs so only the executive summary statement matrix prints
-            setExpandedEmpIds({});
-            setTimeout(() => {
-                window.print();
-            }, 150);
-        } else {
-            // Print active current on-screen view
-            window.print();
         }
     };
 

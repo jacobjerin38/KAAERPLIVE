@@ -96,14 +96,17 @@ export const Login: React.FC = () => {
                 try {
                     const { data: empMatches } = await supabase
                         .from('employees')
-                        .select('work_email, email')
-                        .or(`employee_code.ilike.${emailPrefix},email.ilike.${emailPrefix}%,work_email.ilike.${emailPrefix}%`)
+                        .select('office_email, personal_email, email')
+                        .or(`employee_code.ilike.${emailPrefix},email.ilike.${emailPrefix}%,office_email.ilike.${emailPrefix}%`)
                         .limit(3);
 
                     if (empMatches && empMatches.length > 0) {
                         empMatches.forEach((e: any) => {
-                            if (e.work_email && !targetEmails.includes(e.work_email.toLowerCase())) {
-                                targetEmails.push(e.work_email.toLowerCase());
+                            if (e.office_email && !targetEmails.includes(e.office_email.toLowerCase())) {
+                                targetEmails.push(e.office_email.toLowerCase());
+                            }
+                            if (e.personal_email && !targetEmails.includes(e.personal_email.toLowerCase())) {
+                                targetEmails.push(e.personal_email.toLowerCase());
                             }
                             if (e.email && !targetEmails.includes(e.email.toLowerCase())) {
                                 targetEmails.push(e.email.toLowerCase());

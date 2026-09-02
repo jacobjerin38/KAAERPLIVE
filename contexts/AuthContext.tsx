@@ -175,14 +175,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             fetchUserRoleAndPermissions(user.id);
 
             // Update Profile & Log activity asynchronously
-            (supabase.from('profiles').update({ company_id: companyId }).eq('id', user.id) as any).catch((err: any) => console.error(err));
-            (supabase.from('activity_logs' as any).insert({
+            supabase.from('profiles').update({ company_id: companyId }).eq('id', user.id).then(({ error }) => {
+                if (error) console.error('Profile company_id update error:', error);
+            });
+            supabase.from('activity_logs' as any).insert({
                 company_id: companyId,
                 user_id: user.id,
                 user_email: user.email,
                 action: 'LOGIN',
                 description: `User session activated: ${user.email}`
-            }) as any).catch((err: any) => console.error(err));
+            }).then(({ error }: any) => {
+                if (error) console.error('Activity log login error:', error);
+            });
         }
     };
 
