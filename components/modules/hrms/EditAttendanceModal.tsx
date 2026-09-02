@@ -13,6 +13,8 @@ export const EditAttendanceModal: React.FC<EditAttendanceModalProps> = ({ record
     const [loading, setLoading] = useState(false);
     const [fetching, setFetching] = useState(true);
     const [isProcessed, setIsProcessed] = useState(false);
+    const [isMonthLocked, setIsMonthLocked] = useState(false);
+    const [recordMeta, setRecordMeta] = useState<any>(null);
     const [formData, setFormData] = useState({
         checkIn: '',
         checkOut: '',
@@ -33,9 +35,10 @@ export const EditAttendanceModal: React.FC<EditAttendanceModalProps> = ({ record
         const { data, error } = await (supabase as any).from('attendance').select('*').eq('id', recordId).single();
         if (data) {
             const d = data as any;
+            setRecordMeta(d);
             setFormData({
-                checkIn: d.check_in || '',
-                checkOut: d.check_out || '',
+                checkIn: d.check_in ? new Date(d.check_in).toTimeString().slice(0, 5) : '',
+                checkOut: d.check_out ? new Date(d.check_out).toTimeString().slice(0, 5) : '',
                 status: d.status || 'Present',
                 reason: '',
                 isLate: d.is_late || false,
@@ -45,53 +48,126 @@ export const EditAttendanceModal: React.FC<EditAttendanceModalProps> = ({ record
                 otHours: d.ot_hours || 0
             });
             setIsProcessed(d.is_processed === true);
+
+            // Check if month is locked in attendance_periods
+            if (d.company_id && d.date) {
+                const { data: periodData } = await supabase.from('attendance_periods')
+                    .select('status')
+                    .eq('company_id', d.company_id)
+                    .lte('start_date', d.date)
+                    .gte('end_date', d.date)
+                    .maybeSingle();
+
+                if (periodData?.status === 'LOCKED') {
+                    setIsMonthLocked(true);
+                }
+            }
         }
         setFetching(false);
     };
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (isMonthLocked) {
+            alert("Attendance for this month is locked and cannot be modified.");
+            return;
+        }
         if (!formData.reason.trim()) {
             alert("An edit reason is required for audit purposes.");
             return;
         }
 
         setLoading(true);
-        const { data: { user } } = await supabase.auth.getUser();
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
 
-        // Calculate duration if both check-in and check-out exist (supports Night Shift cross-midnight)
-        let duration = 0;
-        if (formData.checkIn && formData.checkOut) {
-            const inDate = new Date(`2000-01-01T${formData.checkIn}`);
-            let outDate = new Date(`2000-01-01T${formData.checkOut}`);
-            if (outDate <= inDate) {
-                // Crosses midnight (Night Shift)
-                outDate = new Date(outDate.getTime() + 24 * 60 * 60 * 1000);
+            const dateStr = recordMeta?.date;
+            let checkInTs = formData.checkIn ? new Date(`${dateStr}T${formData.checkIn}:00`).toISOString() : null;
+            let checkOutTs = formData.checkOut ? new Date(`${dateStr}T${formData.checkOut}:00`).toISOString() : null;
+
+            // Overnight shift check
+            let duration = 0;
+            if (checkInTs && checkOutTs) {
+                let diffMs = new Date(checkOutTs).getTime() - new Date(checkInTs).getTime();
+                if (diffMs < 0) {
+                    diffMs += 24 * 60 * 60 * 1000;
+                    checkOutTs = new Date(new Date(checkOutTs).getTime() + 24 * 60 * 60 * 1000).toISOString();
+                }
+                duration = Math.max(0, parseFloat((diffMs / (1000 * 60 * 60)).toFixed(2)));
             }
-            const diffMs = outDate.getTime() - inDate.getTime();
-            duration = Math.max(0, parseFloat((diffMs / (1000 * 60 * 60)).toFixed(2)));
-        }
 
-        const updates = {
-            check_in: formData.checkIn || null,
-            check_out: formData.checkOut || null,
-            status: formData.status,
-            total_hours: duration,
-            duration: duration,
-            edited_by: user?.id,
-            edited_at: new Date().toISOString(),
-            edit_reason: formData.reason
-        };
+            const updates = {
+                check_in: checkInTs,
+                check_out: checkOutTs,
+                status: formData.status,
+                total_hours: duration,
+                duration: duration,
+                edited_by: user?.id,
+                edited_at: new Date().toISOString(),
+                edit_reason: formData.reason
+            };
 
-        const { error } = await supabase.from('attendance').update(updates).eq('id', recordId);
+            const { error } = await supabase.from('attendance').update(updates).eq('id', recordId);
+            if (error) throw error;
 
-        if (error) {
-            alert("Failed to update attendance: " + error.message);
-        } else {
+            // Audit Log in attendance_corrections_log
+            if (recordMeta) {
+                const logsToInsert: any[] = [];
+                if (recordMeta.check_in !== checkInTs) {
+                    logsToInsert.push({
+                        company_id: recordMeta.company_id,
+                        attendance_id: recordId,
+                        attendance_period_id: recordMeta.attendance_period_id,
+                        employee_id: recordMeta.employee_id,
+                        date: recordMeta.date,
+                        field_name: 'check_in',
+                        old_value: recordMeta.check_in,
+                        new_value: checkInTs,
+                        correction_reason: formData.reason,
+                        changed_by: user?.id
+                    });
+                }
+                if (recordMeta.check_out !== checkOutTs) {
+                    logsToInsert.push({
+                        company_id: recordMeta.company_id,
+                        attendance_id: recordId,
+                        attendance_period_id: recordMeta.attendance_period_id,
+                        employee_id: recordMeta.employee_id,
+                        date: recordMeta.date,
+                        field_name: 'check_out',
+                        old_value: recordMeta.check_out,
+                        new_value: checkOutTs,
+                        correction_reason: formData.reason,
+                        changed_by: user?.id
+                    });
+                }
+                if (recordMeta.status !== formData.status) {
+                    logsToInsert.push({
+                        company_id: recordMeta.company_id,
+                        attendance_id: recordId,
+                        attendance_period_id: recordMeta.attendance_period_id,
+                        employee_id: recordMeta.employee_id,
+                        date: recordMeta.date,
+                        field_name: 'status',
+                        old_value: recordMeta.status,
+                        new_value: formData.status,
+                        correction_reason: formData.reason,
+                        changed_by: user?.id
+                    });
+                }
+
+                if (logsToInsert.length > 0) {
+                    await supabase.from('attendance_corrections_log').insert(logsToInsert);
+                }
+            }
+
             onSuccess();
             onClose();
+        } catch (err: any) {
+            alert(err.message || "Failed to update attendance.");
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     if (fetching) return null;
@@ -105,7 +181,15 @@ export const EditAttendanceModal: React.FC<EditAttendanceModalProps> = ({ record
                 </div>
 
                 <form onSubmit={handleSave} className="p-6 space-y-5">
-                    {isProcessed && (
+                    {isMonthLocked ? (
+                        <div className="p-4 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-2xl flex items-start gap-3">
+                            <Lock className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                            <div>
+                                <p className="text-sm font-bold text-rose-700 dark:text-rose-400">Attendance Month is Locked</p>
+                                <p className="text-xs text-rose-600 dark:text-rose-500 mt-1">Attendance for this month is locked and cannot be modified without an authorized admin reopen.</p>
+                            </div>
+                        </div>
+                    ) : isProcessed ? (
                         <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl flex items-start gap-3">
                             <Lock className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                             <div>
@@ -113,7 +197,7 @@ export const EditAttendanceModal: React.FC<EditAttendanceModalProps> = ({ record
                                 <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">To edit, unprocess the day first from the Daily Attendance tab.</p>
                             </div>
                         </div>
-                    )}
+                    ) : null}
                     {(formData.isLate || formData.isEarlyLeaving || formData.otHours > 0) && (
                         <div className="flex flex-wrap gap-2">
                             {formData.isLate && (
@@ -186,11 +270,11 @@ export const EditAttendanceModal: React.FC<EditAttendanceModalProps> = ({ record
 
                     <div className="pt-2">
                         <button
-                            disabled={loading || isProcessed}
+                            disabled={loading || isProcessed || isMonthLocked}
                             type="submit"
                             className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-500/30 hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
                         >
-                            {loading ? 'Saving...' : <><Save className="w-5 h-5" /> Update Record</>}
+                            {loading ? 'Saving...' : isMonthLocked ? <><Lock className="w-5 h-5" /> Month Locked (Read Only)</> : <><Save className="w-5 h-5" /> Update Record</>}
                         </button>
                     </div>
                 </form>

@@ -78,9 +78,13 @@ const statusDot = (status: string) => {
 
 const processingStatusBadge = (status: string) => {
     switch (status) {
-        case 'PROCESSED': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400';
-        case 'LOCKED': return 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400';
-        default: return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
+        case 'FINALIZED':
+        case 'PROCESSED': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-700';
+        case 'LOCKED': return 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400 border border-rose-300 dark:border-rose-700';
+        case 'REVIEW': return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-300 dark:border-amber-700';
+        case 'PROCESSING': return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 border border-purple-300 dark:border-purple-700';
+        case 'REOPENED': return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 border border-orange-300 dark:border-orange-700';
+        default: return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border border-blue-300 dark:border-blue-700';
     }
 };
 
@@ -713,6 +717,8 @@ export const MonthlyTab: React.FC<{ employees: Employee[]; companyId: string; co
     const [loading, setLoading] = useState(true);
     const [period, setPeriod] = useState<any>(null);
     const [processingMonth, setProcessingMonth] = useState(false);
+    const [showReopenModal, setShowReopenModal] = useState(false);
+    const [reopenReason, setReopenReason] = useState('');
 
     // Edit Modal
     const [editDay, setEditDay] = useState<number | null>(null);
@@ -808,7 +814,13 @@ export const MonthlyTab: React.FC<{ employees: Employee[]; companyId: string; co
         setCurrentMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
     };
 
+    const isMonthLocked = period?.status === 'LOCKED';
+
     const openEditDay = (dayData: any) => {
+        if (isMonthLocked) {
+            alert('Attendance for this month is locked and cannot be modified.');
+            return;
+        }
         const dateStr = `${currentMonth}-${String(dayData.day).padStart(2, '0')}`;
         if (isFutureDate(dateStr)) { alert('Cannot edit future dates.'); return; }
         if (dayData.record?.is_processed) { alert('This record is processed. Unprocess the day first.'); return; }
@@ -822,6 +834,10 @@ export const MonthlyTab: React.FC<{ employees: Employee[]; companyId: string; co
     };
 
     const handleSaveDay = async () => {
+        if (isMonthLocked) {
+            alert('Attendance for this month is locked and cannot be modified.');
+            return;
+        }
         if (editDay === null || !companyId || !selectedEmpId) return;
         setSaving(true);
 
@@ -833,72 +849,140 @@ export const MonthlyTab: React.FC<{ employees: Employee[]; companyId: string; co
 
         const existing = records.find(r => r.date === dateStr);
 
-        if (existing) {
-            await supabase.from('attendance').update({
-                check_in: checkInTs,
-                check_out: checkOutTs,
-                status: editForm.status,
-                total_hours: duration,
-                edited_by: user?.id,
-                edited_at: new Date().toISOString(),
-                edit_reason: editForm.reason || 'Calendar edit',
-                source: 'manual'
-            }).eq('id', existing.id);
-        } else {
-            await (supabase as any).from('attendance').upsert([{
-                company_id: companyId,
-                employee_id: selectedEmpId,
-                date: dateStr,
-                check_in: checkInTs,
-                check_out: checkOutTs,
-                status: editForm.status,
-                total_hours: duration,
-                source: 'manual',
-                notes: editForm.reason || null
-            }], { onConflict: 'employee_id,date' });
-        }
+        try {
+            if (existing) {
+                const { error: updateErr } = await supabase.from('attendance').update({
+                    check_in: checkInTs,
+                    check_out: checkOutTs,
+                    status: editForm.status,
+                    total_hours: duration,
+                    edited_by: user?.id,
+                    edited_at: new Date().toISOString(),
+                    edit_reason: editForm.reason || 'Calendar edit',
+                    source: 'manual'
+                }).eq('id', existing.id);
 
-        setEditDay(null);
-        setSaving(false);
-        fetchMonth();
+                if (updateErr) throw updateErr;
+
+                // Log correction in audit table
+                await supabase.from('attendance_corrections_log').insert([{
+                    company_id: companyId,
+                    attendance_id: existing.id,
+                    attendance_period_id: period?.id || null,
+                    employee_id: selectedEmpId,
+                    date: dateStr,
+                    field_name: 'manual_day_edit',
+                    old_value: `in:${existing.check_in || ''},out:${existing.check_out || ''},status:${existing.status}`,
+                    new_value: `in:${checkInTs || ''},out:${checkOutTs || ''},status:${editForm.status}`,
+                    correction_reason: editForm.reason || 'Manual calendar adjustment',
+                    changed_by: user?.id
+                }]);
+            } else {
+                const { error: insertErr } = await (supabase as any).from('attendance').upsert([{
+                    company_id: companyId,
+                    employee_id: selectedEmpId,
+                    date: dateStr,
+                    check_in: checkInTs,
+                    check_out: checkOutTs,
+                    status: editForm.status,
+                    total_hours: duration,
+                    source: 'manual',
+                    notes: editForm.reason || null
+                }], { onConflict: 'employee_id,date' });
+
+                if (insertErr) throw insertErr;
+            }
+
+            setEditDay(null);
+            fetchMonth();
+        } catch (err: any) {
+            alert('Save error: ' + (err.message || err));
+        } finally {
+            setSaving(false);
+        }
     };
 
+    // Lifecycle Actions
     const handleProcessMonth = async () => {
         if (!companyId) return;
-        const [year, month] = currentMonth.split('-').map(Number);
-        const startDate = `${currentMonth}-01`;
-        const lastDay = new Date(year, month, 0).getDate();
-        const endDate = `${currentMonth}-${String(lastDay).padStart(2, '0')}`;
-        const monthName = new Date(year, month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-
-        if (!confirm(`Process monthly attendance for ${monthName}? This will lock all records.`)) return;
         setProcessingMonth(true);
+        try {
+            const { data, error } = await (supabase.rpc as any)('rpc_execute_attendance_processing', {
+                p_company_id: companyId,
+                p_month_year: currentMonth
+            });
+            if (error) throw error;
+            alert('Attendance calculation completed! Period moved to REVIEW.');
+            fetchMonth();
+        } catch (err: any) {
+            alert('Error processing attendance: ' + (err.message || err));
+        } finally {
+            setProcessingMonth(false);
+        }
+    };
 
-        // Lock all attendance records for this month + all employees
-        const { error: lockErr } = await supabase.from('attendance')
-            .update({ is_processed: true })
-            .eq('company_id', companyId)
-            .gte('date', startDate)
-            .lte('date', endDate);
+    const handleFinalizeAttendance = async () => {
+        if (!companyId || !period?.id) return;
+        if (!confirm(`Finalize attendance for ${monthName}? This will verify all records and prepare the month for locking.`)) return;
+        setProcessingMonth(true);
+        try {
+            const { data, error } = await (supabase.rpc as any)('rpc_finalize_attendance_period', {
+                p_company_id: companyId,
+                p_period_id: period.id
+            });
+            if (error) throw error;
+            alert('Attendance FINALIZED successfully! You can now lock the month for Payroll.');
+            fetchMonth();
+        } catch (err: any) {
+            alert('Error finalizing attendance: ' + (err.message || err));
+        } finally {
+            setProcessingMonth(false);
+        }
+    };
 
-        if (lockErr) { alert('Error locking records: ' + lockErr.message); setProcessingMonth(false); return; }
+    const handleLockMonth = async () => {
+        if (!companyId || !period?.id) return;
+        if (!confirm(`Are you sure you want to LOCK attendance for ${monthName}?\n\nOnce locked, all attendance records are strictly read-only and database triggers prevent any modification. Payroll will consume this locked data.`)) return;
+        setProcessingMonth(true);
+        try {
+            const { data, error } = await (supabase.rpc as any)('rpc_lock_attendance_period', {
+                p_company_id: companyId,
+                p_period_id: period.id,
+                p_lock_reason: 'HR Month-End Executive Lock'
+            });
+            if (error) throw error;
+            alert('Attendance month is now LOCKED! Protected by database trigger.');
+            fetchMonth();
+        } catch (err: any) {
+            alert('Error locking attendance: ' + (err.message || err));
+        } finally {
+            setProcessingMonth(false);
+        }
+    };
 
-        // Upsert attendance period
-        const periodCode = `ATT-${currentMonth}`;
-        const { error: periodErr } = await (supabase as any).from('attendance_periods').upsert([{
-            company_id: companyId,
-            name: monthName,
-            code: periodCode,
-            start_date: startDate,
-            end_date: endDate,
-            status: 'PROCESSED',
-            processed_at: new Date().toISOString()
-        }], { onConflict: 'company_id,code' });
-
-        if (periodErr) alert('Warning: Period record error: ' + periodErr.message);
-
-        setProcessingMonth(false);
-        fetchMonth();
+    const handleReopenMonth = async () => {
+        if (!companyId || !period?.id) return;
+        if (!reopenReason.trim() || reopenReason.trim().length < 5) {
+            alert('Please provide a mandatory reason for reopening (minimum 5 characters).');
+            return;
+        }
+        setProcessingMonth(true);
+        try {
+            const { data, error } = await (supabase.rpc as any)('rpc_reopen_attendance_period', {
+                p_company_id: companyId,
+                p_period_id: period.id,
+                p_reopen_reason: reopenReason.trim()
+            });
+            if (error) throw error;
+            alert('Attendance period REOPENED for corrections.');
+            setShowReopenModal(false);
+            setReopenReason('');
+            fetchMonth();
+        } catch (err: any) {
+            alert('Error reopening attendance: ' + (err.message || err));
+        } finally {
+            setProcessingMonth(false);
+        }
     };
 
     const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -907,6 +991,32 @@ export const MonthlyTab: React.FC<{ employees: Employee[]; companyId: string; co
 
     return (
         <div className="h-full flex flex-col overflow-hidden">
+            {/* Executive Locked Banner */}
+            {isMonthLocked && (
+                <div className="mb-4 p-4 bg-gradient-to-r from-rose-500/10 via-rose-500/5 to-transparent border border-rose-200 dark:border-rose-900/50 rounded-2xl flex flex-wrap items-center justify-between gap-3 shrink-0 animate-fade-in">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-rose-600 text-white flex items-center justify-center font-bold shadow-md shadow-rose-600/30">
+                            <Lock className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <h4 className="text-sm font-bold text-rose-950 dark:text-rose-200 flex items-center gap-2">
+                                🔒 Attendance Month is LOCKED ({monthName})
+                                <span className="text-[11px] font-semibold px-2 py-0.5 bg-rose-100 dark:bg-rose-900/50 text-rose-700 dark:text-rose-300 rounded-lg">Read Only</span>
+                            </h4>
+                            <p className="text-xs text-rose-700 dark:text-rose-400 mt-0.5">
+                                All attendance records are locked and protected against modifications by database triggers. Payroll receives this frozen snapshot.
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={() => setShowReopenModal(true)}
+                        className="px-3.5 py-2 bg-white dark:bg-zinc-800 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 text-xs font-bold rounded-xl shadow-sm hover:border-rose-300 transition-all flex items-center gap-1.5"
+                    >
+                        <Unlock className="w-3.5 h-3.5" /> Reopen Month
+                    </button>
+                </div>
+            )}
+
             {/* Controls */}
             <div className="flex flex-wrap items-center gap-4 mb-5 shrink-0">
                 <select
@@ -919,22 +1029,58 @@ export const MonthlyTab: React.FC<{ employees: Employee[]; companyId: string; co
                     ))}
                 </select>
 
-                {/* Period badge */}
+                {/* Period Status Badge */}
                 {period && (
-                    <span className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 ${processingStatusBadge(period.status)}`}>
-                        {period.status === 'PROCESSED' ? <ShieldCheck className="w-3.5 h-3.5" /> : period.status === 'LOCKED' ? <Lock className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
+                    <span className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm ${processingStatusBadge(period.status)}`}>
+                        {period.status === 'LOCKED' ? <Lock className="w-3.5 h-3.5" /> : period.status === 'FINALIZED' || period.status === 'PROCESSED' ? <ShieldCheck className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
                         Period: {period.status}
                     </span>
                 )}
 
+                {/* Lifecycle Action Buttons */}
+                <div className="flex items-center gap-2">
+                    {(!period?.status || period.status === 'OPEN' || period.status === 'DRAFT') && (
+                        <button
+                            onClick={handleProcessMonth}
+                            disabled={processingMonth || records.length === 0}
+                            className="px-4 py-2.5 bg-indigo-600 text-white rounded-2xl text-xs font-bold shadow-md shadow-indigo-500/20 hover:bg-indigo-700 transition-all flex items-center gap-1.5 disabled:opacity-50"
+                        >
+                            {processingMonth ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCcw className="w-3.5 h-3.5" />} Process Month
+                        </button>
+                    )}
+
+                    {(period?.status === 'PROCESSING' || period?.status === 'REVIEW' || period?.status === 'REOPENED') && (
+                        <>
+                            <button
+                                onClick={handleProcessMonth}
+                                disabled={processingMonth}
+                                className="px-3.5 py-2 bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-zinc-700 rounded-2xl text-xs font-bold hover:bg-slate-200 dark:hover:bg-zinc-700 transition-all flex items-center gap-1.5 disabled:opacity-50"
+                            >
+                                {processingMonth ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCcw className="w-3.5 h-3.5" />} Re-Process
+                            </button>
+                            <button
+                                onClick={handleFinalizeAttendance}
+                                disabled={processingMonth}
+                                className="px-3.5 py-2 bg-emerald-600 text-white rounded-2xl text-xs font-bold shadow-md shadow-emerald-500/20 hover:bg-emerald-700 transition-all flex items-center gap-1.5 disabled:opacity-50"
+                            >
+                                {processingMonth ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />} Finalize Attendance
+                            </button>
+                        </>
+                    )}
+
+                    {(period?.status === 'FINALIZED' || period?.status === 'PROCESSED') && (
+                        <button
+                            onClick={handleLockMonth}
+                            disabled={processingMonth}
+                            className="px-4 py-2 bg-rose-600 text-white rounded-2xl text-xs font-bold shadow-md shadow-rose-500/30 hover:bg-rose-700 transition-all flex items-center gap-1.5 disabled:opacity-50"
+                        >
+                            {processingMonth ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Lock className="w-3.5 h-3.5" />} 🔒 Lock Month
+                        </button>
+                    )}
+                </div>
+
                 {/* Month Nav */}
                 <div className="flex items-center gap-2 ml-auto">
-                    {!period?.status || period.status === 'OPEN' ? (
-                        <button onClick={handleProcessMonth} disabled={processingMonth || records.length === 0}
-                            className="px-4 py-2.5 bg-indigo-600 text-white rounded-2xl text-sm font-bold shadow-lg shadow-indigo-500/30 hover:bg-indigo-700 transition-all flex items-center gap-2 disabled:opacity-50 mr-3">
-                            {processingMonth ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />} Process Month
-                        </button>
-                    ) : null}
                     <button onClick={prevMonth} className="p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors">
                         <ChevronLeft className="w-4 h-4 text-slate-600 dark:text-slate-300" />
                     </button>
@@ -944,6 +1090,53 @@ export const MonthlyTab: React.FC<{ employees: Employee[]; companyId: string; co
                     </button>
                 </div>
             </div>
+
+            {/* Admin Reopen Modal */}
+            {showReopenModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md animate-fade-in" onClick={() => setShowReopenModal(false)}>
+                    <div className="bg-white dark:bg-zinc-900 w-full max-w-md rounded-[2rem] shadow-2xl p-6 border border-slate-100 dark:border-zinc-800 animate-slide-up" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-10 h-10 rounded-xl bg-orange-100 text-orange-600 dark:bg-orange-900/30 flex items-center justify-center font-bold">
+                                <Unlock className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Reopen Attendance Period</h3>
+                                <p className="text-xs text-slate-500">Period: {monthName}</p>
+                            </div>
+                        </div>
+                        <p className="text-xs text-slate-600 dark:text-slate-400 mb-3 leading-relaxed">
+                            Reopening this attendance period allows HR to correct punch logs or shifts. This action is auditable and will be rejected if Payroll has already been finalized.
+                        </p>
+                        <div className="space-y-2 mb-5">
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                                Reopen Reason <span className="text-rose-500">*</span>
+                            </label>
+                            <textarea
+                                required
+                                value={reopenReason}
+                                onChange={e => setReopenReason(e.target.value)}
+                                placeholder="Explain why this period needs to be reopened..."
+                                className="w-full p-3 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm focus:ring-2 focus:ring-orange-500/20 outline-none h-24 resize-none text-slate-900 dark:text-white"
+                            />
+                        </div>
+                        <div className="flex items-center justify-end gap-2">
+                            <button
+                                onClick={() => setShowReopenModal(false)}
+                                className="px-4 py-2 bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-xl transition-all"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleReopenMonth}
+                                disabled={processingMonth || !reopenReason.trim()}
+                                className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold rounded-xl shadow-md shadow-orange-500/20 transition-all flex items-center gap-1.5 disabled:opacity-50"
+                            >
+                                {processingMonth ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Unlock className="w-3.5 h-3.5" />} Confirm Reopen
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Monthly Stats */}
             <div className="grid grid-cols-6 gap-3 mb-5 shrink-0">

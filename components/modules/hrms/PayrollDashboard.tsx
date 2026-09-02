@@ -1,18 +1,34 @@
 import React, { useState, useEffect } from 'react';
-import { DollarSign, Play, Calendar, FileText, ChevronRight, Eye, CheckCircle, Lock, AlertCircle, Edit3, X } from 'lucide-react';
+import {
+    DollarSign, Play, Calendar, FileText, ChevronRight, Eye, CheckCircle, Lock,
+    AlertCircle, Edit3, X, ShieldCheck, CheckCircle2, AlertTriangle, ArrowRight,
+    RefreshCcw, Download, Filter, Sparkles, Plus, Loader2, Layers, Unlock
+} from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 
 import { PayrollRun, PayrollRecord } from '../../hrms/types';
-
 import { KAA_LOGO_URL } from '../../../constants';
+import { PayrollVariableInputsModal } from './PayrollVariableInputsModal';
 
 export const PayrollDashboard: React.FC = () => {
     const [runs, setRuns] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
+    const [actionLoading, setActionLoading] = useState(false);
     const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM
     const [selectedRun, setSelectedRun] = useState<any | null>(null);
     const [runDetails, setRunDetails] = useState<any[]>([]);
     const [loadingDetails, setLoadingDetails] = useState(false);
+
+    // Company & Attendance Lock Status
+    const [companyId, setCompanyId] = useState<string>('');
+    const [attendancePeriod, setAttendancePeriod] = useState<any | null>(null);
+    const [checkingAttendance, setCheckingAttendance] = useState(false);
+
+    // Variable Inputs Modal
+    const [showVariablesModal, setShowVariablesModal] = useState(false);
+
+    // Filters
+    const [showExceptionsOnly, setShowExceptionsOnly] = useState(false);
 
     // Payslip Modal State
     const [showPayslip, setShowPayslip] = useState(false);
@@ -31,82 +47,202 @@ export const PayrollDashboard: React.FC = () => {
     const [activeEmployees, setActiveEmployees] = useState<any[]>([]);
 
     useEffect(() => {
-        fetchCompanyLogo();
-        fetchActiveEmployees();
+        initContext();
     }, []);
 
-    const fetchActiveEmployees = async () => {
-        const { data } = await supabase.from('employees').select('id, name, employee_code').eq('status', 'Active');
-        if (data) setActiveEmployees(data);
-    };
-
-    const fetchCompanyLogo = async () => {
+    const initContext = async () => {
         try {
             const { data: { user } } = await supabase.auth.getUser();
             if (user) {
                 const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', user.id).maybeSingle();
                 if (profile?.company_id) {
-                    const { data } = await supabase.from('companies').select('logo_url, currency').eq('id', profile.company_id).maybeSingle();
-                    if (data?.logo_url) setCompanyLogo(data.logo_url);
-                    if (data?.currency) setCompanyCurrency(data.currency);
+                    setCompanyId(profile.company_id);
+                    fetchCompanyLogo(profile.company_id);
+                    fetchActiveEmployees(profile.company_id);
+                    fetchRuns(profile.company_id);
+                    fetchAttendancePeriod(profile.company_id, selectedMonth);
                 }
             }
         } catch (e) {
-            console.error('Error fetching logo:', e);
+            console.error('Error initializing payroll context:', e);
         }
     };
 
     useEffect(() => {
-        fetchRuns();
-    }, []);
+        if (companyId) {
+            fetchAttendancePeriod(companyId, selectedMonth);
+        }
+    }, [selectedMonth, companyId]);
 
-    const fetchRuns = async () => {
-        const { data } = await (supabase as any).from('payroll_runs').select('*').order('period_start', { ascending: false });
+    const fetchActiveEmployees = async (comp_id: string) => {
+        const { data } = await supabase.from('employees').select('id, name, employee_code').eq('company_id', comp_id).eq('status', 'Active');
+        if (data) setActiveEmployees(data);
+    };
+
+    const fetchCompanyLogo = async (comp_id: string) => {
+        try {
+            const { data } = await supabase.from('companies').select('logo_url, currency').eq('id', comp_id).maybeSingle();
+            if (data?.logo_url) setCompanyLogo(data.logo_url);
+            if (data?.currency) setCompanyCurrency(data.currency);
+        } catch (e) {
+            console.error('Error fetching company details:', e);
+        }
+    };
+
+    const fetchRuns = async (comp_id: string = companyId) => {
+        if (!comp_id) return;
+        const { data } = await (supabase as any).from('payroll_runs')
+            .select('*')
+            .eq('company_id', comp_id)
+            .order('period_start', { ascending: false });
         if (data) setRuns(data);
     };
 
-    const handleGeneratePayroll = async () => {
-        if (!confirm(`Generate payroll for ${selectedMonth}? Existing draft data will be overwritten.`)) return;
+    const fetchAttendancePeriod = async (comp_id: string, m: string) => {
+        if (!comp_id) return;
+        setCheckingAttendance(true);
+        const [y, mon] = m.split('-').map(Number);
+        const lastDay = new Date(y, mon, 0).getDate();
+        const startDate = `${m}-01`;
+        const endDate = `${m}-${String(lastDay).padStart(2, '0')}`;
 
-        setLoading(true);
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+        const { data } = await supabase.from('attendance_periods')
+            .select('*')
+            .eq('company_id', comp_id)
+            .lte('start_date', endDate)
+            .gte('end_date', startDate)
+            .maybeSingle();
 
+        setAttendancePeriod(data || null);
+        setCheckingAttendance(false);
+    };
+
+    // Stage 1: Import Locked Attendance Snapshot
+    const handleImportAttendance = async () => {
+        if (!attendancePeriod) {
+            alert(`No attendance period found for ${selectedMonth}. Please process and lock attendance first.`);
+            return;
+        }
+
+        if (attendancePeriod.status !== 'LOCKED' && attendancePeriod.status !== 'FINALIZED') {
+            alert(`Cannot import attendance:\n\nThe attendance period for ${selectedMonth} must be FINALIZED or LOCKED by HR first.\nCurrent Status: ${attendancePeriod.status}`);
+            return;
+        }
+
+        if (!confirm(`Import locked attendance snapshot for ${selectedMonth}? This creates an immutable snapshot of working days, LOP, and overtime.`)) return;
+
+        setActionLoading(true);
         try {
-            const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', user.id).maybeSingle();
-
-            const { data, error } = await supabase.rpc('rpc_generate_payroll', {
-                p_company_id: profile.company_id,
-                p_month_year: selectedMonth
+            const { data: { user } } = await supabase.auth.getUser();
+            const { data, error } = await (supabase.rpc as any)('rpc_transfer_attendance_to_payroll', {
+                p_company_id: companyId,
+                p_attendance_period_id: attendancePeriod.id,
+                p_user_id: user?.id
             });
 
             if (error) throw error;
 
-            alert('Payroll generated successfully!');
-            fetchRuns();
+            alert(`Attendance Snapshot Imported successfully! (${data?.employees_snapshotted || 0} employees snapshotted)`);
+            await fetchRuns(companyId);
 
-            // Auto-select the new run
-            if (data) {
-                const { data: newRun } = await (supabase as any).from('payroll_runs').select('*').eq('id', data).single();
+            if (data?.payroll_run_id) {
+                const { data: newRun } = await (supabase as any).from('payroll_runs').select('*').eq('id', data.payroll_run_id).single();
                 if (newRun) handleViewDetails(newRun);
             }
-
-        } catch (error: any) {
-            alert('Error generating payroll: ' + error.message);
+        } catch (err: any) {
+            alert('Error importing attendance: ' + (err.message || err));
         } finally {
-            setLoading(false);
+            setActionLoading(false);
+        }
+    };
+
+    // Stage 2: Pre-Process Salary (Preview & Exceptions)
+    const handleRunPreProcessing = async () => {
+        if (!selectedRun) return alert('Select or import a payroll run first.');
+
+        setActionLoading(true);
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            const { data, error } = await (supabase.rpc as any)('rpc_preprocess_salary', {
+                p_company_id: companyId,
+                p_payroll_run_id: selectedRun.id,
+                p_user_id: user?.id
+            });
+
+            if (error) throw error;
+
+            alert(`Pre-processing complete!\n- Employees Evaluated: ${data?.employees_processed || 0}\n- Exceptions Flagged: ${data?.exceptions_count || 0}`);
+            await fetchRuns(companyId);
+            await handleViewDetails({ ...selectedRun, status: 'PREPROCESSING' });
+        } catch (err: any) {
+            alert('Pre-processing failed: ' + (err.message || err));
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    // Stage 3: Process Final Salary
+    const handleProcessFinalSalary = async () => {
+        if (!selectedRun) return alert('Select a payroll run first.');
+        if (!confirm('Calculate and process final salary records for this batch?')) return;
+
+        setActionLoading(true);
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            const { data, error } = await (supabase.rpc as any)('rpc_process_payroll_final', {
+                p_company_id: companyId,
+                p_payroll_run_id: selectedRun.id,
+                p_user_id: user?.id
+            });
+
+            if (error) throw error;
+
+            alert('Final salary processed successfully! Batch is ready for executive review and locking.');
+            await fetchRuns(companyId);
+            await handleViewDetails({ ...selectedRun, status: 'SALARY_PROCESSED' });
+        } catch (err: any) {
+            alert('Error processing salary: ' + (err.message || err));
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    // Stage 4: Finalize & Lock Batch
+    const handleFinalizeBatch = async () => {
+        if (!selectedRun) return;
+        if (!confirm('Are you sure you want to FINALIZE & LOCK this payroll batch?\n\nOnce locked, all calculations and variable inputs are frozen for audit. Payout slips and WPS export will be generated.')) return;
+
+        setActionLoading(true);
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            const { data, error } = await (supabase.rpc as any)('rpc_finalize_payroll_run', {
+                p_company_id: companyId,
+                p_payroll_run_id: selectedRun.id,
+                p_lock_reason: 'Executive final approval and payout lock',
+                p_user_id: user?.id
+            });
+
+            if (error) throw error;
+
+            alert('Payroll batch FINALIZED & LOCKED successfully!');
+            await fetchRuns(companyId);
+            setSelectedRun({ ...selectedRun, status: 'FINALIZED' });
+            await handleViewDetails({ ...selectedRun, status: 'FINALIZED' });
+        } catch (err: any) {
+            alert('Error finalizing batch: ' + (err.message || err));
+        } finally {
+            setActionLoading(false);
         }
     };
 
     const handleViewDetails = async (run: any) => {
         setSelectedRun(run);
         setLoadingDetails(true);
-        // @ts-ignore
         const { data, error } = await (supabase as any)
             .from('payroll_records')
             .select(`
                 *,
-                employee:employees(name, department_id, passport_number, visa_number, account_number, bank_name)
+                employee:employees(name, department_id, employee_code, passport_number, visa_number, account_number, bank_name)
             `)
             .eq('payroll_run_id', run.id);
 
@@ -114,24 +250,6 @@ export const PayrollDashboard: React.FC = () => {
             setRunDetails(data as any);
         }
         setLoadingDetails(false);
-    };
-
-    const handleFinalizeBatch = async () => {
-        if (!selectedRun) return;
-        if (!confirm('Are you sure you want to finalize this payroll batch? This action cannot be undone.')) return;
-
-        const { error } = await supabase
-            .from('payroll_runs')
-            .update({ status: 'COMPLETED' })
-            .eq('id', selectedRun.id);
-
-        if (error) {
-            alert('Error finalizing batch: ' + error.message);
-        } else {
-            alert('Batch finalized successfully!');
-            fetchRuns();
-            setSelectedRun({ ...selectedRun, status: 'COMPLETED' });
-        }
     };
 
     const handleSaveEdit = async () => {
@@ -284,10 +402,11 @@ export const PayrollDashboard: React.FC = () => {
 
     return (
         <div className="p-8 h-full flex flex-col animate-page-enter">
-            <header className="flex justify-between items-center mb-8 shrink-0">
+            {/* Header */}
+            <header className="flex justify-between items-center mb-6 shrink-0">
                 <div>
                     <h2 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Payroll Processing</h2>
-                    <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mt-1">Manage monthly salary batches</p>
+                    <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mt-1">End-to-end attendance snapshotting, variable inputs, and payout locking</p>
                 </div>
 
                 <div className="flex gap-3 items-center">
@@ -302,35 +421,75 @@ export const PayrollDashboard: React.FC = () => {
                     </div>
 
                     <button
-                        onClick={() => alert("Loan Management UI coming soon. Backend EMI deduction is fully automated and live!")}
-                        className="px-6 py-2.5 bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400 border border-blue-200 dark:border-blue-900/50 rounded-2xl text-sm font-bold hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-all shadow-sm"
+                        onClick={() => setShowVariablesModal(true)}
+                        className="px-5 py-2.5 bg-violet-50 text-violet-700 dark:bg-violet-950/30 dark:text-violet-300 border border-violet-200 dark:border-violet-800 rounded-2xl text-sm font-bold hover:bg-violet-100 transition-all shadow-sm flex items-center gap-2"
                     >
-                        Manage Loans
+                        <Plus className="w-4 h-4" /> Variable Inputs
                     </button>
 
                     <button
                         onClick={() => setShowSettlementModal(true)}
-                        className="px-6 py-2.5 bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400 border border-rose-200 dark:border-rose-900/50 rounded-2xl text-sm font-bold hover:bg-rose-100 dark:hover:bg-rose-500/20 transition-all shadow-sm"
+                        className="px-5 py-2.5 bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400 border border-rose-200 dark:border-rose-900/50 rounded-2xl text-sm font-bold hover:bg-rose-100 dark:hover:bg-rose-500/20 transition-all shadow-sm"
                     >
-                        Process Settlement
-                    </button>
-
-                    <button
-                        onClick={handleGeneratePayroll}
-                        disabled={loading}
-                        className="px-6 py-2.5 bg-indigo-600 text-white rounded-2xl text-sm font-bold shadow-lg shadow-indigo-500/30 hover:bg-indigo-700 active:scale-95 transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
-                    >
-                        <Play className="w-4 h-4 fill-current" />
-                        {loading ? 'Processing...' : 'Run Payroll'}
+                        Settlements
                     </button>
                 </div>
             </header>
 
+            {/* Attendance Month-Lock Status Banner */}
+            <div className={`mb-6 p-4 rounded-2xl border flex flex-wrap items-center justify-between gap-4 transition-all shrink-0 ${
+                attendancePeriod?.status === 'LOCKED'
+                    ? 'bg-emerald-50/70 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800'
+                    : attendancePeriod?.status === 'FINALIZED'
+                        ? 'bg-amber-50/70 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800'
+                        : 'bg-rose-50/70 dark:bg-rose-950/20 border-rose-200 dark:border-rose-800'
+            }`}>
+                <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold shadow-sm ${
+                        attendancePeriod?.status === 'LOCKED' ? 'bg-emerald-600 text-white' :
+                        attendancePeriod?.status === 'FINALIZED' ? 'bg-amber-500 text-white' : 'bg-rose-600 text-white'
+                    }`}>
+                        {attendancePeriod?.status === 'LOCKED' ? <Lock className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
+                    </div>
+                    <div>
+                        <h4 className="text-sm font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                            Attendance Status ({selectedMonth}):
+                            <span className={`px-2.5 py-0.5 rounded-lg text-xs font-bold ${
+                                attendancePeriod?.status === 'LOCKED' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300' :
+                                attendancePeriod?.status === 'FINALIZED' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300' : 'bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-300'
+                            }`}>
+                                {attendancePeriod?.status || 'NOT PROCESSED / OPEN'}
+                            </span>
+                        </h4>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                            {attendancePeriod?.status === 'LOCKED'
+                                ? 'Attendance is verified & locked. Payroll receives this frozen snapshot for working days, LOP, and overtime.'
+                                : attendancePeriod?.status === 'FINALIZED'
+                                    ? 'Attendance is finalized by HR but not locked. Lock the attendance period in HRMS before payroll import.'
+                                    : 'Attendance has not been finalized/locked by HR. Payroll import requires a finalized or locked attendance period.'}
+                        </p>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={handleImportAttendance}
+                        disabled={actionLoading || (!attendancePeriod || (attendancePeriod.status !== 'LOCKED' && attendancePeriod.status !== 'FINALIZED'))}
+                        className="px-4 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl shadow-md shadow-indigo-500/20 hover:bg-indigo-700 transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {actionLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                        Import Attendance Snapshot
+                    </button>
+                </div>
+            </div>
+
+            {/* Main Area */}
             <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-8 overflow-hidden">
                 {/* Runs List */}
                 <div className="bg-white/70 dark:bg-zinc-900/70 backdrop-blur-xl rounded-[2rem] border border-white/60 dark:border-zinc-800 shadow-xl shadow-slate-200/50 dark:shadow-black/30 overflow-hidden flex flex-col">
-                    <div className="p-6 border-b border-slate-100 dark:border-zinc-800">
+                    <div className="p-6 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center">
                         <h3 className="text-lg font-bold text-slate-800 dark:text-white">Batch History</h3>
+                        <span className="text-xs font-bold text-slate-400">{runs.length} Batches</span>
                     </div>
                     <div className="flex-1 overflow-y-auto p-4 space-y-3">
                         {runs.map(run => (
@@ -344,14 +503,17 @@ export const PayrollDashboard: React.FC = () => {
                             >
                                 <div className="flex justify-between items-start mb-2">
                                     <h4 className="font-bold text-slate-700 dark:text-slate-200">{run.name || run.month_year || run.period_start}</h4>
-                                    <span className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${run.status === 'PAID' ? 'bg-emerald-100 text-emerald-700' :
-                                        run.status === 'COMPLETED' ? 'bg-purple-100 text-purple-700' : 'bg-amber-100 text-amber-700'
-                                        }`}>{run.status}</span>
+                                    <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider ${
+                                        run.status === 'FINALIZED' || run.status === 'LOCKED' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300' :
+                                        run.status === 'SALARY_PROCESSED' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' :
+                                        run.status === 'PREPROCESSING' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300' :
+                                        'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                                    }`}>{run.status}</span>
                                 </div>
                                 <div className="flex justify-between items-end">
                                     <div>
                                         <p className="text-xs text-slate-400 font-medium">Total Payout</p>
-                                        <p className="text-lg font-black text-slate-900 dark:text-white">{formatCurrency(run.total_net_pay || run.total_amount || run.total_net_amount || 0)}</p>
+                                        <p className="text-lg font-black text-slate-900 dark:text-white">{formatCurrency(run.total_net_pay || run.total_amount || 0)}</p>
                                     </div>
                                     <ChevronRight className={`w-5 h-5 text-slate-300 transition-transform ${selectedRun?.id === run.id ? 'translate-x-1 text-indigo-500' : ''}`} />
                                 </div>
@@ -367,12 +529,20 @@ export const PayrollDashboard: React.FC = () => {
                 <div className="lg:col-span-2 bg-white/70 dark:bg-zinc-900/70 backdrop-blur-xl rounded-[2rem] border border-white/60 dark:border-zinc-800 shadow-xl shadow-slate-200/50 dark:shadow-black/30 overflow-hidden flex flex-col">
                     {selectedRun ? (
                         <>
-                            <div className="p-6 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center bg-slate-50/50 dark:bg-zinc-800/50">
+                            {/* Run Header */}
+                            <div className="p-6 border-b border-slate-100 dark:border-zinc-800 flex flex-wrap justify-between items-center gap-3 bg-slate-50/50 dark:bg-zinc-800/50">
                                 <div>
                                     <h3 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                                        {selectedRun.name || selectedRun.month_year || selectedRun.period_start} <span className="text-slate-400 font-normal text-sm">Details</span>
+                                        {selectedRun.name || selectedRun.month_year || selectedRun.period_start}
+                                        <span className={`text-xs px-2.5 py-0.5 rounded-lg font-bold uppercase tracking-wider ${
+                                            selectedRun.status === 'FINALIZED' || selectedRun.status === 'LOCKED' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300' :
+                                            selectedRun.status === 'SALARY_PROCESSED' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' :
+                                            'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300'
+                                        }`}>
+                                            {selectedRun.status}
+                                        </span>
                                     </h3>
-                                    <p className="text-xs text-slate-500 mt-1">Generated on {new Date(selectedRun.created_at).toLocaleDateString()}</p>
+                                    <p className="text-xs text-slate-500 mt-1">Period: {selectedRun.period_start} to {selectedRun.period_end}</p>
                                 </div>
                                 <div className="flex gap-2">
                                     <select 
@@ -386,20 +556,74 @@ export const PayrollDashboard: React.FC = () => {
                                         <option value="Salary Slip">Monthly Salary Report</option>
                                         <option value="Gratuity">Bonus & Gratuity Report</option>
                                     </select>
-                                    {selectedRun.status === 'DRAFT' && (
-                                        <button onClick={handleFinalizeBatch} className="px-4 py-2 bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-500/20 hover:bg-emerald-600 transition-colors flex items-center gap-2">
-                                            <Lock className="w-3 h-3" /> Finalize Batch
+                                </div>
+                            </div>
+
+                            {/* Processing Stepper Actions */}
+                            <div className="p-4 border-b border-slate-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex flex-wrap items-center justify-between gap-3">
+                                <div className="flex items-center gap-2">
+                                    {runDetails.some(r => r.has_exception) && (
+                                        <button
+                                            onClick={() => setShowExceptionsOnly(!showExceptionsOnly)}
+                                            className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
+                                                showExceptionsOnly 
+                                                    ? 'bg-rose-600 text-white' 
+                                                    : 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-200 dark:border-rose-800'
+                                            }`}
+                                        >
+                                            <AlertCircle className="w-3.5 h-3.5" />
+                                            {showExceptionsOnly ? 'Show All Employees' : `Filter Exceptions (${runDetails.filter(r => r.has_exception).length})`}
                                         </button>
+                                    )}
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                    {selectedRun.status !== 'FINALIZED' && selectedRun.status !== 'LOCKED' && (
+                                        <>
+                                            <button
+                                                onClick={handleRunPreProcessing}
+                                                disabled={actionLoading}
+                                                className="px-3.5 py-2 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-xl text-xs font-bold hover:bg-indigo-100 transition-all flex items-center gap-1.5 disabled:opacity-50"
+                                            >
+                                                {actionLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCcw className="w-3.5 h-3.5" />}
+                                                Pre-Process Salary
+                                            </button>
+
+                                            <button
+                                                onClick={handleProcessFinalSalary}
+                                                disabled={actionLoading}
+                                                className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-500/20 hover:bg-emerald-700 transition-all flex items-center gap-1.5 disabled:opacity-50"
+                                            >
+                                                {actionLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                                                Process Final Salary
+                                            </button>
+
+                                            <button
+                                                onClick={handleFinalizeBatch}
+                                                disabled={actionLoading}
+                                                className="px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold shadow-md shadow-rose-500/20 hover:bg-rose-700 transition-all flex items-center gap-1.5 disabled:opacity-50"
+                                            >
+                                                {actionLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Lock className="w-3.5 h-3.5" />}
+                                                Finalize & Lock Batch
+                                            </button>
+                                        </>
+                                    )}
+
+                                    {(selectedRun.status === 'FINALIZED' || selectedRun.status === 'LOCKED') && (
+                                        <span className="px-3.5 py-2 bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 rounded-xl text-xs font-bold flex items-center gap-1.5">
+                                            <Lock className="w-3.5 h-3.5 text-rose-600" /> Batch Finalized & Locked
+                                        </span>
                                     )}
                                 </div>
                             </div>
 
+                            {/* Table */}
                             <div className="flex-1 overflow-y-auto">
                                 <table className="w-full text-left">
                                     <thead className="bg-slate-50 dark:bg-zinc-800 sticky top-0 z-10 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                                         <tr>
                                             <th className="px-6 py-4">Employee</th>
-                                            <th className="px-6 py-4 text-center">Paid Days</th>
+                                            <th className="px-6 py-4 text-center">Paid / LOP</th>
                                             <th className="px-6 py-4 text-right">Gross</th>
                                             <th className="px-6 py-4 text-right">Deductions</th>
                                             <th className="px-6 py-4 text-right">Net Pay</th>
@@ -409,15 +633,26 @@ export const PayrollDashboard: React.FC = () => {
                                     <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
                                         {loadingDetails ? (
                                             <tr><td colSpan={6} className="text-center py-10">Loading records...</td></tr>
-                                        ) : runDetails.map(rec => (
+                                        ) : (showExceptionsOnly ? runDetails.filter(r => r.has_exception) : runDetails).map(rec => (
                                             <tr key={rec.id} className="hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-colors group">
                                                 <td className="px-6 py-4">
-                                                    <p className="font-bold text-slate-700 dark:text-slate-200">{rec.employee?.name || 'Unknown'}</p>
-                                                    <p className="text-xs text-slate-400">{rec.employee?.department || '-'}</p>
+                                                    <div className="flex items-center gap-2">
+                                                        <div>
+                                                            <p className="font-bold text-slate-700 dark:text-slate-200">{rec.employee?.name || 'Unknown'}</p>
+                                                            <p className="text-xs text-slate-400">{rec.employee?.employee_code ? `(${rec.employee?.employee_code}) ` : ''}{rec.employee?.department || '-'}</p>
+                                                        </div>
+                                                        {rec.has_exception && (
+                                                            <span className="px-2 py-0.5 bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300 rounded-md text-[10px] font-bold flex items-center gap-1">
+                                                                <AlertCircle className="w-3 h-3" /> Exception
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </td>
                                                 <td className="px-6 py-4 text-center">
-                                                    <span className="bg-indigo-50 text-indigo-600 px-2 py-1 rounded-lg text-xs font-bold">{rec.payable_days}</span>
-                                                    <span className="text-[10px] text-slate-400 ml-1">/ {rec.payable_days + (parseFloat(rec.lop_days as any) || 0)}</span>
+                                                    <span className="bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400 px-2 py-1 rounded-lg text-xs font-bold">{rec.payable_days}</span>
+                                                    {Number(rec.lop_days) > 0 && (
+                                                        <span className="text-[10px] text-rose-500 font-bold ml-1">({rec.lop_days} LOP)</span>
+                                                    )}
                                                 </td>
                                                 <td className="px-6 py-4 text-right font-mono text-sm text-slate-600 dark:text-slate-400">
                                                     {formatCurrency(rec.gross_earning)}
@@ -429,7 +664,7 @@ export const PayrollDashboard: React.FC = () => {
                                                     {formatCurrency(rec.net_pay)}
                                                 </td>
                                                 <td className="px-6 py-4 text-right flex justify-end gap-2">
-                                                    {selectedRun.status === 'DRAFT' && (
+                                                    {selectedRun.status !== 'FINALIZED' && selectedRun.status !== 'LOCKED' && (
                                                         <button
                                                             title="Adjust Pay"
                                                             onClick={() => {
@@ -465,11 +700,25 @@ export const PayrollDashboard: React.FC = () => {
                                 <DollarSign className="w-10 h-10 text-slate-300" />
                             </div>
                             <h3 className="text-xl font-bold text-slate-700 dark:text-slate-300 mb-2">No Batch Selected</h3>
-                            <p className="max-w-xs mx-auto text-sm">Select a payroll run from the history or generate a new one to view details.</p>
+                            <p className="max-w-xs mx-auto text-sm">Select a payroll batch or import locked attendance to start processing.</p>
                         </div>
                     )}
                 </div>
             </div>
+
+            {/* Variable Inputs Modal */}
+            {showVariablesModal && (
+                <PayrollVariableInputsModal
+                    companyId={companyId}
+                    monthYear={selectedMonth}
+                    payrollRunId={selectedRun?.id}
+                    isLocked={selectedRun?.status === 'FINALIZED' || selectedRun?.status === 'LOCKED'}
+                    onClose={() => setShowVariablesModal(false)}
+                    onSuccess={() => {
+                        if (selectedRun) handleViewDetails(selectedRun);
+                    }}
+                />
+            )}
 
             {/* Payslip Modal */}
             {showPayslip && selectedPayslip && (
