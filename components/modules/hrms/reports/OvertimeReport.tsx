@@ -35,10 +35,14 @@ export const OvertimeReport: React.FC = () => {
     // Master Data
     const [departments, setDepartments] = useState<any[]>([]);
     const [reportData, setReportData] = useState<any>(null);
+    const [companyInfo, setCompanyInfo] = useState<{ name: string; display_name: string; logo_url: string | null } | null>(null);
 
     useEffect(() => {
         if (currentCompanyId) {
             fetchDepartments();
+            supabase.from('companies').select('name, display_name, logo_url').eq('id', currentCompanyId).maybeSingle().then(({ data }) => {
+                if (data) setCompanyInfo(data);
+            });
         }
     }, [currentCompanyId]);
 
