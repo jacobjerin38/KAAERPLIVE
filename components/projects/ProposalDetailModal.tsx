@@ -9,6 +9,8 @@ import { useAuth } from '../../contexts/AuthContext';
 interface ProposalDetailModalProps {
     proposal: any;
     employees: any[];
+    currentEmployee?: any;
+    isAdmin?: boolean;
     onClose: () => void;
     onSuccess: () => void;
 }
@@ -16,13 +18,36 @@ interface ProposalDetailModalProps {
 export const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
     proposal,
     employees,
+    currentEmployee,
+    isAdmin = false,
     onClose,
     onSuccess
 }) => {
-    const { currentCompanyId, user, hasPermission } = useAuth();
+    const { currentCompanyId, user, userRole, hasPermission } = useAuth();
     const [activeTab, setActiveTab] = useState<'DETAILS' | 'REVISIONS' | 'AUDIT'>('DETAILS');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    // Dynamic Approver Verification
+    const isAssignedApprover = Boolean(
+        (currentEmployee && proposal.first_reviewer_id && (
+            currentEmployee.id === proposal.first_reviewer_id ||
+            (proposal.first_reviewer?.id && currentEmployee.id === proposal.first_reviewer.id) ||
+            (proposal.first_reviewer?.email && currentEmployee.email && proposal.first_reviewer.email.toLowerCase() === currentEmployee.email.toLowerCase())
+        )) ||
+        (user?.id && (proposal.first_reviewer_id === user.id || proposal.first_reviewer?.profile_id === user.id)) ||
+        (user?.email && proposal.first_reviewer?.email && proposal.first_reviewer.email.toLowerCase() === user.email.toLowerCase())
+    );
+
+    const isSuperAdmin = Boolean(
+        isAdmin ||
+        userRole?.toLowerCase() === 'admin' ||
+        userRole?.toLowerCase() === 'super admin' ||
+        hasPermission('*') ||
+        hasPermission('projects.proposals.admin_approve')
+    );
+
+    const canApprove = isAssignedApprover || isSuperAdmin;
 
     // Review action state
     const [reviewAction, setReviewAction] = useState<'APPROVE' | 'RETURN' | 'REJECT' | null>(null);
@@ -61,6 +86,10 @@ export const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
 
     const handleExecuteReview = async (action: 'APPROVE' | 'RETURN' | 'REJECT') => {
         if (!currentCompanyId) return;
+        if (!canApprove) {
+            setError(`Unauthorized: Only ${proposal.first_reviewer?.name || 'the assigned reviewer'} can review or approve this proposal.`);
+            return;
+        }
         if ((action === 'RETURN' || action === 'REJECT') && !reviewRemarks.trim()) {
             setError(`Please provide mandatory remarks explaining why the proposal was ${action.toLowerCase()}ed.`);
             return;
@@ -450,66 +479,94 @@ export const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
 
                         {/* Reviewer Action Bar (Active review stages) */}
                         {isPendingReview && !isLocked && (
-                            <div className="p-5 bg-blue-50/60 dark:bg-blue-950/20 rounded-2xl border border-blue-100 dark:border-blue-900/40 space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                        <Shield className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                                        <h4 className="text-xs font-extrabold text-slate-800 dark:text-white uppercase tracking-wider">
-                                            {stageTitle}
-                                        </h4>
+                            canApprove ? (
+                                <div className="p-5 bg-blue-50/60 dark:bg-blue-950/20 rounded-2xl border border-blue-100 dark:border-blue-900/40 space-y-4 animate-fade-in">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2">
+                                            <Shield className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                                            <h4 className="text-xs font-extrabold text-slate-800 dark:text-white uppercase tracking-wider">
+                                                {stageTitle}
+                                            </h4>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300 flex items-center gap-1">
+                                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                                {isAssignedApprover ? 'Authorized Reviewer' : 'Admin Override'}
+                                            </span>
+                                            <span className="text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300">
+                                                Action Required
+                                            </span>
+                                        </div>
                                     </div>
-                                    <span className="text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300">
-                                        Action Required
+
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                                            Review Remarks / Notes (Mandatory for Return or Rejection)
+                                        </label>
+                                        <textarea
+                                            rows={2}
+                                            value={reviewRemarks}
+                                            onChange={e => setReviewRemarks(e.target.value)}
+                                            placeholder="Add approval remarks or explain reason for return/rejection..."
+                                            className="w-full px-3 py-2 text-xs bg-white dark:bg-zinc-900 rounded-xl border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-white focus:outline-none"
+                                        />
+                                    </div>
+
+                                    <div className="flex flex-wrap gap-2.5 justify-end">
+                                        <button
+                                            type="button"
+                                            disabled={loading}
+                                            onClick={() => handleExecuteReview('RETURN')}
+                                            className="px-4 py-2 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white rounded-xl shadow-sm transition-all"
+                                        >
+                                            Return for Correction
+                                        </button>
+                                        <button
+                                            type="button"
+                                            disabled={loading}
+                                            onClick={() => handleExecuteReview('REJECT')}
+                                            className="px-4 py-2 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow-sm transition-all"
+                                        >
+                                            Reject Proposal
+                                        </button>
+                                        <button
+                                            type="button"
+                                            disabled={loading}
+                                            onClick={() => handleExecuteReview('APPROVE')}
+                                            className="px-5 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-md transition-all flex items-center gap-1.5"
+                                        >
+                                            <CheckCircle2 className="w-4 h-4" />
+                                            <span>
+                                                {proposal.status === 'PENDING_FINAL_APPROVAL' 
+                                                    ? 'Final Approve & Lock' 
+                                                    : proposal.status === 'PENDING_FIRST_REVIEW'
+                                                        ? (isTechnical ? 'Approve & Advance to Final Approval' : 'Approve & Advance to Finance Review')
+                                                        : 'Approve & Advance to Final Approval'}
+                                            </span>
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                /* Read-Only Gateway for Non-Assigned Users */
+                                <div className="p-5 bg-slate-50 dark:bg-zinc-850 rounded-2xl border border-slate-200 dark:border-zinc-750 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-fade-in">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0 shadow-sm">
+                                            <Lock className="w-5 h-5" />
+                                        </div>
+                                        <div>
+                                            <h4 className="text-xs font-extrabold text-slate-800 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                                                <span>Awaiting Review by {proposal.first_reviewer?.name || 'Assigned Reviewer'}</span>
+                                            </h4>
+                                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                                Only the designated reviewer (<strong className="text-slate-700 dark:text-slate-200">{proposal.first_reviewer?.name || 'mentioned user'}</strong>) can approve, return, or reject this proposal.
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <span className="px-3 py-1 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 rounded-xl text-xs font-bold shrink-0 inline-flex items-center gap-1">
+                                        <Clock className="w-3.5 h-3.5" /> Read-Only View
                                     </span>
                                 </div>
-
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                                        Review Remarks / Notes (Mandatory for Return or Rejection)
-                                    </label>
-                                    <textarea
-                                        rows={2}
-                                        value={reviewRemarks}
-                                        onChange={e => setReviewRemarks(e.target.value)}
-                                        placeholder="Add approval remarks or explain reason for return/rejection..."
-                                        className="w-full px-3 py-2 text-xs bg-white dark:bg-zinc-900 rounded-xl border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-white focus:outline-none"
-                                    />
-                                </div>
-
-                                <div className="flex flex-wrap gap-2.5 justify-end">
-                                    <button
-                                        type="button"
-                                        disabled={loading}
-                                        onClick={() => handleExecuteReview('RETURN')}
-                                        className="px-4 py-2 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white rounded-xl shadow-sm transition-all"
-                                    >
-                                        Return for Correction
-                                    </button>
-                                    <button
-                                        type="button"
-                                        disabled={loading}
-                                        onClick={() => handleExecuteReview('REJECT')}
-                                        className="px-4 py-2 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow-sm transition-all"
-                                    >
-                                        Reject Proposal
-                                    </button>
-                                    <button
-                                        type="button"
-                                        disabled={loading}
-                                        onClick={() => handleExecuteReview('APPROVE')}
-                                        className="px-5 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-md transition-all flex items-center gap-1.5"
-                                    >
-                                        <CheckCircle2 className="w-4 h-4" />
-                                        <span>
-                                            {proposal.status === 'PENDING_FINAL_APPROVAL' 
-                                                ? 'Final Approve & Lock' 
-                                                : proposal.status === 'PENDING_FIRST_REVIEW'
-                                                    ? (isTechnical ? 'Approve & Advance to Final Approval' : 'Approve & Advance to Finance Review')
-                                                    : 'Approve & Advance to Final Approval'}
-                                        </span>
-                                    </button>
-                                </div>
-                            </div>
+                            )
                         )}
                     </div>
                 )}

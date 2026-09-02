@@ -347,7 +347,7 @@ export async function processProposalReview(payload: {
     currentStage?: 'FIRST_REVIEW' | 'FINANCE_REVIEW' | 'FINAL_APPROVAL';
 }) {
     const { data: prop } = await supabase.from('project_proposals')
-        .select('*')
+        .select('*, first_reviewer:first_reviewer_id(id, name, email)')
         .eq('id', payload.proposalId)
         .single();
     if (!prop) throw new Error('Proposal not found');
@@ -358,6 +358,29 @@ export async function processProposalReview(payload: {
 
     if ((payload.action === 'RETURN' || payload.action === 'REJECT') && !payload.remarks.trim()) {
         throw new Error('Mandatory remarks/reason required for return or rejection.');
+    }
+
+    // Dynamic Approver Authorization Verification
+    if (payload.actorId) {
+        const { data: actorProfile } = await supabase
+            .from('profiles')
+            .select('role, employee_id, email')
+            .eq('id', payload.actorId)
+            .maybeSingle();
+
+        const isSuperAdmin = 
+            actorProfile?.role?.toLowerCase() === 'admin' || 
+            actorProfile?.role?.toLowerCase() === 'super admin';
+
+        const isAssignedReviewer = 
+            prop.first_reviewer_id === payload.actorId ||
+            (actorProfile?.employee_id && prop.first_reviewer_id === actorProfile.employee_id) ||
+            (prop.first_reviewer?.email && actorProfile?.email && prop.first_reviewer.email.toLowerCase() === actorProfile.email.toLowerCase());
+
+        if (!isAssignedReviewer && !isSuperAdmin) {
+            const reviewerName = prop.first_reviewer?.name || 'the assigned reviewer';
+            throw new Error(`Unauthorized: Only ${reviewerName} can approve, return, or reject this proposal.`);
+        }
     }
 
     const actor = payload.actorId || prop.created_by || '00000000-0000-0000-0000-000000000000';
@@ -1255,7 +1278,7 @@ export async function fetchProjectHubData(companyId: string) {
         fetchProjects(companyId),
         supabase.from('accounting_partners').select('id, name, email, phone, partner_type').eq('company_id', companyId).order('name', { ascending: true }),
         supabase.from('crm_deals').select('id, title, value').eq('company_id', companyId),
-        supabase.from('employees').select('id, name, email, designation').eq('company_id', companyId).eq('status', 'Active'),
+        supabase.from('employees').select('id, name, email, designation, profile_id, office_email, personal_email').eq('company_id', companyId).eq('status', 'Active'),
         supabase.from('project_daily_activities')
             .select(`
                 *,

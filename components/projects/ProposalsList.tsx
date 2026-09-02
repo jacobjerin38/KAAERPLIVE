@@ -1,12 +1,16 @@
 import React, { useState, useMemo } from 'react';
 import { 
     FileText, Plus, Search, Filter, Lock, Unlock, Eye, CheckCircle2, 
-    AlertCircle, RotateCcw, Building2, Calendar, User, Clock, ArrowRight 
+    AlertCircle, RotateCcw, Building2, Calendar, User, Clock, ArrowRight,
+    UserCheck, ShieldCheck 
 } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface ProposalsListProps {
     proposals: any[];
     loading: boolean;
+    currentEmployee?: any;
+    isAdmin?: boolean;
     onSelectProposal: (proposal: any) => void;
     onNewProposal?: (type: 'TECHNICAL' | 'COMMERCIAL') => void;
     onNewTechnicalProposal?: () => void;
@@ -17,20 +21,45 @@ interface ProposalsListProps {
 export const ProposalsList: React.FC<ProposalsListProps> = ({
     proposals,
     loading,
+    currentEmployee,
+    isAdmin = false,
     onSelectProposal,
     onNewProposal,
     onNewTechnicalProposal,
     onNewCommercialProposal,
     onRefresh
 }) => {
-    const [activeTypeTab, setActiveTypeTab] = useState<'ALL' | 'TECHNICAL' | 'COMMERCIAL'>('ALL');
+    const { user } = useAuth();
+    const [activeTypeTab, setActiveTypeTab] = useState<'ALL' | 'ASSIGNED_TO_ME' | 'TECHNICAL' | 'COMMERCIAL'>('ALL');
     const [statusFilter, setStatusFilter] = useState('ALL');
     const [searchTerm, setSearchTerm] = useState('');
+
+    // Dynamic proposal assignment helper
+    const isProposalAssignedToUser = (p: any) => {
+        if (!p) return false;
+        return Boolean(
+            (currentEmployee && p.first_reviewer_id && (
+                currentEmployee.id === p.first_reviewer_id ||
+                (p.first_reviewer?.id && currentEmployee.id === p.first_reviewer.id) ||
+                (p.first_reviewer?.email && currentEmployee.email && p.first_reviewer.email.toLowerCase() === currentEmployee.email.toLowerCase())
+            )) ||
+            (user?.id && (p.first_reviewer_id === user.id || p.first_reviewer?.profile_id === user.id)) ||
+            (user?.email && p.first_reviewer?.email && p.first_reviewer.email.toLowerCase() === user.email.toLowerCase())
+        );
+    };
+
+    const myAssignedCount = useMemo(() => {
+        return proposals.filter(p => isProposalAssignedToUser(p) && p.status?.startsWith('PENDING')).length;
+    }, [proposals, currentEmployee, user]);
 
     const filteredProposals = useMemo(() => {
         return proposals.filter(p => {
             // Type tab
-            if (activeTypeTab !== 'ALL' && p.proposal_type !== activeTypeTab) return false;
+            if (activeTypeTab === 'ASSIGNED_TO_ME') {
+                if (!isProposalAssignedToUser(p)) return false;
+            } else if (activeTypeTab !== 'ALL' && p.proposal_type !== activeTypeTab) {
+                return false;
+            }
 
             // Status filter
             if (statusFilter === 'PENDING' && !p.status.startsWith('PENDING')) return false;
@@ -50,7 +79,7 @@ export const ProposalsList: React.FC<ProposalsListProps> = ({
 
             return true;
         });
-    }, [proposals, activeTypeTab, statusFilter, searchTerm]);
+    }, [proposals, activeTypeTab, statusFilter, searchTerm, currentEmployee, user]);
 
     const getStatusBadge = (status: string) => {
         switch (status) {
@@ -139,6 +168,7 @@ export const ProposalsList: React.FC<ProposalsListProps> = ({
                 <div className="flex p-1 bg-slate-100 dark:bg-zinc-800 rounded-xl w-full md:w-auto">
                     {[
                         { id: 'ALL', label: 'All Proposals' },
+                        { id: 'ASSIGNED_TO_ME', label: `Assigned to Me (${myAssignedCount})` },
                         { id: 'TECHNICAL', label: 'Technical' },
                         { id: 'COMMERCIAL', label: 'Commercial' },
                     ].map(tab => (
@@ -250,10 +280,17 @@ export const ProposalsList: React.FC<ProposalsListProps> = ({
                                         </td>
 
                                         <td className="px-6 py-4 text-xs">
-                                            <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 font-bold">
-                                                <User className="w-3.5 h-3.5 text-slate-400" />
-                                                {prop.first_reviewer?.name || 'Unassigned'}
-                                            </div>
+                                            {isProposalAssignedToUser(prop) ? (
+                                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300 border border-blue-200 dark:border-blue-800 shadow-sm">
+                                                    <UserCheck className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                                                    <span>Assigned to You</span>
+                                                </span>
+                                            ) : (
+                                                <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 font-bold">
+                                                    <User className="w-3.5 h-3.5 text-slate-400" />
+                                                    <span>{prop.first_reviewer?.name || 'Unassigned'}</span>
+                                                </div>
+                                            )}
                                         </td>
 
                                         <td className="px-6 py-4">
@@ -267,16 +304,29 @@ export const ProposalsList: React.FC<ProposalsListProps> = ({
                                         </td>
 
                                         <td className="px-6 py-4 text-center">
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    onSelectProposal(prop);
-                                                }}
-                                                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-xl transition-all inline-flex items-center gap-1"
-                                            >
-                                                <span>Review / History</span>
-                                                <ArrowRight className="w-3 h-3" />
-                                            </button>
+                                            {isProposalAssignedToUser(prop) && prop.status?.startsWith('PENDING') ? (
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onSelectProposal(prop);
+                                                    }}
+                                                    className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition-all inline-flex items-center gap-1.5 shadow-sm shadow-blue-500/20"
+                                                >
+                                                    <ShieldCheck className="w-3.5 h-3.5" />
+                                                    <span>Review & Approve</span>
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onSelectProposal(prop);
+                                                    }}
+                                                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-xl transition-all inline-flex items-center gap-1"
+                                                >
+                                                    <span>View / History</span>
+                                                    <ArrowRight className="w-3 h-3" />
+                                                </button>
+                                            )}
                                         </td>
                                     </tr>
                                 ))

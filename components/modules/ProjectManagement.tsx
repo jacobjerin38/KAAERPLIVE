@@ -18,7 +18,69 @@ import { DailyActivityModal } from '../projects/DailyActivityModal';
 import { ProjectReportsView } from '../projects/ProjectReportsView';
 
 export const ProjectManagement: React.FC = () => {
-    const { currentCompanyId, user } = useAuth();
+    const { currentCompanyId, user, userRole, hasPermission } = useAuth();
+    const [currentEmployee, setCurrentEmployee] = useState<any | null>(null);
+
+    const isAdmin = Boolean(
+        userRole?.toLowerCase() === 'admin' ||
+        userRole?.toLowerCase() === 'super admin' ||
+        hasPermission('*') ||
+        hasPermission('projects.proposals.admin_approve')
+    );
+
+    useEffect(() => {
+        const resolveCurrentEmployee = async () => {
+            if (!user) return;
+            try {
+                // 1. Check profile.employee_id
+                const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('employee_id')
+                    .eq('id', user.id)
+                    .maybeSingle();
+
+                if (profile?.employee_id) {
+                    const { data: emp } = await supabase
+                        .from('employees')
+                        .select('id, name, email, designation, profile_id')
+                        .eq('id', profile.employee_id)
+                        .maybeSingle();
+                    if (emp) {
+                        setCurrentEmployee(emp);
+                        return;
+                    }
+                }
+
+                // 2. Query employee by profile_id = user.id
+                const { data: empByProfile } = await supabase
+                    .from('employees')
+                    .select('id, name, email, designation, profile_id')
+                    .eq('profile_id', user.id)
+                    .maybeSingle();
+                if (empByProfile) {
+                    setCurrentEmployee(empByProfile);
+                    return;
+                }
+
+                // 3. Fallback: Query by email
+                if (user.email) {
+                    const { data: empByEmail } = await supabase
+                        .from('employees')
+                        .select('id, name, email, designation, profile_id')
+                        .or(`email.ilike.${user.email},office_email.ilike.${user.email},personal_email.ilike.${user.email}`)
+                        .maybeSingle();
+                    if (empByEmail) {
+                        setCurrentEmployee(empByEmail);
+                        return;
+                    }
+                }
+            } catch (e) {
+                console.error('Error resolving current employee:', e);
+            }
+        };
+
+        resolveCurrentEmployee();
+    }, [user]);
     
     // Top-Level Hub Tabs
     const [activeTab, setActiveTab] = useState<
@@ -242,6 +304,8 @@ export const ProjectManagement: React.FC = () => {
                             <ProposalsList
                                 proposals={hubData.proposals}
                                 loading={loading}
+                                currentEmployee={currentEmployee}
+                                isAdmin={isAdmin}
                                 onSelectProposal={(p) => setSelectedProposal(p)}
                                 onNewProposal={(type) => {
                                     setProposalModalType(type);
@@ -558,6 +622,8 @@ export const ProjectManagement: React.FC = () => {
                 <ProposalDetailModal
                     proposal={selectedProposal}
                     employees={hubData.employees}
+                    currentEmployee={currentEmployee}
+                    isAdmin={isAdmin}
                     onClose={() => setSelectedProposal(null)}
                     onSuccess={() => {
                         loadAllData();
