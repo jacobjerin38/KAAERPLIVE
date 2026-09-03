@@ -31,6 +31,7 @@ export const OvertimeReport: React.FC = () => {
     const [selectedDept, setSelectedDept] = useState<string>('');
     const [selectedStatus, setSelectedStatus] = useState<string>('');
     const [selectedOtType, setSelectedOtType] = useState<string>('ALL');
+    const [showPrintMenu, setShowPrintMenu] = useState(false);
 
     // Master Data
     const [departments, setDepartments] = useState<any[]>([]);
@@ -155,10 +156,407 @@ export const OvertimeReport: React.FC = () => {
         URL.revokeObjectURL(url);
     };
 
+    // ==========================================
+    // Standalone Clean Multi-Page Print Generator
+    // ==========================================
+    const generatePrintHTML = (mode: 'detailed_all' | 'summary' | 'current') => {
+        const recordsToPrint = mode === 'current'
+            ? filteredRecords
+            : (reportData?.records || []);
+
+        const generatedDate = new Date().toLocaleString('en-US', {
+            dateStyle: 'medium',
+            timeStyle: 'short'
+        });
+
+        const summary = reportData?.summary || {
+            total_employees: 0,
+            total_ot_days: 0,
+            total_ot_hours: 0,
+            approved_ot_hours: 0,
+            pending_ot_hours: 0,
+            rejected_ot_hours: 0,
+            total_estimated_cost: 0
+        };
+
+        const deptSummary = reportData?.department_summary || [];
+
+        // Build Department Summary Table HTML
+        let deptHtml = '';
+        if (deptSummary.length > 0 && (mode === 'summary' || mode === 'detailed_all')) {
+            deptHtml = `
+                <div style="margin-bottom: 12px;">
+                    <div style="font-weight: 800; font-size: 8.5pt; text-transform: uppercase; color: #1e293b; margin-bottom: 4px;">
+                        Department-Level Overtime Summary
+                    </div>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Department</th>
+                                <th style="text-align: center;">Employees with OT</th>
+                                <th style="text-align: center;">OT Days</th>
+                                <th style="text-align: center;">Total OT Hours</th>
+                                <th style="text-align: center;">Approved OT Hours</th>
+                                <th style="text-align: right;">Total Estimated Cost (QAR)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${deptSummary.map((d: any) => `
+                                <tr>
+                                    <td style="font-weight: bold;">${d.department}</td>
+                                    <td style="text-align: center;">${d.employees_count}</td>
+                                    <td style="text-align: center;">${d.ot_days}</td>
+                                    <td style="text-align: center; font-weight: bold; color: #b45309;">${d.total_ot_hours}h</td>
+                                    <td style="text-align: center; font-weight: bold; color: #047857;">${d.approved_ot_hours}h</td>
+                                    <td style="text-align: right; font-weight: bold;">${formatQar(d.total_ot_cost)}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        // Build Detailed Table HTML
+        let detailsHtml = '';
+        if (mode === 'detailed_all' || mode === 'current') {
+            detailsHtml = `
+                <div>
+                    <div style="font-weight: 800; font-size: 8.5pt; text-transform: uppercase; color: #1e293b; margin-bottom: 4px; display: flex; justify-content: space-between;">
+                        <span>Detailed Overtime Statement (${recordsToPrint.length} Records)</span>
+                        <span style="font-size: 7.5pt; color: #64748b;">Daily Cap: ${reportData?.rules?.max_daily_cap || 4.0}h • Regular: ${reportData?.rules?.standard_multiplier || 1.5}x • Weekend/Holiday: ${reportData?.rules?.weekend_multiplier || 2.0}x</span>
+                    </div>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 25px;">#</th>
+                                <th>Employee</th>
+                                <th>Department</th>
+                                <th>Date</th>
+                                <th>Shift</th>
+                                <th>Actual In / Out</th>
+                                <th style="text-align: center;">Worked</th>
+                                <th style="text-align: center;">Raw OT</th>
+                                <th style="text-align: center;">Eligible OT</th>
+                                <th>OT Type</th>
+                                <th style="text-align: right;">Est. Pay</th>
+                                <th style="text-align: center;">Status</th>
+                                <th>Approver / Reason</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${recordsToPrint.map((r: any, idx: number) => {
+                                const inTime = r.check_in ? new Date(r.check_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
+                                const outTime = r.check_out ? new Date(r.check_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
+                                const dayName = new Date(r.date).toLocaleDateString('en-US', { weekday: 'short' });
+                                
+                                const statusClass = 
+                                    r.final_approval_status === 'Approved' ? 'badge-approved' :
+                                    r.final_approval_status === 'Pending' ? 'badge-pending' :
+                                    r.final_approval_status === 'Rejected' ? 'badge-rejected' : 'badge-default';
+
+                                const otTypeClass = 
+                                    r.ot_type === 'Holiday OT' ? 'badge-ot-holiday' :
+                                    r.ot_type === 'Weekend OT' ? 'badge-ot-weekend' : 'badge-ot-regular';
+
+                                return `
+                                    <tr>
+                                        <td style="color: #64748b; text-align: center;">${idx + 1}</td>
+                                        <td>
+                                            <div style="font-weight: bold; color: #0f172a;">${r.employee_name || '—'}</div>
+                                            <div style="font-size: 7pt; color: #64748b; font-family: monospace;">${r.employee_code || ''}</div>
+                                        </td>
+                                        <td style="color: #334155;">${r.department_name || '—'}</td>
+                                        <td style="white-space: nowrap; font-weight: 600;">
+                                            ${r.date} <span style="font-size: 6.5pt; color: #64748b;">(${dayName})</span>
+                                        </td>
+                                        <td>
+                                            <div style="font-weight: 500;">${r.shift_name || 'Standard'}</div>
+                                            <div style="font-size: 6.5pt; color: #64748b; font-family: monospace;">
+                                                ${r.scheduled_start ? `${r.scheduled_start.slice(0, 5)} - ${r.scheduled_end.slice(0, 5)}` : '08:00 - 16:00'}
+                                            </div>
+                                        </td>
+                                        <td style="font-family: monospace; font-size: 7pt;">
+                                            <div>In: ${inTime}</div>
+                                            <div>Out: ${outTime}</div>
+                                        </td>
+                                        <td style="text-align: center; font-weight: 600;">${Number(r.total_worked_hours || 0).toFixed(1)}h</td>
+                                        <td style="text-align: center; color: #64748b;">${Number(r.raw_ot_hours || 0).toFixed(1)}h</td>
+                                        <td style="text-align: center; font-weight: 800; color: #b45309; background: #fffbeb;">
+                                            ${Number(r.eligible_ot_hours || 0).toFixed(1)}h
+                                        </td>
+                                        <td>
+                                            <span class="badge ${otTypeClass}">
+                                                ${r.ot_type || 'Regular'} (${r.multiplier || 1.5}x)
+                                            </span>
+                                        </td>
+                                        <td style="text-align: right; font-weight: bold; font-family: monospace;">
+                                            ${formatQar(r.estimated_ot_amount)}
+                                        </td>
+                                        <td style="text-align: center;">
+                                            <span class="badge ${statusClass}">${r.final_approval_status || 'Approved'}</span>
+                                        </td>
+                                        <td style="font-size: 7pt; color: #475569;">
+                                            <div>${r.approver_name || '—'}</div>
+                                            ${r.ot_reason ? `<div style="font-style: italic; color: #64748b;">${r.ot_reason}</div>` : ''}
+                                        </td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                            ${recordsToPrint.length === 0 ? `
+                                <tr>
+                                    <td colspan="13" style="text-align: center; padding: 16px; color: #64748b;">
+                                        No overtime records found for this period and filter selection.
+                                    </td>
+                                </tr>
+                            ` : ''}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        return `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Overtime Statement — ${companyInfo?.display_name || companyInfo?.name || 'KAA ERP'}</title>
+                <meta charset="utf-8" />
+                <style>
+                    @page {
+                        size: A4 landscape;
+                        margin: 8mm 6mm 8mm 6mm;
+                    }
+                    * { box-sizing: border-box; }
+                    body {
+                        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                        color: #0f172a;
+                        background: white;
+                        margin: 0;
+                        padding: 0;
+                        font-size: 7.5pt;
+                        -webkit-print-color-adjust: exact !important;
+                        print-color-adjust: exact !important;
+                    }
+                    .report-header {
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: flex-start;
+                        border-bottom: 2px solid #0f172a;
+                        padding-bottom: 6px;
+                        margin-bottom: 6px;
+                    }
+                    .company-name {
+                        font-size: 13pt;
+                        font-weight: 900;
+                        text-transform: uppercase;
+                        letter-spacing: -0.3px;
+                        color: #0f172a;
+                        margin: 0;
+                    }
+                    .report-subtitle {
+                        font-size: 8.5pt;
+                        font-weight: 700;
+                        color: #475569;
+                        margin-top: 2px;
+                    }
+                    .header-meta {
+                        text-align: right;
+                        font-size: 7.5pt;
+                        color: #64748b;
+                        font-family: monospace;
+                    }
+                    .kpi-strip {
+                        display: grid;
+                        grid-template-columns: repeat(6, 1fr);
+                        gap: 6px;
+                        background: #f8fafc;
+                        border: 1px solid #cbd5e1;
+                        border-radius: 4px;
+                        padding: 4px 8px;
+                        margin-bottom: 8px;
+                        font-size: 7.5pt;
+                    }
+                    .kpi-item span { color: #64748b; font-size: 7pt; display: block; }
+                    .kpi-item strong { color: #0f172a; font-size: 8.5pt; }
+
+                    table.data-table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        font-size: 7.2pt;
+                        margin-bottom: 8px;
+                    }
+                    table.data-table thead {
+                        display: table-header-group;
+                    }
+                    table.data-table tr {
+                        page-break-inside: avoid;
+                    }
+                    table.data-table th {
+                        background-color: #f1f5f9;
+                        color: #1e293b;
+                        font-weight: 700;
+                        font-size: 7pt;
+                        text-transform: uppercase;
+                        padding: 3px 4px;
+                        border: 1px solid #cbd5e1;
+                        text-align: left;
+                    }
+                    table.data-table td {
+                        padding: 2px 4px;
+                        border: 1px solid #e2e8f0;
+                        color: #0f172a;
+                    }
+                    table.data-table tbody tr:nth-child(even) {
+                        background-color: #f8fafc;
+                    }
+
+                    .badge {
+                        display: inline-block;
+                        padding: 1px 4px;
+                        border-radius: 3px;
+                        font-size: 6.5pt;
+                        font-weight: bold;
+                        text-transform: uppercase;
+                    }
+                    .badge-approved { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+                    .badge-pending { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+                    .badge-rejected { background: #ffe4e6; color: #9f1239; border: 1px solid #fecdd3; }
+                    .badge-default { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+                    .badge-ot-regular { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+                    .badge-ot-weekend { background: #ede9fe; color: #5b21b6; border: 1px solid #ddd6fe; }
+                    .badge-ot-holiday { background: #ffe4e6; color: #9f1239; border: 1px solid #fecdd3; }
+
+                    .signature-block {
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: flex-end;
+                        padding-top: 25px;
+                        margin-top: 15px;
+                        border-top: 1px solid #cbd5e1;
+                        page-break-inside: avoid;
+                    }
+                    .sig-box {
+                        text-align: center;
+                        width: 180px;
+                    }
+                    .sig-line {
+                        border-bottom: 1px solid #475569;
+                        padding-bottom: 20px;
+                        margin-bottom: 4px;
+                    }
+                    .sig-title {
+                        font-size: 7.5pt;
+                        font-weight: bold;
+                        color: #1e293b;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="report-header">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        ${companyInfo?.logo_url ? `<img src="${companyInfo.logo_url}" alt="Logo" style="height: 36px; width: auto; max-width: 140px; object-fit: contain; border-radius: 4px; background: white; padding: 1px;" />` : ''}
+                        <div>
+                            <div class="company-name">${companyInfo?.display_name || companyInfo?.name || 'POWER ENGINEERING CORPORATION'}</div>
+                            <div class="report-subtitle">Overtime Statement & Authorization — Period: ${startDate} to ${endDate}</div>
+                        </div>
+                    </div>
+                    <div class="header-meta">
+                        <div>Generated: ${generatedDate}</div>
+                        <div>Total Records: ${recordsToPrint.length} | Format: ${mode.toUpperCase()}</div>
+                    </div>
+                </div>
+
+                <div class="kpi-strip">
+                    <div class="kpi-item"><span>OT Personnel:</span> <strong>${summary.total_employees} staff</strong></div>
+                    <div class="kpi-item"><span>Total OT Hours:</span> <strong style="color: #b45309;">${summary.total_ot_hours} hrs</strong></div>
+                    <div class="kpi-item"><span>Approved OT:</span> <strong style="color: #059669;">${summary.approved_ot_hours} hrs</strong></div>
+                    <div class="kpi-item"><span>Pending Review:</span> <strong style="color: #d97706;">${summary.pending_ot_hours} hrs</strong></div>
+                    <div class="kpi-item"><span>Declined / Rejected:</span> <strong style="color: #dc2626;">${summary.rejected_ot_hours} hrs</strong></div>
+                    <div class="kpi-item"><span>Total Est. Cost:</span> <strong style="color: #4f46e5;">${formatQar(summary.total_estimated_cost)}</strong></div>
+                </div>
+
+                ${deptHtml}
+                ${detailsHtml}
+
+                <div class="signature-block">
+                    <div class="sig-box">
+                        <div class="sig-line"></div>
+                        <div class="sig-title">Prepared By (Timekeeper / HR)</div>
+                    </div>
+                    <div class="sig-box">
+                        <div class="sig-line"></div>
+                        <div class="sig-title">Verified By (Department Head)</div>
+                    </div>
+                    <div class="sig-box">
+                        <div class="sig-line"></div>
+                        <div class="sig-title">Approved By (Operations / MD)</div>
+                    </div>
+                </div>
+            </body>
+            </html>
+        `;
+    };
+
+    // Print Execution using Clean Isolated Iframe (Generates Full Multi-Page Document)
+    const handlePrintAction = (mode: 'detailed_all' | 'summary' | 'current') => {
+        setShowPrintMenu(false);
+        const html = generatePrintHTML(mode);
+
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'fixed';
+        iframe.style.right = '0';
+        iframe.style.bottom = '0';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = '0';
+        document.body.appendChild(iframe);
+
+        const doc = iframe.contentWindow?.document || iframe.contentDocument;
+        if (doc) {
+            doc.open();
+            doc.write(html);
+            doc.close();
+
+            setTimeout(() => {
+                iframe.contentWindow?.focus();
+                iframe.contentWindow?.print();
+                setTimeout(() => {
+                    if (document.body.contains(iframe)) {
+                        document.body.removeChild(iframe);
+                    }
+                }, 2000);
+            }, 300);
+        }
+    };
+
     return (
-        <div className="space-y-6 animate-page-enter">
+        <div className="space-y-6 animate-page-enter print:space-y-3 print:m-0 print:p-0">
+            {/* Embedded Print Stylesheet for Landscape Full A4 Layout */}
+            <style>{`
+                @media print {
+                    @page {
+                        size: A4 landscape;
+                        margin: 8mm 6mm 8mm 6mm;
+                    }
+                    html, body {
+                        background: white !important;
+                        color: #0f172a !important;
+                        font-size: 8pt !important;
+                        -webkit-print-color-adjust: exact !important;
+                        print-color-adjust: exact !important;
+                    }
+                    aside, nav, header, .no-print, button, input, select {
+                        display: none !important;
+                    }
+                    .print-only {
+                        display: block !important;
+                    }
+                }
+            `}</style>
+
             {/* Header */}
-            <div className="bg-white dark:bg-zinc-900 p-6 rounded-[2rem] border border-slate-200 dark:border-zinc-800 shadow-sm flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+            <div className="no-print bg-white dark:bg-zinc-900 p-6 rounded-[2rem] border border-slate-200 dark:border-zinc-800 shadow-sm flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                 <div>
                     <div className="flex items-center gap-3">
                         {companyInfo?.logo_url ? (
@@ -217,17 +615,72 @@ export const OvertimeReport: React.FC = () => {
                         <FileSpreadsheet className="w-4 h-4" /> Export Excel
                     </button>
 
-                    <button
-                        onClick={() => window.print()}
-                        className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-500/20 transition-all flex items-center gap-2"
-                    >
-                        <Printer className="w-4 h-4" /> Print
-                    </button>
+                    {/* Print Dropdown Menu */}
+                    <div className="relative">
+                        <button
+                            onClick={() => setShowPrintMenu(!showPrintMenu)}
+                            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-500/20 transition-all flex items-center gap-2"
+                        >
+                            <Printer className="w-4 h-4" />
+                            <span>Print Report</span>
+                            <ChevronDown className="w-3.5 h-3.5 opacity-80" />
+                        </button>
+
+                        {showPrintMenu && (
+                            <>
+                                <div className="fixed inset-0 z-40" onClick={() => setShowPrintMenu(false)} />
+                                <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-zinc-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-zinc-700 py-2 z-50 animate-in fade-in zoom-in-95">
+                                    <div className="px-4 py-2 border-b border-slate-100 dark:border-zinc-700 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                                        Select Print Format
+                                    </div>
+
+                                    <button
+                                        onClick={() => handlePrintAction('detailed_all')}
+                                        className="w-full px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-zinc-700/50 flex items-start gap-3 transition-colors"
+                                    >
+                                        <div className="p-2 bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 rounded-xl mt-0.5">
+                                            <Clock className="w-4 h-4" />
+                                        </div>
+                                        <div>
+                                            <div className="text-xs font-bold text-slate-800 dark:text-white">Print Full Overtime Dossier</div>
+                                            <div className="text-[11px] text-slate-500">Full multi-page statement for all {reportData?.records?.length || 0} records</div>
+                                        </div>
+                                    </button>
+
+                                    <button
+                                        onClick={() => handlePrintAction('summary')}
+                                        className="w-full px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-zinc-700/50 flex items-start gap-3 transition-colors"
+                                    >
+                                        <div className="p-2 bg-purple-50 dark:bg-purple-950/30 text-purple-600 rounded-xl mt-0.5">
+                                            <Building2 className="w-4 h-4" />
+                                        </div>
+                                        <div>
+                                            <div className="text-xs font-bold text-slate-800 dark:text-white">Print Department Summary Only</div>
+                                            <div className="text-[11px] text-slate-500">Executive breakdown by department & cost</div>
+                                        </div>
+                                    </button>
+
+                                    <button
+                                        onClick={() => handlePrintAction('current')}
+                                        className="w-full px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-zinc-700/50 flex items-start gap-3 transition-colors"
+                                    >
+                                        <div className="p-2 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 rounded-xl mt-0.5">
+                                            <Printer className="w-4 h-4" />
+                                        </div>
+                                        <div>
+                                            <div className="text-xs font-bold text-slate-800 dark:text-white">Print Filtered Screen Selection</div>
+                                            <div className="text-[11px] text-slate-500">Full multi-page list for current filters ({filteredRecords.length} records)</div>
+                                        </div>
+                                    </button>
+                                </div>
+                            </>
+                        )}
+                    </div>
                 </div>
             </div>
 
             {/* Filter Bar */}
-            <div className="bg-slate-50 dark:bg-zinc-900/60 p-4 rounded-2xl border border-slate-200 dark:border-zinc-800 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="no-print bg-slate-50 dark:bg-zinc-900/60 p-4 rounded-2xl border border-slate-200 dark:border-zinc-800 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <div className="relative">
                     <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                     <input
@@ -273,7 +726,7 @@ export const OvertimeReport: React.FC = () => {
             </div>
 
             {/* Summary KPI Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+            <div className="no-print grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
                 <div className="bg-white dark:bg-zinc-900 p-4 rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-sm">
                     <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">OT Staff</p>
                     <h3 className="text-2xl font-black text-slate-900 dark:text-white mt-1">
@@ -325,7 +778,7 @@ export const OvertimeReport: React.FC = () => {
 
             {/* Department Summary Table (Collapsible) */}
             {reportData?.department_summary && reportData.department_summary.length > 0 && (
-                <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-800 p-5 shadow-sm space-y-3">
+                <div className="no-print bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-800 p-5 shadow-sm space-y-3">
                     <h3 className="font-bold text-sm text-slate-800 dark:text-white flex items-center gap-2">
                         <Building2 className="w-4 h-4 text-indigo-500" /> Department-Level Overtime Summary
                     </h3>
@@ -359,8 +812,8 @@ export const OvertimeReport: React.FC = () => {
             )}
 
             {/* Detailed Table */}
-            <div className="bg-white dark:bg-zinc-900 rounded-[2rem] border border-slate-200 dark:border-zinc-800 shadow-sm overflow-hidden">
-                <div className="p-4 border-b border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-800/30 flex justify-between items-center">
+            <div className="bg-white dark:bg-zinc-900 rounded-[2rem] border border-slate-200 dark:border-zinc-800 shadow-sm overflow-hidden print:border-none print:shadow-none print:rounded-none">
+                <div className="no-print p-4 border-b border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-800/30 flex justify-between items-center">
                     <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
                         Showing {filteredRecords.length} Overtime Records
                     </span>
@@ -379,7 +832,7 @@ export const OvertimeReport: React.FC = () => {
                         No overtime hours recorded for the selected date range and filters.
                     </div>
                 ) : (
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto print:overflow-visible">
                         <table className="w-full text-left text-xs border-collapse">
                             <thead>
                                 <tr className="bg-slate-100/70 dark:bg-zinc-800 text-slate-600 dark:text-slate-300 font-bold uppercase border-b border-slate-200 dark:border-zinc-700">
