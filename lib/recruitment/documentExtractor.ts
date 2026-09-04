@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Deterministic Client-Side Document Text Extractor
  * Supports PDF, DOCX, and TXT without external AI or server calls.
  * Uses native Web Streams API (DecompressionStream) supported in all modern browsers.
@@ -236,12 +236,12 @@ async function extractFromPdf(file: File): Promise<string> {
 async function decompressPdfStream(streamBytes: Uint8Array): Promise<string> {
   // In PDF, zlib header is often 0x78 (0x78 0x9c or 0x78 0x01)
   try {
-    const stream = new Response(streamBytes).body!.pipeThrough(new DecompressionStream('deflate'));
+    const stream = new Response(streamBytes as any).body!.pipeThrough(new DecompressionStream('deflate'));
     return await new Response(stream).text();
   } catch {
     // Try deflate-raw if header is stripped
     const raw = streamBytes.length > 2 && streamBytes[0] === 0x78 ? streamBytes.slice(2) : streamBytes;
-    const stream = new Response(raw).body!.pipeThrough(new DecompressionStream('deflate-raw'));
+    const stream = new Response(raw as any).body!.pipeThrough(new DecompressionStream('deflate-raw'));
     return await new Response(stream).text();
   }
 }
