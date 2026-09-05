@@ -6273,6 +6273,7 @@ CREATE TABLE IF NOT EXISTS public.item_master (
     reorder_qty numeric DEFAULT 0,
     photo_url text,
     image_urls jsonb DEFAULT '[]'::jsonb,
+    standard_cost numeric DEFAULT 0.00,
     CONSTRAINT item_master_company_id_code_key UNIQUE (company_id, code),
     CONSTRAINT item_master_pkey PRIMARY KEY (id)
 );

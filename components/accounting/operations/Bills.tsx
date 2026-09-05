@@ -117,12 +117,29 @@ export const Bills: React.FC = () => {
         setPartners(pData || []);
 
         // 2. Inventory Items
-        const { data: iData } = await supabase
-            .from('item_master')
-            .select('id, name, code, expense_account_id, standard_cost')
-            .eq('company_id', currentCompanyId)
-            .order('name', { ascending: true });
-        setItems(iData || []);
+        let loadedItems: any[] = [];
+        try {
+            const { data: iData, error: iErr } = await supabase
+                .from('item_master')
+                .select('id, name, code, expense_account_id, standard_cost, uom')
+                .eq('company_id', currentCompanyId)
+                .order('name', { ascending: true });
+
+            if (iErr) {
+                console.warn('Bills.tsx: Error loading items with standard_cost, falling back:', iErr);
+                const { data: fallbackData } = await supabase
+                    .from('item_master')
+                    .select('id, name, code, expense_account_id, uom')
+                    .eq('company_id', currentCompanyId)
+                    .order('name', { ascending: true });
+                loadedItems = fallbackData || [];
+            } else {
+                loadedItems = iData || [];
+            }
+        } catch (err) {
+            console.error('Failed to load item_master:', err);
+        }
+        setItems(loadedItems);
 
         // 3. Purchase Journals
         const { data: jData } = await supabase
@@ -318,7 +335,9 @@ export const Bills: React.FC = () => {
         if (field === 'item_id' && value) {
             const selectedItem = items.find(i => i.id === value);
             if (selectedItem) {
-                if (!currentLine.description) currentLine.description = selectedItem.name;
+                if (!currentLine.description || items.some(it => it.name === currentLine.description)) {
+                    currentLine.description = selectedItem.name;
+                }
                 if (selectedItem.standard_cost && Number(currentLine.unit_price) === 0) {
                     currentLine.unit_price = Number(selectedItem.standard_cost);
                 }
@@ -1136,7 +1155,7 @@ export const Bills: React.FC = () => {
                                                 <>
                                                     <div className="md:col-span-3">
                                                         <label className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider block mb-1">
-                                                            Item
+                                                            Item {items.length > 0 ? `(${items.length} available)` : ''}
                                                         </label>
                                                         <select
                                                             value={line.item_id || ''}
@@ -1144,8 +1163,12 @@ export const Bills: React.FC = () => {
                                                             disabled={viewMode}
                                                             className="w-full p-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500/20 focus:outline-none"
                                                         >
-                                                            <option value="">Select Catalog Item</option>
-                                                            {items.map(i => <option key={i.id} value={i.id}>{i.name} ({i.code})</option>)}
+                                                            <option value="">Select Catalog Item ({items.length} items available)</option>
+                                                            {items.map(i => (
+                                                                <option key={i.id} value={i.id}>
+                                                                    {i.name} {i.code ? `(${i.code})` : ''} {i.uom ? `[${i.uom}]` : ''}
+                                                                </option>
+                                                            ))}
                                                         </select>
                                                     </div>
                                                     <div className="md:col-span-3">
