@@ -569,13 +569,14 @@ export const ESSP: React.FC = () => {
         const diffMs = Math.max(0, d2.getTime() - d1.getTime());
         // Cap duration at a maximum of 16 hours to prevent abnormal multi-day calculation anomalies
         const durationHours = Math.min(16, parseFloat((diffMs / (1000 * 60 * 60)).toFixed(2)));
-
+        const calculatedStatus = durationHours >= 4.0 ? 'Present' : (durationHours >= 1.0 ? 'Half Day' : 'Absent');
         const updateData: any = {
             check_out: checkOutTime,
             check_out_lat: coords ? coords.lat : null,
             check_out_lng: coords ? coords.lng : null,
             total_hours: durationHours,
-            duration: durationHours
+            duration: durationHours,
+            status: calculatedStatus
         };
         if (locationStr) {
             updateData.check_out_location = locationStr;
@@ -593,6 +594,15 @@ export const ESSP: React.FC = () => {
             setPunchStatus('Out');
             setLastAttendanceId(null);
             setActivePunchTime(null);
+
+            // Recompute shift rules, OT hours, and metrics in the background
+            if (currentEmployee?.company_id && data[0]?.date) {
+                (supabase as any).rpc('rpc_recalculate_attendance_shift_rules', {
+                    p_company_id: currentEmployee.company_id,
+                    p_start_date: data[0].date,
+                    p_end_date: data[0].date
+                }).catch((e: any) => console.warn("Background shift rules recalc error:", e));
+            }
         }
     };
 
