@@ -332,8 +332,7 @@ export const MonthlyAttendanceReport: React.FC = () => {
                     'Late Minutes': r.late_minutes || 0,
                     'Early Minutes': r.early_minutes || 0,
                     'OT Hours': r.ot_hours || 0,
-                    'Source': r.source || 'MANUAL',
-                    'Remarks': r.edit_reason || '—'
+                    'Source': r.source || 'MANUAL'
                 });
             });
         });
@@ -467,7 +466,6 @@ export const MonthlyAttendanceReport: React.FC = () => {
                             <td style="text-align: center; font-size: 8pt; color: ${isLate ? '#dc2626' : isEarly ? '#d97706' : '#64748b'};">${lateEarlyText}</td>
                             <td style="text-align: center; font-weight: bold; color: #b45309;">${(r.ot_hours || 0) > 0 ? Number(r.ot_hours).toFixed(1) + 'h' : '—'}</td>
                             <td style="font-size: 7.5pt; color: #64748b; text-transform: uppercase;">${r.source || 'MANUAL'}</td>
-                            <td style="font-size: 8pt; color: #475569;">${r.edit_reason || '—'}</td>
                         </tr>
                     `;
                 }).join('');
@@ -505,11 +503,10 @@ export const MonthlyAttendanceReport: React.FC = () => {
                                     <th style="width: 80px; text-align: center;">Late / Early</th>
                                     <th style="width: 50px; text-align: center;">OT Hrs</th>
                                     <th style="width: 65px;">Source</th>
-                                    <th>Remarks</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                ${dailyRows || '<tr><td colspan="11" style="text-align: center; padding: 12px; color: #94a3b8;">No records logged</td></tr>'}
+                                ${dailyRows || '<tr><td colspan="10" style="text-align: center; padding: 12px; color: #94a3b8;">No records logged</td></tr>'}
                             </tbody>
                         </table>
                     </div>
@@ -1196,7 +1193,6 @@ export const MonthlyAttendanceReport: React.FC = () => {
                                                                             <th className="p-2.5 text-center">Late / Early</th>
                                                                             <th className="p-2.5 text-center">OT Hrs</th>
                                                                             <th className="p-2.5">Punch Source</th>
-                                                                            <th className="p-2.5">Remarks</th>
                                                                         </tr>
                                                                     </thead>
                                                                     <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
@@ -1205,7 +1201,7 @@ export const MonthlyAttendanceReport: React.FC = () => {
                                                                             if (!fullRecords || fullRecords.length === 0) {
                                                                                 return (
                                                                                     <tr>
-                                                                                        <td colSpan={11} className="p-4 text-center text-slate-400">
+                                                                                        <td colSpan={10} className="p-4 text-center text-slate-400">
                                                                                             No punch transactions logged for this employee this month.
                                                                                         </td>
                                                                                     </tr>
@@ -1268,9 +1264,6 @@ export const MonthlyAttendanceReport: React.FC = () => {
                                                                                         </td>
                                                                                         <td className="p-2.5 text-slate-500 font-mono uppercase text-[10px]">
                                                                                             {r.source || 'MANUAL'}
-                                                                                        </td>
-                                                                                        <td className="p-2.5 text-slate-400 truncate max-w-[150px]" title={r.edit_reason || ''}>
-                                                                                            {r.edit_reason || '—'}
                                                                                         </td>
                                                                                     </tr>
                                                                                 );
