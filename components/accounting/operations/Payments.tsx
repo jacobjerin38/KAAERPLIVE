@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { Modal } from '../../ui/Modal';
 import { PrintButton } from '../../ui/PrintButton';
+import { SearchableSelect, SearchableOption } from '../../ui/SearchableSelect';
 
 interface ExpenseLine {
     id: string;
@@ -135,6 +136,47 @@ export const Payments: React.FC = () => {
     const bankAccountsFromCOA = useMemo(() => {
         return accounts.filter(a => a.subtype === 'Bank' || (a.name || '').toLowerCase().includes('bank'));
     }, [accounts]);
+
+    const accountOptions = useMemo<SearchableOption[]>(() => {
+        return accounts.map(acc => ({
+            value: acc.id,
+            code: acc.code,
+            label: acc.name,
+            type: acc.type
+        }));
+    }, [accounts]);
+
+    const partnerOptions = useMemo<SearchableOption[]>(() => {
+        return partners.map(p => ({
+            value: p.id,
+            label: p.name,
+            type: p.partner_type
+        }));
+    }, [partners]);
+
+    const bankAccountOptions = useMemo<SearchableOption[]>(() => {
+        const list: SearchableOption[] = [];
+        bankAccountsFromCOA.forEach(acc => {
+            list.push({
+                value: `${acc.code} - ${acc.name}`,
+                code: acc.code,
+                label: acc.name,
+                type: 'COA'
+            });
+        });
+        bankConfigs.forEach(b => {
+            const val = `${b.name} (${b.code})`;
+            if (!list.some(item => item.value === val)) {
+                list.push({
+                    value: val,
+                    code: b.code,
+                    label: b.name,
+                    type: 'Org Bank'
+                });
+            }
+        });
+        return list;
+    }, [bankAccountsFromCOA, bankConfigs]);
 
     // Calculate dynamic totals (handling Debits and Credit Deductions)
     const totalExpenseDebits = useMemo(() => {
@@ -861,16 +903,15 @@ export const Payments: React.FC = () => {
                                 <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
                                     Partner Tag {paymentCategory === 'partner' ? <span className="text-rose-500">*</span> : <span className="text-slate-400 font-normal">(Optional)</span>}
                                 </label>
-                                <select
-                                    required={paymentCategory === 'partner'}
+                                <SearchableSelect
+                                    options={partnerOptions}
                                     value={selectedPartner}
-                                    onChange={e => setSelectedPartner(e.target.value)}
+                                    onChange={setSelectedPartner}
+                                    placeholder="Search Partner / Vendor / Customer..."
                                     disabled={viewMode}
-                                    className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-bold"
-                                >
-                                    <option value="">Select Partner / Vendor / Customer</option>
-                                    {partners.map(p => <option key={p.id} value={p.id}>{p.name} ({p.partner_type})</option>)}
-                                </select>
+                                    required={paymentCategory === 'partner'}
+                                    buttonClassName="p-2.5 rounded-xl"
+                                />
                             </div>
                         </div>
 
@@ -927,20 +968,14 @@ export const Payments: React.FC = () => {
                                                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">
                                                         Account Ledger #{idx + 1} <span className="text-rose-500">*</span>
                                                     </label>
-                                                    <select
-                                                        required
+                                                    <SearchableSelect
+                                                        options={accountOptions}
                                                         value={line.account_id}
-                                                        onChange={e => handleUpdateExpenseLine(idx, 'account_id', e.target.value)}
+                                                        onChange={val => handleUpdateExpenseLine(idx, 'account_id', val)}
+                                                        placeholder="Type code or account name (e.g. 5510, Rent)..."
                                                         disabled={viewMode}
-                                                        className="w-full p-2 bg-slate-50 dark:bg-zinc-700/60 border border-slate-200 dark:border-zinc-600 rounded-lg text-xs font-bold"
-                                                    >
-                                                        <option value="">Select Account Ledger (Expense, Income, Advance, Due to...)</option>
-                                                        {accounts.map(acc => (
-                                                            <option key={acc.id} value={acc.id}>
-                                                                {acc.code} - {acc.name} ({acc.type})
-                                                            </option>
-                                                        ))}
-                                                    </select>
+                                                        required
+                                                    />
                                                 </div>
 
                                                 <div className="sm:col-span-2">
@@ -1099,25 +1134,14 @@ export const Payments: React.FC = () => {
                                                     <label className="block text-[10px] font-bold text-slate-400 uppercase mb-0.5">
                                                         Bank Account {isBank && <span className="text-rose-500">*</span>}
                                                     </label>
-                                                    <select
-                                                        required={isBank}
+                                                    <SearchableSelect
+                                                        options={bankAccountOptions}
                                                         value={bLine.bank_account || ''}
-                                                        onChange={e => handleUpdateBankLine(bIdx, 'bank_account', e.target.value)}
+                                                        onChange={val => handleUpdateBankLine(bIdx, 'bank_account', val)}
+                                                        placeholder="Select Bank Account..."
                                                         disabled={viewMode || !isBank}
-                                                        className="w-full p-2 bg-slate-50 dark:bg-zinc-700/60 border border-slate-200 dark:border-zinc-600 rounded-lg text-xs font-medium"
-                                                    >
-                                                        <option value="">Select Bank Account</option>
-                                                        {bankAccountsFromCOA.map(acc => (
-                                                            <option key={acc.id} value={`${acc.code} - ${acc.name}`}>
-                                                                {acc.code} - {acc.name}
-                                                            </option>
-                                                        ))}
-                                                        {bankConfigs.map(b => (
-                                                            <option key={`cfg-${b.id}`} value={`${b.name} (${b.code})`}>
-                                                                {b.name} ({b.code})
-                                                            </option>
-                                                        ))}
-                                                    </select>
+                                                        required={isBank}
+                                                    />
                                                 </div>
 
                                                 {/* Amount */}
