@@ -54,7 +54,7 @@ export interface DayBookVoucher {
     lines: DayBookLine[];
 }
 
-type PeriodPreset = 'today' | 'yesterday' | 'this_week' | 'this_month' | 'august_2026' | 'all' | 'custom';
+type PeriodPreset = 'today' | 'yesterday' | 'this_week' | 'this_month' | 'last_month' | 'august_2026' | 'all' | 'custom';
 type VoucherTypeFilter = 'ALL' | 'Payment' | 'Receipt' | 'Sales' | 'Purchase' | 'Journal' | 'Contra';
 type StatusFilter = 'ALL' | 'Posted' | 'Draft' | 'Cancelled';
 type SortField = 'date' | 'reference' | 'amount' | 'particulars';
@@ -69,15 +69,10 @@ export const DayBook: React.FC = () => {
         currency: 'QAR'
     });
 
-    // Date range & preset
-    const [preset, setPreset] = useState<PeriodPreset>('this_month');
-    const [startDate, setStartDate] = useState<string>(() => {
-        const d = new Date();
-        return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
-    });
-    const [endDate, setEndDate] = useState<string>(() => {
-        return new Date().toISOString().split('T')[0];
-    });
+    // Date range & preset - default to August 2026 so live data is immediately visible
+    const [preset, setPreset] = useState<PeriodPreset>('august_2026');
+    const [startDate, setStartDate] = useState<string>('2026-08-01');
+    const [endDate, setEndDate] = useState<string>('2026-08-31');
 
     // Filters & Sorting
     const [voucherTypeFilter, setVoucherTypeFilter] = useState<VoucherTypeFilter>('ALL');
@@ -86,8 +81,7 @@ export const DayBook: React.FC = () => {
     const [sortField, setSortField] = useState<SortField>('date');
     const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
 
-    // View mode: Condensed (single line per voucher) vs. Detailed (all GL lines + narration)
-    const [isDetailedView, setIsDetailedView] = useState<boolean>(false);
+    // View mode: row expansion set
     const [expandedVoucherIds, setExpandedVoucherIds] = useState<Set<string>>(new Set());
 
     // Data & Loading
@@ -139,8 +133,12 @@ export const DayBook: React.FC = () => {
                 break;
             }
             case 'this_week': {
-                const firstDay = new Date(today.setDate(today.getDate() - today.getDay()));
-                const lastDay = new Date(today.setDate(today.getDate() - today.getDay() + 6));
+                const d = new Date(today);
+                const day = d.getDay();
+                const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+                const firstDay = new Date(d.setDate(diff));
+                const lastDay = new Date(firstDay);
+                lastDay.setDate(firstDay.getDate() + 6);
                 setStartDate(firstDay.toISOString().split('T')[0]);
                 setEndDate(lastDay.toISOString().split('T')[0]);
                 break;
@@ -148,6 +146,13 @@ export const DayBook: React.FC = () => {
             case 'this_month': {
                 const start = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
                 const end = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
+                setStartDate(start);
+                setEndDate(end);
+                break;
+            }
+            case 'last_month': {
+                const start = new Date(today.getFullYear(), today.getMonth() - 1, 1).toISOString().split('T')[0];
+                const end = new Date(today.getFullYear(), today.getMonth(), 0).toISOString().split('T')[0];
                 setStartDate(start);
                 setEndDate(end);
                 break;
@@ -498,14 +503,14 @@ export const DayBook: React.FC = () => {
 
     // Toggle all expanded
     const toggleAllDetailed = () => {
-        if (isDetailedView) {
-            setIsDetailedView(false);
+        if (expandedVoucherIds.size === filteredAndSortedVouchers.length && filteredAndSortedVouchers.length > 0) {
             setExpandedVoucherIds(new Set());
         } else {
-            setIsDetailedView(true);
-            setExpandedVoucherIds(new Set(vouchers.map(v => v.id)));
+            setExpandedVoucherIds(new Set(filteredAndSortedVouchers.map(v => v.id)));
         }
     };
+
+    const isDetailedView = filteredAndSortedVouchers.length > 0 && expandedVoucherIds.size === filteredAndSortedVouchers.length;
 
     // CSV Export
     const handleExportCSV = () => {
@@ -657,6 +662,7 @@ export const DayBook: React.FC = () => {
                             { id: 'yesterday', label: 'Yesterday' },
                             { id: 'this_week', label: 'This Week' },
                             { id: 'this_month', label: 'This Month' },
+                            { id: 'last_month', label: 'Last Month' },
                             { id: 'august_2026', label: 'August 2026 (Live Data)' },
                             { id: 'all', label: 'All Dates' }
                         ] as const
@@ -856,7 +862,7 @@ export const DayBook: React.FC = () => {
                                 </tr>
                             ) : (
                                 filteredAndSortedVouchers.map((v, index) => {
-                                    const isExpanded = isDetailedView || expandedVoucherIds.has(v.id);
+                                    const isExpanded = expandedVoucherIds.has(v.id);
 
                                     return (
                                         <React.Fragment key={v.id}>
