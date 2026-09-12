@@ -21,12 +21,13 @@ import { GeneralLedger } from './reporting/GeneralLedger';
 import { DailySalesReport } from './reporting/DailySalesReport';
 import { ExpenseReport } from './reporting/ExpenseReport';
 import { BudgetAnalysis } from './reporting/BudgetAnalysis';
+import { DayBook } from './reporting/DayBook';
 import { FinanceDashboard } from './FinanceDashboard';
 import { FixedAssets } from './operations/FixedAssets';
 import { AccountingMasters } from '../modules/organisation/AccountingMasters';
 
 export const AccountingDashboard: React.FC = () => {
-    const [activeTab, setActiveTab] = useState<'overview' | 'customers' | 'vendors' | 'payments' | 'journal' | 'banking' | 'assets' | 'reporting' | 'masters' | 'settings'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'customers' | 'vendors' | 'payments' | 'daybook' | 'journal' | 'banking' | 'assets' | 'reporting' | 'masters' | 'settings'>('overview');
     const [subTab, setSubTab] = useState('invoices');
 
     return (
@@ -40,7 +41,7 @@ export const AccountingDashboard: React.FC = () => {
 
                 {/* Tabs */}
                 <div className="flex flex-wrap gap-0.5 bg-slate-100 dark:bg-zinc-800 p-1 rounded-lg overflow-x-auto max-w-full">
-                    {['overview', 'customers', 'vendors', 'payments', 'journal', 'banking', 'assets', 'reporting', 'masters', 'settings'].map(tab => (
+                    {['overview', 'customers', 'vendors', 'payments', 'daybook', 'journal', 'banking', 'assets', 'reporting', 'masters', 'settings'].map(tab => (
                         <button
                             key={tab}
                             onClick={() => { 
@@ -56,7 +57,7 @@ export const AccountingDashboard: React.FC = () => {
                                 ? 'bg-white dark:bg-zinc-700 text-violet-600 dark:text-violet-400 shadow-sm'
                                 : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
                         >
-                            {tab === 'overview' ? '📊 Overview' : tab === 'assets' ? '🏢 Assets' : tab === 'masters' ? '📚 Masters' : tab}
+                            {tab === 'overview' ? '📊 Overview' : tab === 'daybook' ? '📅 Day Book' : tab === 'assets' ? '🏢 Assets' : tab === 'masters' ? '📚 Masters' : tab}
                         </button>
                     ))}
                 </div>
@@ -91,6 +92,7 @@ export const AccountingDashboard: React.FC = () => {
             {activeTab === 'reporting' && (
                 <div className="px-6 py-2 border-b border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900/50 flex gap-4 overflow-x-auto no-print">
                     <button onClick={() => setSubTab('financial')} className={`text-sm font-medium whitespace-nowrap ${subTab === 'financial' ? 'text-blue-600' : 'text-slate-500'}`}>Financial Reports</button>
+                    <button onClick={() => setSubTab('daybook')} className={`text-sm font-medium whitespace-nowrap ${subTab === 'daybook' ? 'text-blue-600' : 'text-slate-500'}`}>📅 Day Book</button>
                     <button onClick={() => setSubTab('ledger')} className={`text-sm font-medium whitespace-nowrap ${subTab === 'ledger' ? 'text-blue-600' : 'text-slate-500'}`}>General Ledger</button>
                     <button onClick={() => setSubTab('daily_sales')} className={`text-sm font-medium whitespace-nowrap ${subTab === 'daily_sales' ? 'text-blue-600' : 'text-slate-500'}`}>Daily Sales</button>
                     <button onClick={() => setSubTab('expenses')} className={`text-sm font-medium whitespace-nowrap ${subTab === 'expenses' ? 'text-blue-600' : 'text-slate-500'}`}>Expense Report</button>
@@ -123,12 +125,15 @@ export const AccountingDashboard: React.FC = () => {
 
                 {activeTab === 'payments' && <Payments />}
 
+                {activeTab === 'daybook' && <DayBook />}
+
                 {activeTab === 'journal' && <JournalEntries />}
                 
                 {activeTab === 'banking' && subTab === 'statements' && <BankStatements />}
                 {activeTab === 'banking' && subTab === 'cashbook' && <CashBook />}
 
                 {activeTab === 'reporting' && subTab === 'financial' && <FinancialReports />}
+                {activeTab === 'reporting' && subTab === 'daybook' && <DayBook />}
                 {activeTab === 'reporting' && subTab === 'ledger' && <GeneralLedger />}
                 {activeTab === 'reporting' && subTab === 'daily_sales' && <DailySalesReport />}
                 {activeTab === 'reporting' && subTab === 'expenses' && <ExpenseReport />}
