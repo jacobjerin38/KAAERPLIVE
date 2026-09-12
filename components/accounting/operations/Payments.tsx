@@ -923,8 +923,8 @@ export const Payments: React.FC = () => {
                                                         : 'border-purple-100 dark:border-purple-900/20'
                                                 }`}
                                             >
-                                                <div className="sm:col-span-5">
-                                                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-0.5">
+                                                <div className="sm:col-span-4">
+                                                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">
                                                         Account Ledger #{idx + 1} <span className="text-rose-500">*</span>
                                                     </label>
                                                     <select
@@ -944,41 +944,43 @@ export const Payments: React.FC = () => {
                                                 </div>
 
                                                 <div className="sm:col-span-2">
-                                                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-0.5">
-                                                        Entry Type
+                                                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">
+                                                        DR / CR <span className="text-rose-500">*</span>
                                                     </label>
                                                     <select
                                                         value={isCredit ? 'credit' : 'debit'}
                                                         onChange={e => handleUpdateExpenseLine(idx, 'entry_type', e.target.value)}
                                                         disabled={viewMode}
-                                                        className={`w-full p-2 border rounded-lg text-xs font-bold transition-colors ${
+                                                        className={`w-full p-2 border rounded-lg text-xs font-black transition-colors ${
                                                             isCredit
                                                                 ? 'bg-rose-100 dark:bg-rose-950/60 border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300'
-                                                                : 'bg-slate-50 dark:bg-zinc-700/60 border-slate-200 dark:border-zinc-600 text-purple-700 dark:text-purple-300'
+                                                                : 'bg-indigo-50 dark:bg-zinc-700/60 border-indigo-200 dark:border-zinc-600 text-indigo-700 dark:text-indigo-300'
                                                         }`}
                                                     >
                                                         <option value="debit">DR (Debit)</option>
-                                                        <option value="credit">CR (Credit / Deduction)</option>
+                                                        <option value="credit">CR (Credit / -ve)</option>
                                                     </select>
                                                 </div>
 
-                                                <div className="sm:col-span-2">
-                                                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-0.5">Line Memo / Notes</label>
+                                                <div className="sm:col-span-3">
+                                                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Line Memo / Notes</label>
                                                     <input
                                                         type="text"
                                                         value={line.notes || ''}
                                                         onChange={e => handleUpdateExpenseLine(idx, 'notes', e.target.value)}
                                                         disabled={viewMode}
-                                                        placeholder="e.g. Advance deduction"
+                                                        placeholder="e.g. Rental deduction, advance recovery"
                                                         className="w-full p-2 bg-slate-50 dark:bg-zinc-700/60 border border-slate-200 dark:border-zinc-600 rounded-lg text-xs font-medium"
                                                     />
                                                 </div>
 
                                                 <div className="sm:col-span-2">
-                                                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-0.5 flex justify-between items-center">
+                                                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5 flex justify-between items-center">
                                                         <span>Amount (QAR) <span className="text-rose-500">*</span></span>
-                                                        {isCredit && (
-                                                            <span className="text-[9px] bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300 px-1 py-0.2 rounded font-extrabold uppercase">DEDUCT</span>
+                                                        {isCredit ? (
+                                                            <span className="text-[9px] bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300 px-1 py-0.2 rounded font-extrabold uppercase">CR (-ve)</span>
+                                                        ) : (
+                                                            <span className="text-[9px] bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 px-1 py-0.2 rounded font-extrabold uppercase">DR (+)</span>
                                                         )}
                                                     </label>
                                                     <input
@@ -988,7 +990,7 @@ export const Payments: React.FC = () => {
                                                         value={line.amount}
                                                         onChange={e => handleUpdateExpenseLine(idx, 'amount', e.target.value)}
                                                         disabled={viewMode}
-                                                        placeholder="0.00"
+                                                        placeholder={isCredit ? "-0.00" : "0.00"}
                                                         className={`w-full p-2 border rounded-lg text-xs font-bold text-right transition-colors ${
                                                             isCredit
                                                                 ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800 text-rose-600 dark:text-rose-400'
