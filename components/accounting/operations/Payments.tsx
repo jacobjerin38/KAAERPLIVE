@@ -14,6 +14,7 @@ interface ExpenseLine {
     account_id: string;
     partner_id?: string;
     notes?: string;
+    entry_type?: 'debit' | 'credit';
     amount: string | number;
 }
 
@@ -51,7 +52,7 @@ export const Payments: React.FC = () => {
 
     // Multi-line Dynamic Form States
     const [expenseLines, setExpenseLines] = useState<ExpenseLine[]>([
-        { id: 'exp-1', account_id: '', partner_id: '', notes: '', amount: '' }
+        { id: 'exp-1', account_id: '', partner_id: '', notes: '', entry_type: 'debit', amount: '' }
     ]);
     const [bankLines, setBankLines] = useState<BankLine[]>([
         { id: 'bnk-1', journal_id: '', bank_name: '', bank_account: '', reference: '', instrument_date: '', amount: '' }
@@ -135,10 +136,26 @@ export const Payments: React.FC = () => {
         return accounts.filter(a => a.subtype === 'Bank' || (a.name || '').toLowerCase().includes('bank'));
     }, [accounts]);
 
-    // Calculate dynamic totals
-    const totalExpenseAmount = useMemo(() => {
-        return expenseLines.reduce((sum, l) => sum + (Number(l.amount) || 0), 0);
+    // Calculate dynamic totals (handling Debits and Credit Deductions)
+    const totalExpenseDebits = useMemo(() => {
+        return expenseLines.reduce((sum, l) => {
+            const raw = Number(l.amount) || 0;
+            const isCredit = l.entry_type === 'credit' || raw < 0;
+            return isCredit ? sum : sum + Math.abs(raw);
+        }, 0);
     }, [expenseLines]);
+
+    const totalExpenseCredits = useMemo(() => {
+        return expenseLines.reduce((sum, l) => {
+            const raw = Number(l.amount) || 0;
+            const isCredit = l.entry_type === 'credit' || raw < 0;
+            return isCredit ? sum + Math.abs(raw) : sum;
+        }, 0);
+    }, [expenseLines]);
+
+    const totalExpenseAmount = useMemo(() => {
+        return Math.round((totalExpenseDebits - totalExpenseCredits) * 100) / 100;
+    }, [totalExpenseDebits, totalExpenseCredits]);
 
     const totalBankAmount = useMemo(() => {
         return bankLines.reduce((sum, l) => sum + (Number(l.amount) || 0), 0);
@@ -160,20 +177,34 @@ export const Payments: React.FC = () => {
         const remaining = totalBankAmount > totalExpenseAmount ? (totalBankAmount - totalExpenseAmount).toFixed(2) : '';
         setExpenseLines(prev => [
             ...prev,
-            { id: `exp-${Date.now()}-${Math.random()}`, account_id: '', partner_id: selectedPartner || '', notes: '', amount: remaining }
+            { id: `exp-${Date.now()}-${Math.random()}`, account_id: '', partner_id: selectedPartner || '', notes: '', entry_type: 'debit', amount: remaining }
         ]);
     };
 
     const handleUpdateExpenseLine = (index: number, field: keyof ExpenseLine, value: any) => {
         setExpenseLines(prev => {
             const copy = [...prev];
-            copy[index] = { ...copy[index], [field]: value };
+            const updated = { ...copy[index], [field]: value };
+
+            if (field === 'entry_type') {
+                const curAmt = Number(updated.amount);
+                if (!isNaN(curAmt) && curAmt !== 0) {
+                    updated.amount = value === 'credit' ? -Math.abs(curAmt) : Math.abs(curAmt);
+                }
+            } else if (field === 'amount') {
+                const curAmt = Number(value);
+                if (!isNaN(curAmt) && curAmt < 0) {
+                    updated.entry_type = 'credit';
+                }
+            }
+
+            copy[index] = updated;
             
             // If there's only 1 expense line and 1 bank line, sync amounts automatically for convenience
             if (field === 'amount' && copy.length === 1 && bankLines.length === 1) {
                 setBankLines(bPrev => {
                     const bCopy = [...bPrev];
-                    bCopy[0] = { ...bCopy[0], amount: value };
+                    bCopy[0] = { ...bCopy[0], amount: Math.abs(Number(value) || 0) };
                     return bCopy;
                 });
             }
@@ -264,19 +295,25 @@ export const Payments: React.FC = () => {
 
             // Load multi-expense lines or fallback to single legacy record
             if (pay.expense_lines && Array.isArray(pay.expense_lines) && pay.expense_lines.length > 0) {
-                setExpenseLines(pay.expense_lines.map((l: any, idx: number) => ({
-                    id: l.id || `exp-${idx}`,
-                    account_id: l.account_id || '',
-                    partner_id: l.partner_id || '',
-                    notes: l.notes || '',
-                    amount: l.amount || ''
-                })));
+                setExpenseLines(pay.expense_lines.map((l: any, idx: number) => {
+                    const rawAmt = l.amount !== undefined ? l.amount : '';
+                    const isCredit = l.entry_type === 'credit' || (Number(rawAmt) < 0);
+                    return {
+                        id: l.id || `exp-${idx}`,
+                        account_id: l.account_id || '',
+                        partner_id: l.partner_id || '',
+                        notes: l.notes || '',
+                        entry_type: isCredit ? 'credit' : 'debit',
+                        amount: rawAmt
+                    };
+                }));
             } else {
                 setExpenseLines([{
                     id: 'exp-1',
                     account_id: pay.account_id || '',
                     partner_id: pay.partner_id || '',
                     notes: '',
+                    entry_type: 'debit',
                     amount: pay.amount || ''
                 }]);
             }
@@ -322,6 +359,7 @@ export const Payments: React.FC = () => {
                 account_id: '',
                 partner_id: '',
                 notes: '',
+                entry_type: 'debit',
                 amount: ''
             }]);
 
@@ -356,7 +394,13 @@ export const Payments: React.FC = () => {
                 for (let i = 0; i < expenseLines.length; i++) {
                     const el = expenseLines[i];
                     if (!el.account_id) throw new Error(`Expense Line #${i + 1}: Please select an Account Ledger.`);
-                    if (!el.amount || Number(el.amount) <= 0) throw new Error(`Expense Line #${i + 1}: Amount must be greater than 0.`);
+                    const val = Number(el.amount);
+                    if (!el.amount || isNaN(val) || val === 0) {
+                        throw new Error(`Expense Line #${i + 1}: Amount cannot be zero.`);
+                    }
+                }
+                if (totalExpenseAmount <= 0) {
+                    throw new Error(`Net voucher allocation must be greater than zero. Current net: QAR ${totalExpenseAmount.toFixed(2)}`);
                 }
             } else {
                 if (!selectedPartner) throw new Error('Please select a Partner for Party Payment.');
@@ -377,7 +421,7 @@ export const Payments: React.FC = () => {
 
             // Verify Balance
             if (paymentCategory === 'direct_account' && Math.abs(balanceDifference) > 0.001) {
-                throw new Error(`Voucher is unbalanced. Total Expenses (QAR ${totalExpenseAmount.toFixed(2)}) must equal Total Bank/Payment (QAR ${totalBankAmount.toFixed(2)}). Difference: QAR ${balanceDifference.toFixed(2)}`);
+                throw new Error(`Voucher is unbalanced. Net Allocation (QAR ${totalExpenseAmount.toFixed(2)}) must equal Total Bank/Payment (QAR ${totalBankAmount.toFixed(2)}). Difference: QAR ${balanceDifference.toFixed(2)}`);
             }
 
             const totalVoucherAmount = paymentCategory === 'direct_account' ? totalExpenseAmount : totalBankAmount;
@@ -400,13 +444,19 @@ export const Payments: React.FC = () => {
                 }
             }
 
-            const formattedExpenseLines = expenseLines.map(el => ({
-                id: el.id,
-                account_id: el.account_id,
-                partner_id: el.partner_id || selectedPartner || null,
-                notes: el.notes || null,
-                amount: Number(el.amount)
-            }));
+            const formattedExpenseLines = expenseLines.map(el => {
+                const rawAmt = Number(el.amount) || 0;
+                const isCredit = el.entry_type === 'credit' || rawAmt < 0;
+                const signedAmt = isCredit ? -Math.abs(rawAmt) : Math.abs(rawAmt);
+                return {
+                    id: el.id,
+                    account_id: el.account_id,
+                    partner_id: el.partner_id || selectedPartner || null,
+                    notes: el.notes || null,
+                    entry_type: isCredit ? 'credit' : 'debit',
+                    amount: signedAmt
+                };
+            });
 
             const formattedBankLines = bankLines.map(bl => ({
                 id: bl.id,
@@ -598,10 +648,11 @@ export const Payments: React.FC = () => {
                                 const isDirect = pay.payment_category === 'direct_account' || !!pay.account_id;
                                 const multiExp = pay.expense_lines && Array.isArray(pay.expense_lines) && pay.expense_lines.length > 1;
                                 const multiBnk = pay.bank_lines && Array.isArray(pay.bank_lines) && pay.bank_lines.length > 1;
+                                const hasDeductions = pay.expense_lines && Array.isArray(pay.expense_lines) && pay.expense_lines.some((l: any) => Number(l.amount) < 0 || l.entry_type === 'credit');
 
                                 const displayName = isDirect
                                     ? (multiExp 
-                                        ? `Split Expense (${pay.expense_lines.length} Ledgers)`
+                                        ? `Split Allocation (${pay.expense_lines.length} Ledgers)`
                                         : (pay.account ? `${pay.account.code} - ${pay.account.name}` : 'Expense Ledger'))
                                     : (pay.partner?.name || 'Party Payment');
 
@@ -631,6 +682,7 @@ export const Payments: React.FC = () => {
                                         <td className="px-5 py-4">
                                             <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
                                                 {multiExp && <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 rounded text-[10px] font-extrabold">MULTI</span>}
+                                                {hasDeductions && <span className="px-1.5 py-0.5 bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 rounded text-[10px] font-extrabold">DED / CR</span>}
                                                 <span>{displayName}</span>
                                             </div>
                                             {partnerSubtext && <div className="text-[11px] text-slate-400 font-normal">{partnerSubtext}</div>}
@@ -825,97 +877,141 @@ export const Payments: React.FC = () => {
                         {/* SECTION 1: EXPENSE / ACCOUNT LEDGERS (MULTI-LINE) */}
                         {paymentCategory === 'direct_account' && (
                             <div className="space-y-3 p-4 bg-purple-50/40 dark:bg-purple-950/10 border border-purple-100 dark:border-purple-900/30 rounded-2xl">
-                                <div className="flex justify-between items-center">
+                                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2">
                                     <div className="flex items-center gap-2">
                                         <BookOpen className="w-4 h-4 text-purple-600" />
                                         <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
                                             Expense & Account Allocation ({expenseLines.length} {expenseLines.length === 1 ? 'item' : 'items'})
                                         </h3>
                                     </div>
-                                    <div className="flex items-center gap-3">
-                                        <span className="text-xs font-bold text-purple-700 dark:text-purple-300">
-                                            Total Expenses: <strong>QAR {totalExpenseAmount.toFixed(2)}</strong>
-                                        </span>
+                                    <div className="flex flex-wrap items-center gap-2.5">
+                                        <div className="text-xs font-semibold flex items-center gap-2">
+                                            {totalExpenseCredits > 0 && (
+                                                <>
+                                                    <span className="text-slate-500">Gross DR: <strong className="text-purple-700 dark:text-purple-300">QAR {totalExpenseDebits.toFixed(2)}</strong></span>
+                                                    <span className="text-rose-600 dark:text-rose-400">CR / Ded: <strong className="text-rose-600 dark:text-rose-400">-QAR {totalExpenseCredits.toFixed(2)}</strong></span>
+                                                    <span className="text-slate-400">|</span>
+                                                </>
+                                            )}
+                                            <span className="text-purple-700 dark:text-purple-300 font-bold">
+                                                Net Allocation: <strong>QAR {totalExpenseAmount.toFixed(2)}</strong>
+                                            </span>
+                                        </div>
                                         {!viewMode && (
                                             <button
                                                 type="button"
                                                 onClick={handleAddExpenseLine}
                                                 className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all"
                                             >
-                                                <Plus className="w-3.5 h-3.5" /> Add Expense Ledger
+                                                <Plus className="w-3.5 h-3.5" /> Add Ledger Line
                                             </button>
                                         )}
                                     </div>
                                 </div>
 
                                 <div className="space-y-2">
-                                    {expenseLines.map((line, idx) => (
-                                        <div
-                                            key={line.id}
-                                            className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 p-3 bg-white dark:bg-zinc-800/90 rounded-xl border border-purple-100 dark:border-purple-900/20 items-center shadow-xs"
-                                        >
-                                            <div className="sm:col-span-6">
-                                                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-0.5">
-                                                    Expense / Ledger Account #{idx + 1} <span className="text-rose-500">*</span>
-                                                </label>
-                                                <select
-                                                    required
-                                                    value={line.account_id}
-                                                    onChange={e => handleUpdateExpenseLine(idx, 'account_id', e.target.value)}
-                                                    disabled={viewMode}
-                                                    className="w-full p-2 bg-slate-50 dark:bg-zinc-700/60 border border-slate-200 dark:border-zinc-600 rounded-lg text-xs font-bold"
-                                                >
-                                                    <option value="">Select Account Ledger (Rent, Laundry, Salary, Fuel...)</option>
-                                                    {accounts.map(acc => (
-                                                        <option key={acc.id} value={acc.id}>
-                                                            {acc.code} - {acc.name} ({acc.type})
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                            </div>
+                                    {expenseLines.map((line, idx) => {
+                                        const rawAmt = Number(line.amount);
+                                        const isCredit = line.entry_type === 'credit' || (!isNaN(rawAmt) && rawAmt < 0);
 
-                                            <div className="sm:col-span-3">
-                                                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-0.5">Line Memo / Notes</label>
-                                                <input
-                                                    type="text"
-                                                    value={line.notes || ''}
-                                                    onChange={e => handleUpdateExpenseLine(idx, 'notes', e.target.value)}
-                                                    disabled={viewMode}
-                                                    placeholder="e.g. Laundry Project A"
-                                                    className="w-full p-2 bg-slate-50 dark:bg-zinc-700/60 border border-slate-200 dark:border-zinc-600 rounded-lg text-xs font-medium"
-                                                />
-                                            </div>
-
-                                            <div className="sm:col-span-2">
-                                                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-0.5">
-                                                    Amount (QAR) <span className="text-rose-500">*</span>
-                                                </label>
-                                                <input
-                                                    type="number"
-                                                    step="0.01"
-                                                    required
-                                                    value={line.amount}
-                                                    onChange={e => handleUpdateExpenseLine(idx, 'amount', e.target.value)}
-                                                    disabled={viewMode}
-                                                    placeholder="0.00"
-                                                    className="w-full p-2 bg-slate-50 dark:bg-zinc-700/60 border border-slate-200 dark:border-zinc-600 rounded-lg text-xs font-bold text-right text-purple-700 dark:text-purple-300"
-                                                />
-                                            </div>
-
-                                            <div className="sm:col-span-1 flex justify-center pt-3 sm:pt-0">
-                                                {!viewMode && expenseLines.length > 1 && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleRemoveExpenseLine(idx)}
-                                                        className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg transition-colors"
-                                                        title="Delete Expense Line"
+                                        return (
+                                            <div
+                                                key={line.id}
+                                                className={`grid grid-cols-1 sm:grid-cols-12 gap-2.5 p-3 bg-white dark:bg-zinc-800/90 rounded-xl border items-center shadow-xs transition-colors ${
+                                                    isCredit 
+                                                        ? 'border-rose-200 dark:border-rose-900/40 bg-rose-50/20 dark:bg-rose-950/10' 
+                                                        : 'border-purple-100 dark:border-purple-900/20'
+                                                }`}
+                                            >
+                                                <div className="sm:col-span-5">
+                                                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-0.5">
+                                                        Account Ledger #{idx + 1} <span className="text-rose-500">*</span>
+                                                    </label>
+                                                    <select
+                                                        required
+                                                        value={line.account_id}
+                                                        onChange={e => handleUpdateExpenseLine(idx, 'account_id', e.target.value)}
+                                                        disabled={viewMode}
+                                                        className="w-full p-2 bg-slate-50 dark:bg-zinc-700/60 border border-slate-200 dark:border-zinc-600 rounded-lg text-xs font-bold"
                                                     >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
-                                                )}
+                                                        <option value="">Select Account Ledger (Expense, Income, Advance, Due to...)</option>
+                                                        {accounts.map(acc => (
+                                                            <option key={acc.id} value={acc.id}>
+                                                                {acc.code} - {acc.name} ({acc.type})
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+
+                                                <div className="sm:col-span-2">
+                                                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-0.5">
+                                                        Entry Type
+                                                    </label>
+                                                    <select
+                                                        value={isCredit ? 'credit' : 'debit'}
+                                                        onChange={e => handleUpdateExpenseLine(idx, 'entry_type', e.target.value)}
+                                                        disabled={viewMode}
+                                                        className={`w-full p-2 border rounded-lg text-xs font-bold transition-colors ${
+                                                            isCredit
+                                                                ? 'bg-rose-100 dark:bg-rose-950/60 border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300'
+                                                                : 'bg-slate-50 dark:bg-zinc-700/60 border-slate-200 dark:border-zinc-600 text-purple-700 dark:text-purple-300'
+                                                        }`}
+                                                    >
+                                                        <option value="debit">DR (Debit)</option>
+                                                        <option value="credit">CR (Credit / Deduction)</option>
+                                                    </select>
+                                                </div>
+
+                                                <div className="sm:col-span-2">
+                                                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-0.5">Line Memo / Notes</label>
+                                                    <input
+                                                        type="text"
+                                                        value={line.notes || ''}
+                                                        onChange={e => handleUpdateExpenseLine(idx, 'notes', e.target.value)}
+                                                        disabled={viewMode}
+                                                        placeholder="e.g. Advance deduction"
+                                                        className="w-full p-2 bg-slate-50 dark:bg-zinc-700/60 border border-slate-200 dark:border-zinc-600 rounded-lg text-xs font-medium"
+                                                    />
+                                                </div>
+
+                                                <div className="sm:col-span-2">
+                                                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-0.5 flex justify-between items-center">
+                                                        <span>Amount (QAR) <span className="text-rose-500">*</span></span>
+                                                        {isCredit && (
+                                                            <span className="text-[9px] bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300 px-1 py-0.2 rounded font-extrabold uppercase">DEDUCT</span>
+                                                        )}
+                                                    </label>
+                                                    <input
+                                                        type="number"
+                                                        step="0.01"
+                                                        required
+                                                        value={line.amount}
+                                                        onChange={e => handleUpdateExpenseLine(idx, 'amount', e.target.value)}
+                                                        disabled={viewMode}
+                                                        placeholder="0.00"
+                                                        className={`w-full p-2 border rounded-lg text-xs font-bold text-right transition-colors ${
+                                                            isCredit
+                                                                ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800 text-rose-600 dark:text-rose-400'
+                                                                : 'bg-slate-50 dark:bg-zinc-700/60 border-slate-200 dark:border-zinc-600 text-purple-700 dark:text-purple-300'
+                                                        }`}
+                                                    />
+                                                </div>
+
+                                                <div className="sm:col-span-1 flex justify-center pt-3 sm:pt-0">
+                                                    {!viewMode && expenseLines.length > 1 && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleRemoveExpenseLine(idx)}
+                                                            className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg transition-colors"
+                                                            title="Delete Line"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             </div>
                         )}
@@ -1110,7 +1206,15 @@ export const Payments: React.FC = () => {
                                                 : `Unbalanced Voucher: Difference of QAR ${Math.abs(balanceDifference).toFixed(2)}`}
                                         </h4>
                                         <p className="text-[11px] opacity-80">
-                                            Expenses: <strong>QAR {totalExpenseAmount.toFixed(2)}</strong> | Payment Sources: <strong>QAR {totalBankAmount.toFixed(2)}</strong>
+                                            {totalExpenseCredits > 0 ? (
+                                                <>
+                                                    Gross DR: <strong>QAR {totalExpenseDebits.toFixed(2)}</strong> | Deductions / CR: <strong>-QAR {totalExpenseCredits.toFixed(2)}</strong> | Net Payout: <strong>QAR {totalExpenseAmount.toFixed(2)}</strong> | Bank Payment: <strong>QAR {totalBankAmount.toFixed(2)}</strong>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    Expenses: <strong>QAR {totalExpenseAmount.toFixed(2)}</strong> | Payment Sources: <strong>QAR {totalBankAmount.toFixed(2)}</strong>
+                                                </>
+                                            )}
                                         </p>
                                     </div>
                                 </div>
