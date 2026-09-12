@@ -34,17 +34,43 @@ export const ProposalsList: React.FC<ProposalsListProps> = ({
     const [statusFilter, setStatusFilter] = useState('ALL');
     const [searchTerm, setSearchTerm] = useState('');
 
-    // Dynamic proposal assignment helper
+    // Dynamic proposal assignment helper (checks both 1st Reviewer and Final Approver)
     const isProposalAssignedToUser = (p: any) => {
         if (!p) return false;
+
+        // If pending 1st review, check first_reviewer_id
+        if (p.status === 'PENDING_FIRST_REVIEW') {
+            return Boolean(
+                (currentEmployee && p.first_reviewer_id && (
+                    currentEmployee.id === p.first_reviewer_id ||
+                    (p.first_reviewer?.id && currentEmployee.id === p.first_reviewer.id) ||
+                    (p.first_reviewer?.email && currentEmployee.email && p.first_reviewer.email.toLowerCase() === currentEmployee.email.toLowerCase())
+                )) ||
+                (user?.id && (p.first_reviewer_id === user.id || p.first_reviewer?.profile_id === user.id)) ||
+                (user?.email && p.first_reviewer?.email && p.first_reviewer.email.toLowerCase() === user.email.toLowerCase())
+            );
+        }
+
+        // If pending final approval, check final_approver_id
+        if (p.status === 'PENDING_FINAL_APPROVAL') {
+            return Boolean(
+                (currentEmployee && p.final_approver_id && (
+                    currentEmployee.id === p.final_approver_id ||
+                    (p.final_approver?.id && currentEmployee.id === p.final_approver.id) ||
+                    (p.final_approver?.email && currentEmployee.email && p.final_approver.email.toLowerCase() === currentEmployee.email.toLowerCase())
+                )) ||
+                (user?.id && (p.final_approver_id === user.id || p.final_approver?.profile_id === user.id)) ||
+                (user?.email && p.final_approver?.email && p.final_approver.email.toLowerCase() === user.email.toLowerCase())
+            );
+        }
+
+        // For all other statuses, user is considered assigned if they are either reviewer or approver
         return Boolean(
-            (currentEmployee && p.first_reviewer_id && (
-                currentEmployee.id === p.first_reviewer_id ||
-                (p.first_reviewer?.id && currentEmployee.id === p.first_reviewer.id) ||
-                (p.first_reviewer?.email && currentEmployee.email && p.first_reviewer.email.toLowerCase() === currentEmployee.email.toLowerCase())
+            (currentEmployee && (
+                (p.first_reviewer_id && currentEmployee.id === p.first_reviewer_id) || 
+                (p.final_approver_id && currentEmployee.id === p.final_approver_id)
             )) ||
-            (user?.id && (p.first_reviewer_id === user.id || p.first_reviewer?.profile_id === user.id)) ||
-            (user?.email && p.first_reviewer?.email && p.first_reviewer.email.toLowerCase() === user.email.toLowerCase())
+            (user?.id && (p.first_reviewer_id === user.id || p.final_approver_id === user.id))
         );
     };
 
@@ -222,7 +248,7 @@ export const ProposalsList: React.FC<ProposalsListProps> = ({
                                 <th className="px-6 py-4">Type & Title</th>
                                 <th className="px-6 py-4">Client / Opportunity</th>
                                 <th className="px-6 py-4">RFQ / Quotation Ref</th>
-                                <th className="px-6 py-4">Reviewer</th>
+                                <th className="px-6 py-4">Reviewer & Approver</th>
                                 <th className="px-6 py-4">Revision</th>
                                 <th className="px-6 py-4">Status</th>
                                 <th className="px-6 py-4 text-center">Actions</th>
@@ -280,17 +306,46 @@ export const ProposalsList: React.FC<ProposalsListProps> = ({
                                         </td>
 
                                         <td className="px-6 py-4 text-xs">
-                                            {isProposalAssignedToUser(prop) ? (
-                                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300 border border-blue-200 dark:border-blue-800 shadow-sm">
-                                                    <UserCheck className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                                                    <span>Assigned to You</span>
-                                                </span>
-                                            ) : (
-                                                <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 font-bold">
-                                                    <User className="w-3.5 h-3.5 text-slate-400" />
-                                                    <span>{prop.first_reviewer?.name || 'Unassigned'}</span>
+                                            <div className="space-y-1">
+                                                {/* 1st Reviewer line */}
+                                                <div className="flex items-center gap-1.5 text-xs">
+                                                    {prop.first_reviewed_at || (prop.status !== 'PENDING_FIRST_REVIEW' && prop.status !== 'DRAFT') ? (
+                                                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" title="1st Review Completed" />
+                                                    ) : prop.status === 'PENDING_FIRST_REVIEW' ? (
+                                                        <Clock className="w-3.5 h-3.5 text-blue-600 shrink-0" title="Awaiting 1st Review" />
+                                                    ) : (
+                                                        <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                                    )}
+                                                    <span className={`font-bold ${prop.status === 'PENDING_FIRST_REVIEW' ? 'text-blue-700 dark:text-blue-300' : 'text-slate-700 dark:text-slate-300'}`}>
+                                                        {prop.first_reviewer?.name || 'No 1st Reviewer'}
+                                                    </span>
+                                                    <span className="text-[10px] text-slate-400 font-normal">(1st)</span>
                                                 </div>
-                                            )}
+
+                                                {/* Final Approver line */}
+                                                <div className="flex items-center gap-1.5 text-xs">
+                                                    {prop.final_approved_at || prop.status === 'APPROVED' ? (
+                                                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" title="Final Approval Completed" />
+                                                    ) : prop.status === 'PENDING_FINAL_APPROVAL' ? (
+                                                        <Clock className="w-3.5 h-3.5 text-purple-600 shrink-0 animate-pulse" title="Awaiting Final Approval" />
+                                                    ) : (
+                                                        <ShieldCheck className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                                    )}
+                                                    <span className={`font-bold ${prop.status === 'PENDING_FINAL_APPROVAL' ? 'text-purple-700 dark:text-purple-300' : 'text-slate-600 dark:text-slate-400'}`}>
+                                                        {prop.final_approver?.name || (prop.final_approver_id ? 'Final Approver' : 'Approver Unassigned')}
+                                                    </span>
+                                                    <span className="text-[10px] text-slate-400 font-normal">(2nd)</span>
+                                                </div>
+
+                                                {isProposalAssignedToUser(prop) && prop.status?.startsWith('PENDING') && (
+                                                    <div className="pt-0.5">
+                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                                                            <UserCheck className="w-3 h-3 text-blue-600" />
+                                                            <span>Your Turn to Approve</span>
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </td>
 
                                         <td className="px-6 py-4">

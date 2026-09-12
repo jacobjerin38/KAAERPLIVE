@@ -34,6 +34,7 @@ export const ProposalFormModal: React.FC<ProposalFormModalProps> = ({
     const [currency, setCurrency] = useState('QAR');
     const [remarks, setRemarks] = useState('');
     const [firstReviewerId, setFirstReviewerId] = useState('');
+    const [finalApproverId, setFinalApproverId] = useState('');
 
     // File attachments
     const [technicalFile, setTechnicalFile] = useState<File | null>(null);
@@ -43,8 +44,8 @@ export const ProposalFormModal: React.FC<ProposalFormModalProps> = ({
     const isTechnical = proposalType === 'TECHNICAL';
 
     const canSubmit = isTechnical
-        ? !!title.trim() && !!firstReviewerId && !!technicalFile
-        : !!title.trim() && !!firstReviewerId && (!!quotationFile || !!costingSheetFile);
+        ? !!title.trim() && !!firstReviewerId && !!finalApproverId && !!technicalFile
+        : !!title.trim() && !!firstReviewerId && !!finalApproverId && (!!quotationFile || !!costingSheetFile);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -55,7 +56,11 @@ export const ProposalFormModal: React.FC<ProposalFormModalProps> = ({
             return;
         }
         if (!firstReviewerId) {
-            setError('Please select a First Reviewer.');
+            setError('Please select a First Reviewer (1st Review).');
+            return;
+        }
+        if (!finalApproverId) {
+            setError('Please select a Final Approver (2nd Approval).');
             return;
         }
         if (isTechnical && !technicalFile) {
@@ -83,6 +88,7 @@ export const ProposalFormModal: React.FC<ProposalFormModalProps> = ({
                 currency,
                 remarks: remarks.trim() || null,
                 firstReviewerId,
+                finalApproverId,
                 technicalFile,
                 quotationFile,
                 costingSheetFile,
@@ -242,27 +248,70 @@ export const ProposalFormModal: React.FC<ProposalFormModalProps> = ({
                         </div>
                     </div>
 
-                    {/* Reviewer Selection */}
-                    <div>
-                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                            First Reviewer <span className="text-rose-500">*</span>
-                        </label>
-                        <select
-                            required
-                            value={firstReviewerId}
-                            onChange={e => setFirstReviewerId(e.target.value)}
-                            className="w-full px-4 py-2.5 text-xs bg-slate-50 dark:bg-zinc-800 rounded-xl border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-white focus:outline-none font-bold"
-                        >
-                            <option value="">— Select First Reviewer (Engineering / Project Lead) —</option>
-                            {employees.map(emp => (
-                                <option key={emp.id} value={emp.id}>
-                                    {emp.name} — {emp.designation || 'Engineer'} ({emp.employee_code || emp.email || 'Staff'})
-                                </option>
-                            ))}
-                        </select>
-                        <p className="text-[11px] text-slate-400 mt-1">
-                            The first reviewer will verify the technical and operational scope before advancing.
-                        </p>
+                    {/* 2-Stage Approval Routing */}
+                    <div className="p-4 bg-indigo-50/50 dark:bg-indigo-950/20 rounded-2xl border border-indigo-100 dark:border-indigo-900/40 space-y-3">
+                        <div className="flex items-center justify-between">
+                            <label className="text-xs font-extrabold text-slate-800 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
+                                <span>2-Stage Approval Routing</span>
+                                <span className="text-rose-500">*</span>
+                            </label>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300">
+                                Sequential Approval
+                            </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {/* Step 1: First Reviewer */}
+                            <div>
+                                <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                                    Stage 1: First Reviewer <span className="text-rose-500">*</span>
+                                </label>
+                                <select
+                                    required
+                                    value={firstReviewerId}
+                                    onChange={e => setFirstReviewerId(e.target.value)}
+                                    className="w-full px-3 py-2 text-xs bg-white dark:bg-zinc-800 rounded-xl border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-white focus:outline-none font-medium shadow-sm"
+                                >
+                                    <option value="">— Select 1st Reviewer (Lead / Tech) —</option>
+                                    {employees.map(emp => (
+                                        <option key={emp.id} value={emp.id}>
+                                            {emp.name} — {emp.designation || 'Engineer'}
+                                        </option>
+                                    ))}
+                                </select>
+                                <p className="text-[10px] text-slate-400 mt-1">
+                                    Reviews technical / operational scope.
+                                </p>
+                            </div>
+
+                            {/* Step 2: Final Approver */}
+                            <div>
+                                <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                                    Stage 2: Final Approver <span className="text-rose-500">*</span>
+                                </label>
+                                <select
+                                    required
+                                    value={finalApproverId}
+                                    onChange={e => setFinalApproverId(e.target.value)}
+                                    className="w-full px-3 py-2 text-xs bg-white dark:bg-zinc-800 rounded-xl border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-white focus:outline-none font-medium shadow-sm"
+                                >
+                                    <option value="">— Select Final Approver (Manager / Director) —</option>
+                                    {employees.map(emp => (
+                                        <option key={emp.id} value={emp.id}>
+                                            {emp.name} — {emp.designation || 'Manager'}
+                                        </option>
+                                    ))}
+                                </select>
+                                <p className="text-[10px] text-slate-400 mt-1">
+                                    Receives notification after 1st review is approved.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold pt-1 border-t border-indigo-100/60 dark:border-indigo-900/30">
+                            <span>Routing Flow:</span>
+                            <span className="text-slate-500 dark:text-slate-400">Submitter ➔ 1st Reviewer ➔ Final Approver ➔ Locked & Approved</span>
+                        </div>
                     </div>
 
                     {/* Mandatory File Uploads */}
@@ -383,7 +432,7 @@ export const ProposalFormModal: React.FC<ProposalFormModalProps> = ({
                                         : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/20'
                             }`}
                         >
-                            {submitting ? 'Registering & Uploading...' : `Submit & Send to Reviewer`}
+                            {submitting ? 'Registering & Uploading...' : 'Submit for 2-Stage Approval'}
                         </button>
                     </div>
                 </form>

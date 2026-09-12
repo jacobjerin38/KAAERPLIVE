@@ -28,18 +28,33 @@ export const NotificationsPopover: React.FC = () => {
 
     const fetchNotifications = async () => {
         setLoading(true);
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-            const { data } = await supabase
-                .from('notifications')
-                .select('*')
-                .eq('user_id', user.id)
-                .order('created_at', { ascending: false })
-                .limit(20);
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                const { data: prof } = await supabase
+                    .from('profiles')
+                    .select('employee_id')
+                    .eq('id', user.id)
+                    .maybeSingle();
 
-            if (data) setNotifications(data as Notification[]);
+                let query = supabase.from('notifications').select('*');
+                if (prof?.employee_id) {
+                    query = query.or(`user_id.eq.${user.id},user_id.eq.${prof.employee_id}`);
+                } else {
+                    query = query.eq('user_id', user.id);
+                }
+
+                const { data } = await query
+                    .order('created_at', { ascending: false })
+                    .limit(30);
+
+                if (data) setNotifications(data as Notification[]);
+            }
+        } catch (err) {
+            console.warn('Error fetching notifications:', err);
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     const markAsRead = async (id: string) => {
@@ -51,7 +66,19 @@ export const NotificationsPopover: React.FC = () => {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
-        await supabase.from('notifications').update({ is_read: true }).eq('user_id', user.id).eq('is_read', false);
+        const { data: prof } = await supabase
+            .from('profiles')
+            .select('employee_id')
+            .eq('id', user.id)
+            .maybeSingle();
+
+        let updateQuery = supabase.from('notifications').update({ is_read: true });
+        if (prof?.employee_id) {
+            updateQuery = updateQuery.or(`user_id.eq.${user.id},user_id.eq.${prof.employee_id}`);
+        } else {
+            updateQuery = updateQuery.eq('user_id', user.id);
+        }
+        await updateQuery.eq('is_read', false);
         setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
     };
 
@@ -62,13 +89,24 @@ export const NotificationsPopover: React.FC = () => {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) return;
 
+            const { data: prof } = await supabase
+                .from('profiles')
+                .select('employee_id')
+                .eq('id', user.id)
+                .maybeSingle();
+
+            const empId = prof?.employee_id;
+
             subscription = supabase
                 .channel('public:notifications')
-                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` }, (payload) => {
-                    setNotifications(prev => [payload.new as Notification, ...prev]);
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, (payload) => {
+                    const newNotif = payload.new as any;
+                    if (newNotif && (newNotif.user_id === user.id || (empId && newNotif.user_id === empId))) {
+                        setNotifications(prev => [newNotif as Notification, ...prev]);
+                    }
                 })
                 .subscribe();
-        }
+        };
 
         setupMsgListener();
 

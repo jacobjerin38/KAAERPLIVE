@@ -28,6 +28,57 @@ export async function uploadProjectFile(
     return publicUrl || filePath;
 }
 
+export async function resolveAuthUserId(targetId: string): Promise<string | null> {
+    if (!targetId) return null;
+    try {
+        // 1. Direct profile/user check (if targetId is already an auth.users.id)
+        const { data: directUser } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('id', targetId)
+            .maybeSingle();
+        if (directUser?.id) return directUser.id;
+
+        // 2. Check if targetId is an employee_id linked in profiles
+        const { data: profByEmp } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('employee_id', targetId)
+            .maybeSingle();
+        if (profByEmp?.id) return profByEmp.id;
+
+        // 3. Look up employee record to get profile_id or email
+        const { data: emp } = await supabase
+            .from('employees')
+            .select('id, profile_id, email, office_email')
+            .eq('id', targetId)
+            .maybeSingle();
+
+        if (emp?.profile_id) {
+            const { data: prof } = await supabase
+                .from('profiles')
+                .select('id')
+                .eq('id', emp.profile_id)
+                .maybeSingle();
+            if (prof?.id) return prof.id;
+        }
+
+        // 4. Try matching by email
+        const empEmail = emp?.email || emp?.office_email;
+        if (empEmail && empEmail !== 'N/A') {
+            const { data: profByEmail } = await supabase
+                .from('profiles')
+                .select('id')
+                .ilike('email', empEmail.trim())
+                .maybeSingle();
+            if (profByEmail?.id) return profByEmail.id;
+        }
+    } catch (e) {
+        console.warn('Error resolving auth user ID for notification:', e);
+    }
+    return null;
+}
+
 export async function sendNotification(payload: {
     companyId: string;
     userId: string;
@@ -37,9 +88,15 @@ export async function sendNotification(payload: {
     link?: string;
 }) {
     try {
+        const authUserId = await resolveAuthUserId(payload.userId);
+        if (!authUserId) {
+            console.warn(`Could not resolve auth user for notification recipient: ${payload.userId}`);
+            return;
+        }
+
         await supabase.from('notifications').insert([{
             company_id: payload.companyId,
-            user_id: payload.userId,
+            user_id: authUserId,
             title: payload.title,
             message: payload.message,
             type: payload.type || 'INFO',
@@ -121,6 +178,7 @@ export interface ProposalPayload {
     quotationReference?: string | null;
     remarks?: string | null;
     firstReviewerId: string;
+    finalApproverId?: string | null;
     technicalFile?: File | null;
     quotationFile?: File | null;
     costingSheetFile?: File | null;
@@ -132,7 +190,8 @@ export async function fetchProposals(companyId: string, type?: 'TECHNICAL' | 'CO
         .select(`
             *,
             client:client_id(id, name),
-            first_reviewer:first_reviewer_id(id, name, email),
+            first_reviewer:first_reviewer_id(id, name, email, designation),
+            final_approver:final_approver_id(id, name, email, designation),
             revisions:project_proposal_revisions(
                 id, revision_number, technical_file_url, quotation_file_url, costing_sheet_file_url,
                 status, return_reason, rejection_reason, remarks, created_at, submitted_by
@@ -157,6 +216,9 @@ export async function createProposal(payload: ProposalPayload) {
     if (!payload.firstReviewerId) {
         throw new Error('First Reviewer must be selected.');
     }
+    if (!payload.finalApproverId) {
+        throw new Error('Final Approver must be selected.');
+    }
 
     // 1. Upload files
     let techUrl: string | null = null;
@@ -180,7 +242,7 @@ export async function createProposal(payload: ProposalPayload) {
 
     const createdByActor = payload.createdBy || '00000000-0000-0000-0000-000000000000';
 
-    // 2. Insert Proposal
+    // 2. Insert Proposal with both first_reviewer_id and final_approver_id
     const { data: prop, error: propErr } = await supabase.from('project_proposals').insert([{
         company_id: payload.companyId,
         proposal_type: payload.proposalType,
@@ -195,6 +257,7 @@ export async function createProposal(payload: ProposalPayload) {
         status: 'PENDING_FIRST_REVIEW',
         current_revision: 1,
         first_reviewer_id: payload.firstReviewerId,
+        final_approver_id: payload.finalApproverId || null,
         created_by: createdByActor
     }]).select().single();
 
@@ -211,6 +274,7 @@ export async function createProposal(payload: ProposalPayload) {
         submitted_by: createdByActor,
         submitted_at: new Date().toISOString(),
         reviewer_id: payload.firstReviewerId,
+        approver_id: payload.finalApproverId || null,
         status: 'PENDING_FIRST_REVIEW',
         remarks: payload.remarks
     }]).select().single();
@@ -226,15 +290,15 @@ export async function createProposal(payload: ProposalPayload) {
         actorId: createdByActor,
         previousStatus: 'DRAFT',
         newStatus: 'PENDING_FIRST_REVIEW',
-        remarks: `Initial revision 1 registered and submitted to reviewer`
+        remarks: `Initial revision 1 registered and submitted to 1st reviewer`
     });
 
-    // 5. Notify Reviewer
+    // 5. Dispatch notification to Reviewer
     await sendNotification({
         companyId: payload.companyId,
         userId: payload.firstReviewerId,
-        title: `New ${payload.proposalType === 'TECHNICAL' ? 'Technical' : 'Commercial'} Proposal Assigned`,
-        message: `Proposal "${payload.title}" has been assigned to you for review.`,
+        title: `New ${payload.proposalType === 'TECHNICAL' ? 'Technical' : 'Commercial'} Proposal for Review`,
+        message: `Proposal "${payload.title}" has been assigned to you for 1st review.`,
         type: 'INFO',
         link: '/projects'
     });
@@ -347,7 +411,11 @@ export async function processProposalReview(payload: {
     currentStage?: 'FIRST_REVIEW' | 'FINANCE_REVIEW' | 'FINAL_APPROVAL';
 }) {
     const { data: prop } = await supabase.from('project_proposals')
-        .select('*, first_reviewer:first_reviewer_id(id, name, email)')
+        .select(`
+            *,
+            first_reviewer:first_reviewer_id(id, name, email),
+            final_approver:final_approver_id(id, name, email)
+        `)
         .eq('id', payload.proposalId)
         .single();
     if (!prop) throw new Error('Proposal not found');
@@ -360,6 +428,10 @@ export async function processProposalReview(payload: {
         throw new Error('Mandatory remarks/reason required for return or rejection.');
     }
 
+    const actionStage = payload.currentStage || 
+        (prop.status === 'PENDING_FIRST_REVIEW' ? 'FIRST_REVIEW' : 
+         prop.status === 'PENDING_FINANCE_APPROVAL' ? 'FINANCE_REVIEW' : 'FINAL_APPROVAL');
+
     // Dynamic Approver Authorization Verification
     if (payload.actorId) {
         const { data: actorProfile } = await supabase
@@ -368,52 +440,69 @@ export async function processProposalReview(payload: {
             .eq('id', payload.actorId)
             .maybeSingle();
 
+        const roleLower = (actorProfile?.role || '').toLowerCase();
         const isSuperAdmin = 
-            actorProfile?.role?.toLowerCase() === 'admin' || 
-            actorProfile?.role?.toLowerCase() === 'super admin';
+            roleLower === 'admin' || 
+            roleLower === 'super admin' ||
+            roleLower === 'managing director';
 
-        const isAssignedReviewer = 
-            prop.first_reviewer_id === payload.actorId ||
-            (actorProfile?.employee_id && prop.first_reviewer_id === actorProfile.employee_id) ||
-            (prop.first_reviewer?.email && actorProfile?.email && prop.first_reviewer.email.toLowerCase() === actorProfile.email.toLowerCase());
+        if (actionStage === 'FIRST_REVIEW') {
+            const isAssignedReviewer = 
+                prop.first_reviewer_id === payload.actorId ||
+                (actorProfile?.employee_id && prop.first_reviewer_id === actorProfile.employee_id) ||
+                (prop.first_reviewer?.email && actorProfile?.email && prop.first_reviewer.email.toLowerCase() === actorProfile.email.toLowerCase());
 
-        if (!isAssignedReviewer && !isSuperAdmin) {
-            const reviewerName = prop.first_reviewer?.name || 'the assigned reviewer';
-            throw new Error(`Unauthorized: Only ${reviewerName} can approve, return, or reject this proposal.`);
+            if (!isAssignedReviewer && !isSuperAdmin) {
+                const reviewerName = prop.first_reviewer?.name || 'the assigned reviewer';
+                throw new Error(`Unauthorized: Only ${reviewerName} can review or approve at Stage 1.`);
+            }
+        } else if (actionStage === 'FINAL_APPROVAL') {
+            const isAssignedApprover = 
+                !prop.final_approver_id ||
+                prop.final_approver_id === payload.actorId ||
+                (actorProfile?.employee_id && prop.final_approver_id === actorProfile.employee_id) ||
+                (prop.final_approver?.email && actorProfile?.email && prop.final_approver.email.toLowerCase() === actorProfile.email.toLowerCase()) ||
+                roleLower.includes('manager') ||
+                roleLower.includes('director');
+
+            if (!isAssignedApprover && !isSuperAdmin) {
+                const approverName = prop.final_approver?.name || 'the assigned final approver';
+                throw new Error(`Unauthorized: Only ${approverName} can give final approval to this proposal.`);
+            }
         }
     }
 
     const actor = payload.actorId || prop.created_by || '00000000-0000-0000-0000-000000000000';
     let nextStatus = prop.status;
     let isLocked = false;
+    let firstReviewedAt = prop.first_reviewed_at;
+    let firstReviewedBy = prop.first_reviewed_by;
+    let finalApprovedAt = prop.final_approved_at;
+    let finalApprovedBy = prop.final_approved_by;
+
+    // Fetch actor's employee ID
+    const { data: actProf } = await supabase.from('profiles').select('employee_id').eq('id', actor).maybeSingle();
+    const actorEmpId = actProf?.employee_id || null;
 
     if (payload.action === 'RETURN') {
         nextStatus = 'RETURNED';
     } else if (payload.action === 'REJECT') {
         nextStatus = 'REJECTED';
     } else if (payload.action === 'APPROVE') {
-        if (prop.proposal_type === 'TECHNICAL') {
-            if (prop.status === 'PENDING_FIRST_REVIEW') {
-                nextStatus = 'PENDING_FINAL_APPROVAL';
-            } else if (prop.status === 'PENDING_FINAL_APPROVAL' || prop.status === 'FIRST_REVIEW_APPROVED') {
-                nextStatus = 'APPROVED';
-                isLocked = true;
-            } else {
-                nextStatus = 'APPROVED';
-                isLocked = true;
-            }
-        } else { // COMMERCIAL
-            if (prop.status === 'PENDING_FIRST_REVIEW') {
-                nextStatus = 'PENDING_FINANCE_APPROVAL';
-            } else if (prop.status === 'PENDING_FINANCE_APPROVAL') {
-                nextStatus = 'PENDING_FINAL_APPROVAL';
-            } else if (prop.status === 'PENDING_FINAL_APPROVAL' || prop.status === 'FINANCE_APPROVED') {
-                nextStatus = 'APPROVED';
-                isLocked = true;
-            } else {
-                nextStatus = 'APPROVED';
-                isLocked = true;
-            }
+        if (actionStage === 'FIRST_REVIEW') {
+            nextStatus = 'PENDING_FINAL_APPROVAL';
+            firstReviewedAt = new Date().toISOString();
+            firstReviewedBy = actorEmpId;
+        } else if (actionStage === 'FINAL_APPROVAL') {
+            nextStatus = 'APPROVED';
+            isLocked = true;
+            finalApprovedAt = new Date().toISOString();
+            finalApprovedBy = actorEmpId;
+        } else {
+            nextStatus = 'APPROVED';
+            isLocked = true;
+            finalApprovedAt = new Date().toISOString();
+            finalApprovedBy = actorEmpId;
         }
     }
 
@@ -422,6 +511,10 @@ export async function processProposalReview(payload: {
         is_locked: isLocked,
         locked_at: isLocked ? new Date().toISOString() : null,
         locked_by: isLocked ? actor : null,
+        first_reviewed_at: firstReviewedAt,
+        first_reviewed_by: firstReviewedBy,
+        final_approved_at: finalApprovedAt,
+        final_approved_by: finalApprovedBy,
         updated_at: new Date().toISOString(),
         updated_by: actor
     }).eq('id', prop.id);
@@ -441,10 +534,6 @@ export async function processProposalReview(payload: {
         await supabase.from('project_proposal_revisions').update(revUpdates).eq('id', latestRev.id);
     }
 
-    const actionStage = payload.currentStage || 
-        (prop.status === 'PENDING_FIRST_REVIEW' ? 'FIRST_REVIEW' : 
-         prop.status === 'PENDING_FINANCE_APPROVAL' ? 'FINANCE_REVIEW' : 'FINAL_APPROVAL');
-
     await logProposalAudit({
         companyId: payload.companyId,
         proposalId: prop.id,
@@ -456,36 +545,124 @@ export async function processProposalReview(payload: {
         remarks: payload.remarks || (payload.action === 'APPROVE' ? `Approved at ${actionStage}` : null)
     });
 
+    // -------------------------------------------------------------
+    // MULTI-STAGE NOTIFICATION DISPATCH (REVIEWER & APPROVER)
+    // -------------------------------------------------------------
+    const reviewerName = prop.first_reviewer?.name || 'Reviewer';
+    const approverName = prop.final_approver?.name || 'Approver';
+
     if (payload.action === 'RETURN' || payload.action === 'REJECT') {
+        const actionLabel = payload.action === 'RETURN' ? 'Returned for Correction' : 'Rejected';
+        // 1. Submitter notification
         await sendNotification({
             companyId: payload.companyId,
             userId: prop.created_by,
-            title: `Proposal ${payload.action === 'RETURN' ? 'Returned for Correction' : 'Rejected'}`,
-            message: `Proposal "${prop.title}" was ${payload.action === 'RETURN' ? 'returned' : 'rejected'}: ${payload.remarks}`,
+            title: `Proposal ${actionLabel}`,
+            message: `Proposal "${prop.title}" was ${actionLabel.toLowerCase()} at ${actionStage}: ${payload.remarks}`,
             type: payload.action === 'RETURN' ? 'WARNING' : 'ERROR',
             link: '/projects'
         });
-    } else if (isLocked) {
+
+        // 2. If rejected at final approval stage, also alert the 1st reviewer
+        if (actionStage === 'FINAL_APPROVAL' && prop.first_reviewer_id) {
+            await sendNotification({
+                companyId: payload.companyId,
+                userId: prop.first_reviewer_id,
+                title: `Proposal ${actionLabel} at Final Stage`,
+                message: `Proposal "${prop.title}" (reviewed by you) was ${actionLabel.toLowerCase()} by ${approverName}: ${payload.remarks}`,
+                type: 'WARNING',
+                link: '/projects'
+            });
+        }
+    } else if (isLocked || nextStatus === 'APPROVED') {
+        // FINAL APPROVAL COMPLETED!
+        // 1. Notify Submitter
         await sendNotification({
             companyId: payload.companyId,
             userId: prop.created_by,
             title: 'Proposal Approved & Locked',
-            message: `Proposal "${prop.title}" has received final approval and is now locked for execution.`,
+            message: `Proposal "${prop.title}" has received final approval from ${approverName} and is locked for execution.`,
             type: 'SUCCESS',
             link: '/projects'
         });
-    } else {
+
+        // 2. Notify First Reviewer
+        if (prop.first_reviewer_id) {
+            await sendNotification({
+                companyId: payload.companyId,
+                userId: prop.first_reviewer_id,
+                title: 'Proposal Final Approved',
+                message: `Proposal "${prop.title}" (reviewed by you) has received final approval from ${approverName}.`,
+                type: 'SUCCESS',
+                link: '/projects'
+            });
+        }
+    } else if (nextStatus === 'PENDING_FINAL_APPROVAL') {
+        // STAGE 1 REVIEWER APPROVED -> DISPATCH TO NEXT APPROVER & SUBMITTER!
+        // 1. Notify Next Approver
+        if (prop.final_approver_id) {
+            await sendNotification({
+                companyId: payload.companyId,
+                userId: prop.final_approver_id,
+                title: 'Proposal Awaiting Your Final Approval',
+                message: `Proposal "${prop.title}" was reviewed and approved by ${reviewerName}. It is now awaiting your final approval.`,
+                type: 'INFO',
+                link: '/projects'
+            });
+        }
+
+        // 2. Notify Submitter
         await sendNotification({
             companyId: payload.companyId,
             userId: prop.created_by,
-            title: `Proposal Advanced: ${nextStatus.replace(/_/g, ' ')}`,
-            message: `Proposal "${prop.title}" has been approved at ${actionStage} and advanced to ${nextStatus.replace(/_/g, ' ')}.`,
+            title: 'Proposal 1st Review Approved',
+            message: `Proposal "${prop.title}" was approved by ${reviewerName} and forwarded to ${approverName} for final approval.`,
             type: 'INFO',
             link: '/projects'
         });
     }
 
     return nextStatus;
+}
+
+export async function updateProposalApprover(payload: {
+    companyId: string;
+    proposalId: string;
+    finalApproverId: string;
+    reason?: string;
+    actorId: string;
+}) {
+    const { data: prop } = await supabase.from('project_proposals').select('*').eq('id', payload.proposalId).single();
+    if (!prop) throw new Error('Proposal not found');
+
+    const oldApproverId = prop.final_approver_id;
+
+    await supabase.from('project_proposals').update({
+        final_approver_id: payload.finalApproverId,
+        updated_at: new Date().toISOString(),
+        updated_by: payload.actorId
+    }).eq('id', prop.id);
+
+    await logProposalAudit({
+        companyId: payload.companyId,
+        proposalId: prop.id,
+        action: 'APPROVER_ASSIGNED',
+        actorId: payload.actorId,
+        previousStatus: prop.status,
+        newStatus: prop.status,
+        remarks: `Final Approver set to ${payload.finalApproverId}.${payload.reason ? ' Reason: ' + payload.reason : ''}`
+    });
+
+    if (prop.status === 'PENDING_FINAL_APPROVAL') {
+        await sendNotification({
+            companyId: payload.companyId,
+            userId: payload.finalApproverId,
+            title: 'Proposal Awaiting Your Final Approval',
+            message: `Proposal "${prop.title}" has been assigned to you for final approval.`,
+            type: 'INFO',
+            link: '/projects'
+        });
+    }
 }
 
 export async function reassignProposalReviewer(payload: {

@@ -3,7 +3,7 @@ import {
     X, Lock, Unlock, Download, Eye, FileText, CheckCircle2, RotateCcw, 
     AlertCircle, Clock, User, Calendar, Building2, Upload, History, UserCheck, Shield, ArrowLeft 
 } from 'lucide-react';
-import { processProposalReview, submitProposalRevision, reassignProposalReviewer } from './projectService';
+import { processProposalReview, submitProposalRevision, reassignProposalReviewer, updateProposalApprover } from './projectService';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface ProposalDetailModalProps {
@@ -28,8 +28,8 @@ export const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    // Dynamic Approver Verification
-    const isAssignedApprover = Boolean(
+    // 1st Reviewer Authorization
+    const isAssignedReviewer = Boolean(
         (currentEmployee && proposal.first_reviewer_id && (
             currentEmployee.id === proposal.first_reviewer_id ||
             (proposal.first_reviewer?.id && currentEmployee.id === proposal.first_reviewer.id) ||
@@ -39,24 +39,47 @@ export const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
         (user?.email && proposal.first_reviewer?.email && proposal.first_reviewer.email.toLowerCase() === user.email.toLowerCase())
     );
 
+    // Final Approver Authorization
+    const isAssignedFinalApprover = Boolean(
+        (currentEmployee && proposal.final_approver_id && (
+            currentEmployee.id === proposal.final_approver_id ||
+            (proposal.final_approver?.id && currentEmployee.id === proposal.final_approver.id) ||
+            (proposal.final_approver?.email && currentEmployee.email && proposal.final_approver.email.toLowerCase() === currentEmployee.email.toLowerCase())
+        )) ||
+        (user?.id && (proposal.final_approver_id === user.id || proposal.final_approver?.profile_id === user.id)) ||
+        (user?.email && proposal.final_approver?.email && proposal.final_approver.email.toLowerCase() === user.email.toLowerCase()) ||
+        // If final_approver_id is not set (e.g. legacy proposals), allow managers and directors
+        (!proposal.final_approver_id && (
+            userRole?.toLowerCase() === 'manager' ||
+            userRole?.toLowerCase() === 'director' ||
+            userRole?.toLowerCase() === 'general manager' ||
+            userRole?.toLowerCase() === 'managing director'
+        ))
+    );
+
     const isSuperAdmin = Boolean(
         isAdmin ||
         userRole?.toLowerCase() === 'admin' ||
         userRole?.toLowerCase() === 'super admin' ||
+        userRole?.toLowerCase() === 'managing director' ||
         hasPermission('*') ||
         hasPermission('projects.proposals.admin_approve')
     );
-
-    const canApprove = isAssignedApprover || isSuperAdmin;
 
     // Review action state
     const [reviewAction, setReviewAction] = useState<'APPROVE' | 'RETURN' | 'REJECT' | null>(null);
     const [reviewRemarks, setReviewRemarks] = useState('');
 
-    // Reassign state
+    // Reassign Reviewer state
     const [showReassign, setShowReassign] = useState(false);
     const [newReviewerId, setNewReviewerId] = useState('');
     const [reassignReason, setReassignReason] = useState('');
+
+    // Reassign / Assign Approver state
+    const [showReassignApprover, setShowReassignApprover] = useState(false);
+    const [newApproverId, setNewApproverId] = useState('');
+    const [reassignApproverReason, setReassignApproverReason] = useState('');
+    const [quickApproverId, setQuickApproverId] = useState('');
 
     // Revision upload state
     const [showUploadRevision, setShowUploadRevision] = useState(false);
@@ -79,15 +102,30 @@ export const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
         proposal.status === 'PENDING_FIRST_REVIEW' ? 'FIRST_REVIEW' :
         proposal.status === 'PENDING_FINANCE_APPROVAL' ? 'FINANCE_REVIEW' : 'FINAL_APPROVAL';
 
+    const canApprove = 
+        currentStage === 'FIRST_REVIEW' ? (isAssignedReviewer || isSuperAdmin) :
+        currentStage === 'FINAL_APPROVAL' ? (isAssignedFinalApprover || isSuperAdmin) :
+        (isAssignedReviewer || isAssignedFinalApprover || isSuperAdmin);
+
+    const isCurrentStageAuthorized = 
+        currentStage === 'FIRST_REVIEW' ? isAssignedReviewer :
+        currentStage === 'FINAL_APPROVAL' ? isAssignedFinalApprover : false;
+
     const stageTitle = 
-        proposal.status === 'PENDING_FIRST_REVIEW' ? (isTechnical ? 'Stage 1: First Technical Review' : 'Stage 1: First Commercial Review') :
-        proposal.status === 'PENDING_FINANCE_APPROVAL' ? 'Stage 2: Finance & Margin Review' :
-        proposal.status === 'PENDING_FINAL_APPROVAL' ? 'Stage 3: Final Executive Approval' : 'Review';
+        currentStage === 'FIRST_REVIEW' 
+            ? (isTechnical ? 'Stage 1: First Technical Review' : 'Stage 1: First Commercial Review')
+            : currentStage === 'FINANCE_REVIEW' 
+                ? 'Stage 2: Finance & Margin Review' 
+                : 'Stage 2: Final Executive Approval';
+
+    const currentAssigneeName = currentStage === 'FIRST_REVIEW' 
+        ? (proposal.first_reviewer?.name || 'Assigned 1st Reviewer')
+        : (proposal.final_approver?.name || (proposal.final_approver_id ? 'Assigned Final Approver' : 'Authorized Manager / Director'));
 
     const handleExecuteReview = async (action: 'APPROVE' | 'RETURN' | 'REJECT') => {
         if (!currentCompanyId) return;
         if (!canApprove) {
-            setError(`Unauthorized: Only ${proposal.first_reviewer?.name || 'the assigned reviewer'} can review or approve this proposal.`);
+            setError(`Unauthorized: Only ${currentAssigneeName} or an Administrator can take action at ${stageTitle}.`);
             return;
         }
         if ((action === 'RETURN' || action === 'REJECT') && !reviewRemarks.trim()) {
@@ -152,6 +190,41 @@ export const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
         } catch (err: any) {
             console.error('Error reassigning reviewer:', err);
             setError(err.message || 'Failed to reassign reviewer');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleUpdateApprover = async (e?: React.FormEvent, directApproverId?: string) => {
+        if (e) e.preventDefault();
+        if (!currentCompanyId) return;
+        const targetApproverId = directApproverId || newApproverId || quickApproverId;
+        if (!targetApproverId) {
+            setError('Please select a Final Approver.');
+            return;
+        }
+
+        setLoading(true);
+        setError(null);
+
+        try {
+            const actorId = user?.id || proposal.created_by || '00000000-0000-0000-0000-000000000000';
+            await updateProposalApprover({
+                companyId: currentCompanyId,
+                proposalId: proposal.id,
+                finalApproverId: targetApproverId,
+                reason: reassignApproverReason.trim() || 'Assigned final approver for proposal workflow',
+                actorId
+            });
+
+            setShowReassignApprover(false);
+            setNewApproverId('');
+            setReassignApproverReason('');
+            setQuickApproverId('');
+            onSuccess();
+        } catch (err: any) {
+            console.error('Error updating final approver:', err);
+            setError(err.message || 'Failed to assign final approver');
         } finally {
             setLoading(false);
         }
@@ -305,20 +378,133 @@ export const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
                                 </p>
                             </div>
                             <div>
-                                <span className="text-[10px] font-bold text-slate-400 uppercase">First Reviewer</span>
-                                <p className="text-xs font-bold text-slate-800 dark:text-white mt-0.5 flex items-center justify-between">
-                                    <span>{proposal.first_reviewer?.name || '—'}</span>
-                                    {!isLocked && (
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowReassign(true)}
-                                            className="text-[10px] text-blue-600 hover:underline font-normal"
-                                        >
-                                            Reassign
-                                        </button>
-                                    )}
+                                <span className="text-[10px] font-bold text-slate-400 uppercase">Deadline / Currency</span>
+                                <p className="text-xs font-bold text-slate-800 dark:text-white mt-0.5">
+                                    {proposal.submission_deadline ? `${proposal.submission_deadline} (${proposal.currency || 'QAR'})` : (proposal.currency || 'QAR')}
                                 </p>
                             </div>
+                        </div>
+
+                        {/* 2-Stage Approval Routing & Progress */}
+                        <div className="p-4 bg-indigo-50/40 dark:bg-indigo-950/20 rounded-2xl border border-indigo-100/80 dark:border-indigo-900/40 space-y-3">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <Shield className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                                    <h4 className="text-xs font-extrabold text-slate-800 dark:text-white uppercase tracking-wider">
+                                        2-Stage Workflow Approval Chain
+                                    </h4>
+                                </div>
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300">
+                                    1st Review ➔ Final Approval
+                                </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                {/* Stage 1 Card: 1st Reviewer */}
+                                <div className="p-3 bg-white dark:bg-zinc-800/80 rounded-xl border border-slate-200/80 dark:border-zinc-700 space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase">Stage 1: 1st Reviewer</span>
+                                        {proposal.first_reviewed_at || (proposal.status !== 'PENDING_FIRST_REVIEW' && proposal.status !== 'DRAFT') ? (
+                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
+                                                <CheckCircle2 className="w-3 h-3" /> Reviewed
+                                            </span>
+                                        ) : proposal.status === 'PENDING_FIRST_REVIEW' ? (
+                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 bg-blue-50 dark:bg-blue-950/50 px-2 py-0.5 rounded-full border border-blue-200 dark:border-blue-800">
+                                                <Clock className="w-3 h-3" /> Awaiting 1st Review
+                                            </span>
+                                        ) : (
+                                            <span className="text-[10px] text-slate-400 font-medium">Pending</span>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <p className="text-xs font-bold text-slate-800 dark:text-white">
+                                                {proposal.first_reviewer?.name || 'Unassigned'}
+                                            </p>
+                                            <p className="text-[10px] text-slate-400">
+                                                {proposal.first_reviewer?.designation || 'Project Lead / Engineer'}
+                                            </p>
+                                        </div>
+                                        {!isLocked && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowReassign(true)}
+                                                className="text-[10px] text-blue-600 hover:text-blue-700 font-bold px-2 py-1 bg-blue-50 dark:bg-blue-900/30 rounded-lg transition-colors"
+                                            >
+                                                Reassign
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Stage 2 Card: Final Approver */}
+                                <div className="p-3 bg-white dark:bg-zinc-800/80 rounded-xl border border-slate-200/80 dark:border-zinc-700 space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase">Stage 2: Final Approver</span>
+                                        {proposal.final_approved_at || proposal.status === 'APPROVED' ? (
+                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
+                                                <CheckCircle2 className="w-3 h-3" /> Approved & Locked
+                                            </span>
+                                        ) : proposal.status === 'PENDING_FINAL_APPROVAL' ? (
+                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-purple-600 bg-purple-50 dark:bg-purple-950/50 px-2 py-0.5 rounded-full border border-purple-200 dark:border-purple-800 animate-pulse">
+                                                <Clock className="w-3 h-3" /> Awaiting Final Approval
+                                            </span>
+                                        ) : proposal.status === 'PENDING_FIRST_REVIEW' ? (
+                                            <span className="text-[10px] text-slate-400 font-medium">Waiting for 1st Review</span>
+                                        ) : (
+                                            <span className="text-[10px] text-slate-400 font-medium">Pending</span>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <p className="text-xs font-bold text-slate-800 dark:text-white">
+                                                {proposal.final_approver?.name || (proposal.final_approver_id ? 'Assigned Approver' : 'Not Designated')}
+                                            </p>
+                                            <p className="text-[10px] text-slate-400">
+                                                {proposal.final_approver?.designation || (proposal.final_approver_id ? 'Manager' : 'Requires Manager / Director')}
+                                            </p>
+                                        </div>
+                                        {!isLocked && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowReassignApprover(true)}
+                                                className="text-[10px] text-indigo-600 hover:text-indigo-700 font-bold px-2 py-1 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg transition-colors"
+                                            >
+                                                {proposal.final_approver_id ? 'Change' : 'Assign Approver'}
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Prompt to assign final approver if pending final approval without one */}
+                            {proposal.status === 'PENDING_FINAL_APPROVAL' && !proposal.final_approver_id && (
+                                <div className="p-3 bg-amber-50 dark:bg-amber-950/30 rounded-xl border border-amber-200 dark:border-amber-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                                    <div className="text-xs text-amber-800 dark:text-amber-300">
+                                        <span className="font-bold">No Final Approver Designated:</span> Managers or Admins can approve directly or assign an approver.
+                                    </div>
+                                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                                        <select
+                                            value={quickApproverId}
+                                            onChange={e => setQuickApproverId(e.target.value)}
+                                            className="px-2.5 py-1 text-xs bg-white dark:bg-zinc-800 rounded-lg border border-amber-300 dark:border-amber-700 text-slate-800 dark:text-white flex-1 sm:flex-none"
+                                        >
+                                            <option value="">— Select Final Approver —</option>
+                                            {employees.map(emp => (
+                                                <option key={emp.id} value={emp.id}>{emp.name} ({emp.designation || 'Staff'})</option>
+                                            ))}
+                                        </select>
+                                        <button
+                                            type="button"
+                                            disabled={!quickApproverId || loading}
+                                            onClick={() => handleUpdateApprover(undefined, quickApproverId)}
+                                            className="px-3 py-1 text-xs font-bold bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-lg transition-colors shrink-0"
+                                        >
+                                            Assign
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         {/* Proposal Files (Current Revision) */}
@@ -491,7 +677,7 @@ export const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
                                         <div className="flex items-center gap-2">
                                             <span className="text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300 flex items-center gap-1">
                                                 <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                                {isAssignedApprover ? 'Authorized Reviewer' : 'Admin Override'}
+                                                {isCurrentStageAuthorized ? (currentStage === 'FIRST_REVIEW' ? 'Authorized 1st Reviewer' : 'Authorized Final Approver') : 'Admin / Management Override'}
                                             </span>
                                             <span className="text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300">
                                                 Action Required
@@ -537,11 +723,9 @@ export const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
                                         >
                                             <CheckCircle2 className="w-4 h-4" />
                                             <span>
-                                                {proposal.status === 'PENDING_FINAL_APPROVAL' 
-                                                    ? 'Final Approve & Lock' 
-                                                    : proposal.status === 'PENDING_FIRST_REVIEW'
-                                                        ? (isTechnical ? 'Approve & Advance to Final Approval' : 'Approve & Advance to Finance Review')
-                                                        : 'Approve & Advance to Final Approval'}
+                                                {currentStage === 'FINAL_APPROVAL' 
+                                                    ? 'Final Approve & Lock Proposal' 
+                                                    : 'Approve & Advance to Final Approval'}
                                             </span>
                                         </button>
                                     </div>
@@ -555,10 +739,13 @@ export const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
                                         </div>
                                         <div>
                                             <h4 className="text-xs font-extrabold text-slate-800 dark:text-white uppercase tracking-wider flex items-center gap-2">
-                                                <span>Awaiting Review by {proposal.first_reviewer?.name || 'Assigned Reviewer'}</span>
+                                                <span>Awaiting {currentStage === 'FIRST_REVIEW' ? '1st Review' : 'Final Approval'} by {currentAssigneeName}</span>
                                             </h4>
                                             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                                Only the designated reviewer (<strong className="text-slate-700 dark:text-slate-200">{proposal.first_reviewer?.name || 'mentioned user'}</strong>) can approve, return, or reject this proposal.
+                                                {currentStage === 'FIRST_REVIEW' 
+                                                    ? `Only the designated reviewer (${currentAssigneeName}) or an Administrator can complete Stage 1 review.`
+                                                    : `Only the designated final approver (${currentAssigneeName}) or an authorized Manager/Director can give final approval.`
+                                                }
                                             </p>
                                         </div>
                                     </div>
@@ -848,6 +1035,71 @@ export const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
                                         className="px-5 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md"
                                     >
                                         {loading ? 'Reassigning...' : 'Confirm Reassignment'}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                )}
+
+                {/* MODAL: ASSIGN / REASSIGN FINAL APPROVER */}
+                {showReassignApprover && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+                        <div className="bg-white dark:bg-zinc-900 w-full max-w-md rounded-3xl p-6 shadow-2xl border border-slate-100 dark:border-zinc-800">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                                    {proposal.final_approver_id ? 'Change Final Approver' : 'Assign Final Approver'}
+                                </h3>
+                                <button onClick={() => setShowReassignApprover(false)}>
+                                    <X className="w-5 h-5 text-slate-400" />
+                                </button>
+                            </div>
+
+                            <form onSubmit={(e) => handleUpdateApprover(e)} className="space-y-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                                        Select Final Approver (Manager / Director) *
+                                    </label>
+                                    <select
+                                        required
+                                        value={newApproverId}
+                                        onChange={e => setNewApproverId(e.target.value)}
+                                        className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-zinc-800 rounded-xl border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-white focus:outline-none"
+                                    >
+                                        <option value="">— Select Final Approver —</option>
+                                        {employees.map(emp => (
+                                            <option key={emp.id} value={emp.id}>{emp.name} ({emp.designation || 'Manager'})</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                                        Reason / Notes
+                                    </label>
+                                    <textarea
+                                        rows={2}
+                                        value={reassignApproverReason}
+                                        onChange={e => setReassignApproverReason(e.target.value)}
+                                        placeholder="e.g. Designating commercial manager for final sign-off"
+                                        className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-zinc-800 rounded-xl border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-white focus:outline-none"
+                                    />
+                                </div>
+
+                                <div className="flex justify-end gap-2 pt-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowReassignApprover(false)}
+                                        className="px-4 py-2 text-xs font-bold text-slate-500"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={loading || !newApproverId}
+                                        className="px-5 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl shadow-md"
+                                    >
+                                        {loading ? 'Saving...' : 'Confirm Approver'}
                                     </button>
                                 </div>
                             </form>
