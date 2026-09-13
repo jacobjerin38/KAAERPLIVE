@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
-import { Plus, Search, Filter, FileText, CheckCircle, Clock, ShoppingCart, Zap, Building2, Trash2, Scale, Copy, PlusCircle } from 'lucide-react';
+import { Plus, Search, Filter, FileText, CheckCircle, Clock, ShoppingCart, Zap, Building2, Trash2, Scale, Copy, PlusCircle, AlertCircle, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { Modal } from '../../ui/Modal';
 import { PrintButton } from '../../ui/PrintButton';
 
@@ -27,6 +27,37 @@ const getDaysBetweenDates = (startDateStr: string, endDateStr: string): number |
     const e = new Date(ey, em - 1, ed);
     const diffTime = e.getTime() - s.getTime();
     return Math.round(diffTime / (1000 * 60 * 60 * 24));
+};
+
+// Natural comparison helper for reference codes (e.g., PI.2026.69 < PI.2026.70 < ... < PI.2026.79)
+const compareBillReferences = (aStr?: string, bStr?: string): number => {
+    const a = (aStr || '').trim();
+    const b = (bStr || '').trim();
+    if (!a && !b) return 0;
+    if (!a) return 1;
+    if (!b) return -1;
+    return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+};
+
+// Helper to suggest the next purchase reference number (e.g. PI.2026.80) based on highest existing number
+const getNextPurchaseReference = (existingBills: any[]): string => {
+    let maxNum = 0;
+    let prefix = 'PI.2026.';
+    for (const b of existingBills) {
+        const ref = (b.reference || '').trim();
+        const match = ref.match(/^(PI\.\d{4}\.)(\d+)$/i);
+        if (match) {
+            prefix = match[1].toUpperCase();
+            const num = parseInt(match[2], 10);
+            if (!isNaN(num) && num > maxNum) {
+                maxNum = num;
+            }
+        }
+    }
+    if (maxNum > 0) {
+        return `${prefix}${maxNum + 1}`;
+    }
+    return '';
 };
 
 export interface BillLine {
@@ -72,6 +103,68 @@ export const Bills: React.FC = () => {
     const [editMode, setEditMode] = useState(false);
     const [viewMode, setViewMode] = useState(false);
     const [editingBillId, setEditingBillId] = useState<string | null>(null);
+
+    // Sorting State (default: sort by PEC purchase reference ascending for PI.2026.69 onwards)
+    const [sortBy, setSortBy] = useState<'reference' | 'supplier_inv' | 'date' | 'invoice_date' | 'total'>('reference');
+    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+
+    // Duplicate detection memos for instant feedback while typing
+    const duplicateReferenceMatch = useMemo(() => {
+        const trimmed = billReference.trim().toLowerCase();
+        if (!trimmed) return null;
+        return bills.find(b => 
+            b.id !== editingBillId && 
+            (b.reference || '').trim().toLowerCase() === trimmed
+        ) || null;
+    }, [billReference, bills, editingBillId]);
+
+    const duplicateSupplierInvMatch = useMemo(() => {
+        const trimmed = supplierInvoiceNo.trim().toLowerCase();
+        if (!trimmed) return null;
+        // Check for same vendor first
+        const sameVendor = bills.find(b => 
+            b.id !== editingBillId && 
+            (b.supplier_invoice_number || '').trim().toLowerCase() === trimmed &&
+            (selectedPartner && b.partner_id === selectedPartner)
+        );
+        if (sameVendor) return sameVendor;
+
+        // Otherwise check across any vendor
+        return bills.find(b => 
+            b.id !== editingBillId && 
+            (b.supplier_invoice_number || '').trim().toLowerCase() === trimmed
+        ) || null;
+    }, [supplierInvoiceNo, bills, editingBillId, selectedPartner]);
+
+    // Prompt controls on blur when user keys a duplicate reference or supplier inv
+    const handleReferenceBlur = () => {
+        const trimmed = billReference.trim();
+        if (!trimmed) return;
+        const dup = bills.find(b => 
+            b.id !== editingBillId && 
+            (b.reference || '').trim().toLowerCase() === trimmed.toLowerCase()
+        );
+        if (dup) {
+            alert(`Duplicate Reference Number!\n\nPurchase Reference "${trimmed}" is already assigned to a bill dated ${dup.date || 'N/A'} for ${dup.partner?.name || 'vendor'}.\n\nPlease enter a unique Purchase Reference Number.`);
+        }
+    };
+
+    const handleSupplierInvBlur = () => {
+        const trimmed = supplierInvoiceNo.trim();
+        if (!trimmed) return;
+        const dup = bills.find(b => 
+            b.id !== editingBillId && 
+            (b.supplier_invoice_number || '').trim().toLowerCase() === trimmed.toLowerCase()
+        );
+        if (dup) {
+            const isSameVendor = selectedPartner && dup.partner_id === selectedPartner;
+            if (isSameVendor) {
+                alert(`Duplicate Supplier Invoice Number!\n\nSupplier Invoice #${trimmed} has ALREADY been recorded for this vendor on voucher ${dup.reference || 'N/A'} dated ${dup.date || 'N/A'}.\n\nPlease check if this bill is already entered.`);
+            } else {
+                alert(`Notice - Potential Duplicate Supplier Invoice Number:\n\nSupplier Invoice #${trimmed} is already recorded on voucher ${dup.reference || 'N/A'} dated ${dup.date || 'N/A'} for vendor "${dup.partner?.name || 'Another vendor'}".\n\nPlease verify if this is intended.`);
+            }
+        }
+    };
 
     // Line Items
     const [lines, setLines] = useState<BillLine[]>([
@@ -287,9 +380,10 @@ export const Bills: React.FC = () => {
             setIsModalOpen(true);
         } else {
             const today = new Date().toISOString().split('T')[0];
+            const suggestedRef = getNextPurchaseReference(bills);
             setEditingBillId(null);
             setSelectedPartner('');
-            setBillReference('');
+            setBillReference(suggestedRef);
             setSupplierInvoiceNo('');
             if (journals.length > 0) setSelectedJournal(journals[0].id);
             setBillDate(today);
@@ -420,6 +514,68 @@ export const Bills: React.FC = () => {
             const trimmedRef = billReference.trim() || null;
             const trimmedSupplierInvNo = supplierInvoiceNo.trim() || null;
 
+            if (!trimmedRef) {
+                alert('Please enter a PEC Purchase Reference Number (e.g. PI.2026.69).');
+                return;
+            }
+
+            // 1. Strict Duplicate Check on PEC Purchase Reference Number (Local Cache)
+            const localDupRef = bills.find(b => 
+                b.id !== editingBillId && 
+                (b.reference || '').trim().toLowerCase() === trimmedRef.toLowerCase()
+            );
+            if (localDupRef) {
+                alert(`Duplicate Reference Number!\n\nPurchase Reference "${trimmedRef}" is already assigned to a bill dated ${localDupRef.date || 'N/A'} for ${localDupRef.partner?.name || 'vendor'}.\n\nPlease provide a unique PEC Purchase Reference Number.`);
+                return;
+            }
+
+            // 2. Strict Duplicate Check on PEC Purchase Reference Number (Live Database)
+            let refQuery = supabase
+                .from('accounting_journal_entries')
+                .select('id, reference, date, partner:accounting_partners(name)')
+                .eq('company_id', currentCompanyId)
+                .eq('move_type', 'in_invoice')
+                .ilike('reference', trimmedRef);
+            if (editingBillId) {
+                refQuery = refQuery.neq('id', editingBillId);
+            }
+            const { data: dbDupRefs, error: dbRefErr } = await refQuery;
+            if (dbDupRefs && dbDupRefs.length > 0) {
+                const existing = dbDupRefs[0];
+                alert(`Duplicate Reference Number!\n\nPurchase Reference "${trimmedRef}" already exists on a bill dated ${existing.date} (${(existing.partner as any)?.name || 'vendor'}).\n\nPlease provide a unique PEC Purchase Reference Number.`);
+                return;
+            }
+
+            // 3. Strict Duplicate Check on Supplier Invoice Number for this vendor
+            if (trimmedSupplierInvNo && selectedPartner) {
+                const localDupInv = bills.find(b => 
+                    b.id !== editingBillId && 
+                    b.partner_id === selectedPartner &&
+                    (b.supplier_invoice_number || '').trim().toLowerCase() === trimmedSupplierInvNo.toLowerCase()
+                );
+                if (localDupInv) {
+                    alert(`Duplicate Supplier Invoice Number!\n\nSupplier Invoice #${trimmedSupplierInvNo} has already been entered for this vendor on voucher ${localDupInv.reference || 'N/A'} dated ${localDupInv.date || 'N/A'}.\n\nYou cannot record duplicate invoices for the same vendor.`);
+                    return;
+                }
+
+                let invQuery = supabase
+                    .from('accounting_journal_entries')
+                    .select('id, reference, supplier_invoice_number, date')
+                    .eq('company_id', currentCompanyId)
+                    .eq('move_type', 'in_invoice')
+                    .eq('partner_id', selectedPartner)
+                    .ilike('supplier_invoice_number', trimmedSupplierInvNo);
+                if (editingBillId) {
+                    invQuery = invQuery.neq('id', editingBillId);
+                }
+                const { data: dbDupInvs } = await invQuery;
+                if (dbDupInvs && dbDupInvs.length > 0) {
+                    const existing = dbDupInvs[0];
+                    alert(`Duplicate Supplier Invoice Number!\n\nSupplier Invoice #${trimmedSupplierInvNo} already exists for this vendor on voucher ${existing.reference || existing.id} dated ${existing.date}.\n\nYou cannot record duplicate invoices for the same vendor.`);
+                    return;
+                }
+            }
+
             if (editMode && editingBillId) {
                 const updatePayload = {
                     p_entry_id: editingBillId,
@@ -544,6 +700,35 @@ export const Bills: React.FC = () => {
         return matchesSearch && matchesStatus;
     });
 
+    const handleSort = (field: 'reference' | 'supplier_inv' | 'date' | 'invoice_date' | 'total') => {
+        if (sortBy === field) {
+            setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+        } else {
+            setSortBy(field);
+            setSortOrder('asc');
+        }
+    };
+
+    const sortedBills = useMemo(() => {
+        const list = [...filteredBills];
+        list.sort((a, b) => {
+            let cmp = 0;
+            if (sortBy === 'reference') {
+                cmp = compareBillReferences(a.reference, b.reference);
+            } else if (sortBy === 'supplier_inv') {
+                cmp = (a.supplier_invoice_number || '').localeCompare(b.supplier_invoice_number || '', undefined, { numeric: true, sensitivity: 'base' });
+            } else if (sortBy === 'date') {
+                cmp = (a.date || '').localeCompare(b.date || '');
+            } else if (sortBy === 'invoice_date') {
+                cmp = (a.invoice_date || a.date || '').localeCompare(b.invoice_date || b.date || '');
+            } else if (sortBy === 'total') {
+                cmp = Number(a.amount_total || 0) - Number(b.amount_total || 0);
+            }
+            return sortOrder === 'asc' ? cmp : -cmp;
+        });
+        return list;
+    }, [filteredBills, sortBy, sortOrder]);
+
     return (
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
@@ -583,6 +768,21 @@ export const Bills: React.FC = () => {
                     />
                 </div>
                 <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={() => handleSort('reference')}
+                        className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-all flex items-center gap-1.5 ${
+                            sortBy === 'reference'
+                                ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 shadow-sm'
+                                : 'bg-slate-50 dark:bg-zinc-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-zinc-700 hover:bg-slate-100'
+                        }`}
+                        title="Sort by Purchase Reference Number (PI.2026.69 onwards)"
+                    >
+                        <span>PI.2026.69 Onwards</span>
+                        {sortBy === 'reference' && (
+                            sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5" /> : <ArrowDown className="w-3.5 h-3.5" />
+                        )}
+                    </button>
                     <Filter className="w-4 h-4 text-slate-400" />
                     <select
                         value={statusFilter}
@@ -601,24 +801,84 @@ export const Bills: React.FC = () => {
                 <table className="w-full text-left text-sm">
                     <thead className="bg-slate-50 dark:bg-zinc-800/50 text-slate-500 font-medium border-b border-slate-100 dark:border-zinc-800">
                         <tr>
-                            <th className="px-5 py-4 font-bold text-xs uppercase tracking-wider">PEC Purchase #</th>
-                            <th className="px-5 py-4 font-bold text-xs uppercase tracking-wider">Supplier Inv #</th>
+                            <th 
+                                onClick={() => handleSort('reference')}
+                                className="px-5 py-4 font-bold text-xs uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-zinc-800/80 transition-colors select-none group"
+                            >
+                                <div className="flex items-center gap-1.5">
+                                    <span>PEC Purchase #</span>
+                                    {sortBy === 'reference' ? (
+                                        sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" /> : <ArrowDown className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                                    ) : (
+                                        <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-40 group-hover:opacity-100" />
+                                    )}
+                                </div>
+                            </th>
+                            <th 
+                                onClick={() => handleSort('supplier_inv')}
+                                className="px-5 py-4 font-bold text-xs uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-zinc-800/80 transition-colors select-none group"
+                            >
+                                <div className="flex items-center gap-1.5">
+                                    <span>Supplier Inv #</span>
+                                    {sortBy === 'supplier_inv' ? (
+                                        sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" /> : <ArrowDown className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                                    ) : (
+                                        <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-40 group-hover:opacity-100" />
+                                    )}
+                                </div>
+                            </th>
                             <th className="px-5 py-4 font-bold text-xs uppercase tracking-wider">Vendor</th>
-                            <th className="px-4 py-4 font-bold text-xs uppercase tracking-wider">Supplier Inv Date</th>
-                            <th className="px-4 py-4 font-bold text-xs uppercase tracking-wider">Voucher Date</th>
+                            <th 
+                                onClick={() => handleSort('invoice_date')}
+                                className="px-4 py-4 font-bold text-xs uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-zinc-800/80 transition-colors select-none group"
+                            >
+                                <div className="flex items-center gap-1.5">
+                                    <span>Supplier Inv Date</span>
+                                    {sortBy === 'invoice_date' ? (
+                                        sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" /> : <ArrowDown className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                                    ) : (
+                                        <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-40 group-hover:opacity-100" />
+                                    )}
+                                </div>
+                            </th>
+                            <th 
+                                onClick={() => handleSort('date')}
+                                className="px-4 py-4 font-bold text-xs uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-zinc-800/80 transition-colors select-none group"
+                            >
+                                <div className="flex items-center gap-1.5">
+                                    <span>Voucher Date</span>
+                                    {sortBy === 'date' ? (
+                                        sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" /> : <ArrowDown className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                                    ) : (
+                                        <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-40 group-hover:opacity-100" />
+                                    )}
+                                </div>
+                            </th>
                             <th className="px-4 py-4 font-bold text-xs uppercase tracking-wider">Due Date</th>
                             <th className="px-4 py-4 font-bold text-xs uppercase tracking-wider">Status</th>
                             <th className="px-4 py-4 font-bold text-xs uppercase tracking-wider">Approval</th>
-                            <th className="px-5 py-4 text-right font-bold text-xs uppercase tracking-wider">Total</th>
+                            <th 
+                                onClick={() => handleSort('total')}
+                                className="px-5 py-4 text-right font-bold text-xs uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-zinc-800/80 transition-colors select-none group"
+                            >
+                                <div className="flex items-center justify-end gap-1.5">
+                                    <span>Total</span>
+                                    {sortBy === 'total' ? (
+                                        sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" /> : <ArrowDown className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                                    ) : (
+                                        <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-40 group-hover:opacity-100" />
+                                    )}
+                                </div>
+                            </th>
                             <th className="px-5 py-4 text-center font-bold text-xs uppercase tracking-wider">Actions</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
                         {loading ? (
                             <tr><td colSpan={10} className="px-6 py-12 text-center text-slate-500 font-medium">Loading bills...</td></tr>
-                        ) : filteredBills.length === 0 ? (
+                        ) : sortedBills.length === 0 ? (
                             <tr><td colSpan={10} className="px-6 py-12 text-center text-slate-400">No vendor bills found.</td></tr>
-                        ) : filteredBills.map(bill => (
+                        ) : sortedBills.map(bill => (
                             <tr key={bill.id} className="hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-colors">
                                 <td className="px-5 py-4 font-bold text-indigo-700 dark:text-indigo-400 font-mono text-xs">
                                     {bill.reference || `BILL-${bill.id.slice(0, 5).toUpperCase()}`}
@@ -742,12 +1002,25 @@ export const Bills: React.FC = () => {
                                 <input
                                     type="text"
                                     required
-                                    placeholder="e.g. PINV-001, 2"
+                                    placeholder="e.g. PI.2026.69, PI.2026.80"
                                     value={billReference}
                                     onChange={e => setBillReference(e.target.value)}
+                                    onBlur={handleReferenceBlur}
                                     disabled={viewMode}
-                                    className="w-full p-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm font-mono font-bold text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500/20 focus:outline-none"
+                                    className={`w-full p-2.5 bg-white dark:bg-zinc-900 border rounded-lg text-sm font-mono font-bold text-slate-900 dark:text-white focus:outline-none transition-all ${
+                                        duplicateReferenceMatch
+                                            ? 'border-rose-500 dark:border-rose-500 focus:ring-2 focus:ring-rose-500/30'
+                                            : 'border-slate-200 dark:border-zinc-700 focus:ring-2 focus:ring-indigo-500/20'
+                                    }`}
                                 />
+                                {duplicateReferenceMatch && (
+                                    <div className="mt-1.5 p-2 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs flex items-start gap-2">
+                                        <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
+                                        <div className="leading-tight">
+                                            <span className="font-bold">Duplicate Reference Number:</span> Already used on voucher <span className="font-mono font-bold underline">{duplicateReferenceMatch.reference}</span> dated {duplicateReferenceMatch.date} for {duplicateReferenceMatch.partner?.name || 'Vendor'}.
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             <div className="lg:col-span-4">
@@ -815,9 +1088,30 @@ export const Bills: React.FC = () => {
                                     placeholder="e.g. INV-9823, BILL-882"
                                     value={supplierInvoiceNo}
                                     onChange={e => setSupplierInvoiceNo(e.target.value)}
+                                    onBlur={handleSupplierInvBlur}
                                     disabled={viewMode}
-                                    className="w-full p-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm font-mono text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500/20 focus:outline-none"
+                                    className={`w-full p-2.5 bg-white dark:bg-zinc-900 border rounded-lg text-sm font-mono text-slate-900 dark:text-white focus:outline-none transition-all ${
+                                        duplicateSupplierInvMatch
+                                            ? (duplicateSupplierInvMatch.partner_id === selectedPartner
+                                                ? 'border-rose-500 dark:border-rose-500 focus:ring-2 focus:ring-rose-500/30'
+                                                : 'border-amber-500 dark:border-amber-500 focus:ring-2 focus:ring-amber-500/30')
+                                            : 'border-slate-200 dark:border-zinc-700 focus:ring-2 focus:ring-indigo-500/20'
+                                    }`}
                                 />
+                                {duplicateSupplierInvMatch && (
+                                    <div className={`mt-1.5 p-2 rounded-lg text-xs flex items-start gap-2 border ${
+                                        duplicateSupplierInvMatch.partner_id === selectedPartner
+                                            ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300'
+                                            : 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300'
+                                    }`}>
+                                        <AlertCircle className={`w-4 h-4 shrink-0 mt-0.5 ${duplicateSupplierInvMatch.partner_id === selectedPartner ? 'text-rose-600' : 'text-amber-600'}`} />
+                                        <div className="leading-tight">
+                                            <span className="font-bold">
+                                                {duplicateSupplierInvMatch.partner_id === selectedPartner ? 'Duplicate Supplier Invoice:' : 'Notice - Potential Duplicate:'}
+                                            </span> Already recorded on voucher <span className="font-mono font-bold underline">{duplicateSupplierInvMatch.reference || 'N/A'}</span> for {duplicateSupplierInvMatch.partner?.name || 'Vendor'}.
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             <div className="lg:col-span-2">
