@@ -1,24 +1,33 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Mail, Phone, Building, ChevronDown, Loader2, Users, ArrowRight, Link2 } from 'lucide-react';
+import { Plus, Mail, Phone, Building, ChevronDown, Loader2, Users, ArrowRight, Link2, Lock, Shield } from 'lucide-react';
 import { Customer } from './types';
-import { getCustomers, createCustomer, updateCustomer } from './services';
+import { getCustomers, createCustomer, updateCustomer, checkIsAdmin, getSalesReps } from './services';
 import { useAuth } from '../../contexts/AuthContext';
 import { AttachmentPanel } from './AttachmentPanel';
 
 export default function CustomersView({ companyId }: { companyId: string }) {
     const { user, userRole } = useAuth();
+    const isAdmin = checkIsAdmin(userRole);
     const [customers, setCustomers] = useState<Customer[]>([]);
+    const [salesReps, setSalesReps] = useState<{ id: string; name: string; profileId?: string }[]>([]);
+    const [selectedOwnerFilter, setSelectedOwnerFilter] = useState<string>('ALL');
     const [showModal, setShowModal] = useState(false);
     const [loading, setLoading] = useState(true);
     const [activeCustomer, setActiveCustomer] = useState<Partial<Customer>>({});
 
     useEffect(() => {
+        if (isAdmin && companyId) {
+            getSalesReps(companyId).then(setSalesReps);
+        }
+    }, [isAdmin, companyId]);
+
+    useEffect(() => {
         loadCustomers();
-    }, [user, userRole]);
+    }, [user, userRole, selectedOwnerFilter]);
 
     const loadCustomers = async () => {
         setLoading(true);
-        const data = await getCustomers(user?.id, userRole);
+        const data = await getCustomers(user?.id, userRole, selectedOwnerFilter);
         setCustomers(data);
         setLoading(false);
     };
@@ -47,18 +56,49 @@ export default function CustomersView({ companyId }: { companyId: string }) {
     return (
         <div className="h-full flex flex-col p-6">
             {/* Header */}
-            <div className="flex justify-between items-center mb-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
                 <div>
-                    <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Customers</h2>
-                    <p className="text-slate-500 text-sm mt-0.5">Manage your client base</p>
+                    <div className="flex items-center gap-2.5">
+                        <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Customers</h2>
+                        {!isAdmin && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 rounded-full">
+                                <Lock size={11} /> Private View
+                            </span>
+                        )}
+                    </div>
+                    <p className="text-slate-500 text-sm mt-0.5">
+                        {isAdmin ? 'Manage corporate client database across all sales representatives' : 'Manage your client base and customer accounts'}
+                    </p>
                 </div>
-                <button
-                    onClick={() => { setActiveCustomer({}); setShowModal(true); }}
-                    className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shadow-md shadow-indigo-600/20 text-sm font-medium"
-                >
-                    <Plus size={18} />
-                    <span>New Customer</span>
-                </button>
+
+                <div className="flex items-center gap-3">
+                    {/* Admin Sales Rep Filter */}
+                    {isAdmin && (
+                        <div className="flex items-center gap-2 bg-slate-50 dark:bg-zinc-800/80 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-zinc-700">
+                            <Shield size={14} className="text-indigo-600 dark:text-indigo-400" />
+                            <span className="text-xs font-bold text-slate-500">Rep:</span>
+                            <select
+                                value={selectedOwnerFilter}
+                                onChange={(e) => setSelectedOwnerFilter(e.target.value)}
+                                className="text-xs font-semibold bg-transparent text-slate-700 dark:text-slate-200 focus:outline-none cursor-pointer"
+                            >
+                                <option value="ALL">All Sales Reps</option>
+                                <option value={user?.id}>My Customers Only</option>
+                                {salesReps.map(rep => (
+                                    <option key={rep.id} value={rep.profileId || rep.id}>{rep.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+
+                    <button
+                        onClick={() => { setActiveCustomer({}); setShowModal(true); }}
+                        className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shadow-md shadow-indigo-600/20 text-sm font-medium"
+                    >
+                        <Plus size={18} />
+                        <span>New Customer</span>
+                    </button>
+                </div>
             </div>
 
             {/* Pipeline Flow Indicator */}

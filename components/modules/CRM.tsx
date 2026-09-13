@@ -24,6 +24,7 @@ import {
     Deal, Contact, Task, CRMActivity, CRMViewMode, CRMStats,
     CRMDeal, CRMContact, CRMTask, CRMDocument
 } from '../crm/types';
+import { checkIsAdmin } from '../crm/services';
 import { MASTER_CONFIG } from './Organisation';
 
 // --- Placeholder Components for Missing Views ---
@@ -83,6 +84,7 @@ export const CRM: React.FC = () => {
             setCompanyId(currentCompanyId);
 
             // Optionally try to get employee record for owner assignment
+            let empRecord: any = null;
             const { data: emp } = await supabase
                 .from('employees')
                 .select('*')
@@ -92,20 +94,29 @@ export const CRM: React.FC = () => {
 
             if (emp) {
                 setCurrentEmployee(emp);
+                empRecord = emp;
             }
 
-            fetchCRMData(currentCompanyId);
+            fetchCRMData(currentCompanyId, empRecord?.id);
         };
         init();
     }, [user, userRole, currentCompanyId]);
 
-    const fetchCRMData = async (companyId: string) => {
+    const fetchCRMData = async (companyId: string, employeeIdOverride?: string) => {
         setLoading(true);
         try {
-            const isSuperAdmin = userRole?.toLowerCase() === 'super admin' || userRole?.toLowerCase() === 'admin';
+            const isAdmin = checkIsAdmin(userRole);
+            const empId = employeeIdOverride || currentEmployee?.id;
+            
             let dealsQuery = (supabase as any).from('crm_deals').select('*').eq('company_id', companyId);
-            if (!isSuperAdmin && user?.id) {
-                dealsQuery = dealsQuery.or(`created_by.eq.${user.id},owner_id.eq.${user.id}`);
+            let contactsQuery = (supabase as any).from('crm_contacts').select('*').eq('company_id', companyId);
+
+            if (!isAdmin && user?.id) {
+                const ownerFilter = empId
+                    ? `created_by.eq.${user.id},owner_id.eq.${user.id},owner_id.eq.${empId}`
+                    : `created_by.eq.${user.id},owner_id.eq.${user.id}`;
+                dealsQuery = dealsQuery.or(ownerFilter);
+                contactsQuery = contactsQuery.or(ownerFilter);
             }
 
             // Parallel Fetch
@@ -116,7 +127,7 @@ export const CRM: React.FC = () => {
                 { data: documentsData }
             ] = await Promise.all([
                 dealsQuery,
-                (supabase as any).from('crm_contacts').select('*').eq('company_id', companyId),
+                contactsQuery,
                 (supabase as any).from('crm_tasks').select('*').eq('company_id', companyId),
                 (supabase as any).from('crm_documents').select('*').eq('company_id', companyId)
             ]);
@@ -127,13 +138,13 @@ export const CRM: React.FC = () => {
             setDocuments(documentsData || []);
 
             // Calculate Stats
-            const totalPipeline = (dealsData || []).reduce((acc, d) => acc + (d.amount || 0), 0);
-            const wonDeals = (dealsData || []).filter(d => d.stage_id === 4); // Assuming 4 is won
+            const totalPipeline = (dealsData || []).reduce((acc: number, d: any) => acc + (d.amount || d.value || 0), 0);
+            const wonDeals = (dealsData || []).filter((d: any) => d.stage_id === 4 || d.status === 'Won');
             const conversionRate = dealsData?.length ? (wonDeals.length / dealsData.length) * 100 : 0;
 
             setStats({
                 totalRevenue: totalPipeline,
-                activeDeals: (dealsData || []).filter(d => d.status === 'Open').length,
+                activeDeals: (dealsData || []).filter((d: any) => d.status === 'Open' || !d.status).length,
                 totalContacts: (contactsData || []).length,
                 conversionRate: conversionRate
             });
@@ -156,13 +167,13 @@ export const CRM: React.FC = () => {
                 phone: newContact.phone?.trim() || null,
                 company_id: companyId,
                 status: 'Active',
-                owner_id: currentEmployee?.id || null,
+                owner_id: currentEmployee?.id || user?.id || null,
                 created_by: user?.id || null
             }]);
             if (error) throw error;
             setShowContactModal(false);
             setNewContact({});
-            fetchCRMData(companyId);
+            fetchCRMData(companyId, currentEmployee?.id);
         } catch (err: any) {
             console.error('Error creating contact:', err);
             alert('Failed to save contact: ' + (err.message || 'Unknown error'));
@@ -182,7 +193,7 @@ export const CRM: React.FC = () => {
             if (error) throw error;
             setShowDocModal(false);
             setNewDoc({});
-            fetchCRMData(companyId);
+            fetchCRMData(companyId, currentEmployee?.id);
         } catch (err: any) {
             console.error('Error uploading document:', err);
             alert('Failed to upload document: ' + (err.message || 'Unknown error'));

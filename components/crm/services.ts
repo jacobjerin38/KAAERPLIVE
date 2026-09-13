@@ -44,6 +44,43 @@ export const getTaskPriorities = async (): Promise<CRMTaskPriority[]> => {
 }
 
 // ACCESS CONTROL HELPERS
+export const checkIsAdmin = (role?: string | null): boolean => {
+  const r = (role || '').toLowerCase().trim();
+  return ['admin', 'super admin', 'managing director', 'manager', 'general manager'].includes(r);
+};
+
+export const getLinkedEmployeeId = async (profileId: string): Promise<string | undefined> => {
+  try {
+    const { data } = await supabase
+      .from('employees')
+      .select('id')
+      .eq('profile_id', profileId)
+      .maybeSingle();
+    return data?.id;
+  } catch (e) {
+    return undefined;
+  }
+};
+
+export const getSalesReps = async (companyId: string): Promise<{ id: string; name: string; profileId?: string }[]> => {
+  try {
+    const { data } = await supabase
+      .from('employees')
+      .select('id, name, profile_id')
+      .eq('company_id', companyId)
+      .eq('is_active', true)
+      .order('name');
+    return (data || []).map((e: any) => ({
+      id: e.id,
+      name: e.name,
+      profileId: e.profile_id
+    }));
+  } catch (e) {
+    console.error('Error fetching sales reps:', e);
+    return [];
+  }
+};
+
 interface AccessFilter {
   isSalesRep: boolean;
   userId?: string;
@@ -61,29 +98,28 @@ const getAccessFilter = async (): Promise<AccessFilter> => {
     .eq('id', user.id)
     .maybeSingle();
 
-  const role = profile?.role?.toLowerCase() || '';
-  const isManagement = ['admin', 'super admin', 'manager', 'management'].includes(role);
+  const isAdmin = checkIsAdmin(profile?.role);
 
-  if (isManagement) {
+  if (isAdmin) {
     return { isSalesRep: false, userId: user.id };
   }
 
   // Get employee record linked to profile_id
-  const { data: emp } = await supabase
-    .from('employees')
-    .select('id')
-    .eq('profile_id', user.id)
-    .maybeSingle();
+  const empId = await getLinkedEmployeeId(user.id);
 
   return { 
     isSalesRep: true, 
     userId: user.id, 
-    employeeId: emp?.id 
+    employeeId: empId 
   };
 };
 
 // LEADS
-export const getLeads = async (userId?: string, userRole?: string | null): Promise<Lead[]> => {
+export const getLeads = async (
+  userId?: string,
+  userRole?: string | null,
+  filterOwnerId?: string
+): Promise<Lead[]> => {
   let effectiveUserId = userId;
   let effectiveUserRole = userRole;
 
@@ -100,7 +136,7 @@ export const getLeads = async (userId?: string, userRole?: string | null): Promi
     effectiveUserRole = profile?.role || null;
   }
 
-  const isSuperAdmin = effectiveUserRole?.toLowerCase() === 'super admin' || effectiveUserRole?.toLowerCase() === 'admin';
+  const isAdmin = checkIsAdmin(effectiveUserRole);
 
   let query = (supabase as any).from('crm_leads')
     .select(`
@@ -108,8 +144,23 @@ export const getLeads = async (userId?: string, userRole?: string | null): Promi
         lead_owner:employees!crm_leads_lead_owner_id_fkey(*)
     `);
 
-  if (!isSuperAdmin && effectiveUserId) {
-    query = query.or(`created_by.eq.${effectiveUserId},owner_id.eq.${effectiveUserId},lead_owner_id.eq.${effectiveUserId}`);
+  if (isAdmin) {
+    if (filterOwnerId && filterOwnerId !== 'ALL') {
+      query = query.or(`created_by.eq.${filterOwnerId},owner_id.eq.${filterOwnerId},lead_owner_id.eq.${filterOwnerId}`);
+    }
+  } else if (effectiveUserId) {
+    const empId = await getLinkedEmployeeId(effectiveUserId);
+    const conditions = [
+      `created_by.eq.${effectiveUserId}`,
+      `owner_id.eq.${effectiveUserId}`,
+      `lead_owner_id.eq.${effectiveUserId}`
+    ];
+    if (empId) {
+      conditions.push(`lead_owner_id.eq.${empId}`);
+      conditions.push(`owner_id.eq.${empId}`);
+      conditions.push(`created_by.eq.${empId}`);
+    }
+    query = query.or(conditions.join(','));
   }
 
   const { data, error } = await query.order('created_at', { ascending: false });
@@ -149,7 +200,11 @@ export const updateLead = async (id: string, updates: Partial<Lead>): Promise<Le
 };
 
 // CUSTOMERS
-export const getCustomers = async (userId?: string, userRole?: string | null): Promise<Customer[]> => {
+export const getCustomers = async (
+  userId?: string,
+  userRole?: string | null,
+  filterOwnerId?: string
+): Promise<Customer[]> => {
   let effectiveUserId = userId;
   let effectiveUserRole = userRole;
 
@@ -166,12 +221,25 @@ export const getCustomers = async (userId?: string, userRole?: string | null): P
     effectiveUserRole = profile?.role || null;
   }
 
-  const isSuperAdmin = effectiveUserRole?.toLowerCase() === 'super admin' || effectiveUserRole?.toLowerCase() === 'admin';
+  const isAdmin = checkIsAdmin(effectiveUserRole);
 
   let query = (supabase as any).from('crm_customers').select(`*`);
 
-  if (!isSuperAdmin && effectiveUserId) {
-    query = query.or(`created_by.eq.${effectiveUserId},owner_id.eq.${effectiveUserId}`);
+  if (isAdmin) {
+    if (filterOwnerId && filterOwnerId !== 'ALL') {
+      query = query.or(`created_by.eq.${filterOwnerId},owner_id.eq.${filterOwnerId}`);
+    }
+  } else if (effectiveUserId) {
+    const empId = await getLinkedEmployeeId(effectiveUserId);
+    const conditions = [
+      `created_by.eq.${effectiveUserId}`,
+      `owner_id.eq.${effectiveUserId}`
+    ];
+    if (empId) {
+      conditions.push(`owner_id.eq.${empId}`);
+      conditions.push(`created_by.eq.${empId}`);
+    }
+    query = query.or(conditions.join(','));
   }
 
   const { data, error } = await query.order('name', { ascending: true });
@@ -211,7 +279,11 @@ export const updateCustomer = async (id: string, updates: Partial<Customer>): Pr
 };
 
 // OPPORTUNITIES
-export const getOpportunities = async (userId?: string, userRole?: string | null): Promise<Opportunity[]> => {
+export const getOpportunities = async (
+  userId?: string,
+  userRole?: string | null,
+  filterOwnerId?: string
+): Promise<Opportunity[]> => {
   let effectiveUserId = userId;
   let effectiveUserRole = userRole;
 
@@ -228,7 +300,7 @@ export const getOpportunities = async (userId?: string, userRole?: string | null
     effectiveUserRole = profile?.role || null;
   }
 
-  const isSuperAdmin = effectiveUserRole?.toLowerCase() === 'super admin' || effectiveUserRole?.toLowerCase() === 'admin';
+  const isAdmin = checkIsAdmin(effectiveUserRole);
 
   let query = (supabase as any).from('crm_opportunities')
     .select(`
@@ -237,8 +309,21 @@ export const getOpportunities = async (userId?: string, userRole?: string | null
         stage:org_crm_stages(*)
     `);
 
-  if (!isSuperAdmin && effectiveUserId) {
-    query = query.or(`created_by.eq.${effectiveUserId},owner_id.eq.${effectiveUserId}`);
+  if (isAdmin) {
+    if (filterOwnerId && filterOwnerId !== 'ALL') {
+      query = query.or(`created_by.eq.${filterOwnerId},owner_id.eq.${filterOwnerId}`);
+    }
+  } else if (effectiveUserId) {
+    const empId = await getLinkedEmployeeId(effectiveUserId);
+    const conditions = [
+      `created_by.eq.${effectiveUserId}`,
+      `owner_id.eq.${effectiveUserId}`
+    ];
+    if (empId) {
+      conditions.push(`owner_id.eq.${empId}`);
+      conditions.push(`created_by.eq.${empId}`);
+    }
+    query = query.or(conditions.join(','));
   }
 
   const { data, error } = await query.order('created_at', { ascending: false });

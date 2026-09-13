@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, LayoutGrid, List as ListIcon, DollarSign, Calendar, ChevronDown, MoreHorizontal, KanbanSquare, Loader2, ArrowRight, Trophy, XCircle, Link2 } from 'lucide-react';
+import { Plus, LayoutGrid, List as ListIcon, DollarSign, Calendar, ChevronDown, MoreHorizontal, KanbanSquare, Loader2, ArrowRight, Trophy, XCircle, Link2, Lock, Shield } from 'lucide-react';
 import { Opportunity, Customer, Stage, CRMViewMode } from './types';
-import { getOpportunities, createOpportunity, updateOpportunity, getStages, getCustomers, convertOpportunityToCustomer } from './services';
+import { getOpportunities, createOpportunity, updateOpportunity, getStages, getCustomers, convertOpportunityToCustomer, checkIsAdmin, getSalesReps } from './services';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface OpportunitiesViewProps {
@@ -11,7 +11,10 @@ interface OpportunitiesViewProps {
 
 export default function OpportunitiesView({ companyId, onConvert }: OpportunitiesViewProps) {
     const { user, userRole } = useAuth();
+    const isAdmin = checkIsAdmin(userRole);
     const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
+    const [salesReps, setSalesReps] = useState<{ id: string; name: string; profileId?: string }[]>([]);
+    const [selectedOwnerFilter, setSelectedOwnerFilter] = useState<string>('ALL');
     const [stages, setStages] = useState<Stage[]>([]);
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [showModal, setShowModal] = useState(false);
@@ -24,15 +27,21 @@ export default function OpportunitiesView({ companyId, onConvert }: Opportunitie
     const [lossReason, setLossReason] = useState('');
 
     useEffect(() => {
+        if (isAdmin && companyId) {
+            getSalesReps(companyId).then(setSalesReps);
+        }
+    }, [isAdmin, companyId]);
+
+    useEffect(() => {
         loadData();
-    }, [user, userRole]);
+    }, [user, userRole, selectedOwnerFilter]);
 
     const loadData = async () => {
         setLoading(true);
         const [oppsData, stagesData, custData] = await Promise.all([
-            getOpportunities(user?.id, userRole),
+            getOpportunities(user?.id, userRole, selectedOwnerFilter),
             getStages(),
-            getCustomers(user?.id, userRole)
+            getCustomers(user?.id, userRole, selectedOwnerFilter)
         ]);
         setOpportunities(oppsData);
         setStages(stagesData);
@@ -143,16 +152,46 @@ export default function OpportunitiesView({ companyId, onConvert }: Opportunitie
     return (
         <div className="h-full flex flex-col p-6">
             {/* Header */}
-            <div className="flex justify-between items-center mb-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
                 <div>
-                    <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Opportunities</h2>
-                    <p className="text-slate-500 text-sm mt-0.5">Track your sales pipeline</p>
+                    <div className="flex items-center gap-2.5">
+                        <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Opportunities</h2>
+                        {!isAdmin && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 rounded-full">
+                                <Lock size={11} /> Private View
+                            </span>
+                        )}
+                    </div>
+                    <p className="text-slate-500 text-sm mt-0.5">
+                        {isAdmin ? 'Track enterprise sales pipelines across all representatives' : 'Track your deals and pipeline progression'}
+                    </p>
                 </div>
-                <div className="flex gap-2">
+
+                <div className="flex flex-wrap items-center gap-3">
+                    {/* Admin Sales Rep Filter */}
+                    {isAdmin && (
+                        <div className="flex items-center gap-2 bg-slate-50 dark:bg-zinc-800/80 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-zinc-700">
+                            <Shield size={14} className="text-indigo-600 dark:text-indigo-400" />
+                            <span className="text-xs font-bold text-slate-500">Rep:</span>
+                            <select
+                                value={selectedOwnerFilter}
+                                onChange={(e) => setSelectedOwnerFilter(e.target.value)}
+                                className="text-xs font-semibold bg-transparent text-slate-700 dark:text-slate-200 focus:outline-none cursor-pointer"
+                            >
+                                <option value="ALL">All Sales Reps</option>
+                                <option value={user?.id}>My Deals Only</option>
+                                {salesReps.map(rep => (
+                                    <option key={rep.id} value={rep.profileId || rep.id}>{rep.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+
                     <div className="flex bg-slate-100 dark:bg-zinc-800 p-1 rounded-lg">
                         <button onClick={() => setViewMode('KANBAN')} className={`p-2 rounded-md transition-all ${viewMode === 'KANBAN' ? 'bg-white dark:bg-zinc-700 shadow text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}><LayoutGrid size={18} /></button>
                         <button onClick={() => setViewMode('LIST')} className={`p-2 rounded-md transition-all ${viewMode === 'LIST' ? 'bg-white dark:bg-zinc-700 shadow text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}><ListIcon size={18} /></button>
                     </div>
+
                     <button
                         onClick={() => { setActiveOpp({}); setShowModal(true); }}
                         className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shadow-md shadow-indigo-600/20 text-sm font-medium"
