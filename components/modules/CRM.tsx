@@ -6,7 +6,7 @@ import { TableSkeleton, DashboardSkeleton } from '../ui/LoadingSkeletons';
 import {
     LayoutDashboard, Users, FileText, CheckSquare, Calendar, Folder, Briefcase, Plus, Search,
     X, ChevronRight, ChevronDown, Sparkles, Workflow, Mic, Play, KanbanSquare, Bell, Loader2, BarChart3,
-    Package, Receipt, Truck, FileSpreadsheet, Menu
+    Package, Receipt, Truck, FileSpreadsheet, Menu, UploadCloud, Trash2, ExternalLink, Paperclip, CheckCircle2, Download, Copy, Eye
 } from 'lucide-react';
 import { ReportsListView } from './reports/ReportsListView';
 import { LiveView } from '../crm/LiveView';
@@ -24,7 +24,7 @@ import {
     Deal, Contact, Task, CRMActivity, CRMViewMode, CRMStats,
     CRMDeal, CRMContact, CRMTask, CRMDocument
 } from '../crm/types';
-import { checkIsAdmin } from '../crm/services';
+import { checkIsAdmin, getLeads } from '../crm/services';
 import { MASTER_CONFIG } from './Organisation';
 
 // --- Placeholder Components for Missing Views ---
@@ -72,6 +72,15 @@ export const CRM: React.FC = () => {
     const [newDeal, setNewDeal] = useState<Partial<Deal>>({});
     const [newDoc, setNewDoc] = useState<Partial<any>>({});
 
+    // Document Specific States
+    const [uploadingDoc, setUploadingDoc] = useState(false);
+    const [selectedDocFile, setSelectedDocFile] = useState<File | null>(null);
+    const [docUploadMode, setDocUploadMode] = useState<'file' | 'link'>('file');
+    const [leadsList, setLeadsList] = useState<{ id: string; name: string; company?: string }[]>([]);
+    const [docSearchQuery, setDocSearchQuery] = useState('');
+    const [docCategoryFilter, setDocCategoryFilter] = useState<'ALL' | 'GENERAL' | 'LEAD' | 'DEAL' | 'CUSTOMER'>('ALL');
+    const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+
     const [currentEmployee, setCurrentEmployee] = useState<any>(null);
 
     // Initial Load — use currentCompanyId from AuthContext (consistent with all other modules)
@@ -110,6 +119,11 @@ export const CRM: React.FC = () => {
             
             let dealsQuery = (supabase as any).from('crm_deals').select('*').eq('company_id', companyId);
             let contactsQuery = (supabase as any).from('crm_contacts').select('*').eq('company_id', companyId);
+            let docsQuery = (supabase as any)
+                .from('crm_documents')
+                .select('*')
+                .eq('company_id', companyId)
+                .order('created_at', { ascending: false });
 
             if (!isAdmin && user?.id) {
                 const ownerFilter = empId
@@ -117,6 +131,12 @@ export const CRM: React.FC = () => {
                     : `created_by.eq.${user.id},owner_id.eq.${user.id}`;
                 dealsQuery = dealsQuery.or(ownerFilter);
                 contactsQuery = contactsQuery.or(ownerFilter);
+
+                if (empId) {
+                    docsQuery = docsQuery.or(`uploaded_by.eq.${empId},uploaded_by.is.null,related_type.eq.GENERAL`);
+                } else {
+                    docsQuery = docsQuery.or(`uploaded_by.is.null,related_type.eq.GENERAL`);
+                }
             }
 
             // Parallel Fetch
@@ -129,7 +149,7 @@ export const CRM: React.FC = () => {
                 dealsQuery,
                 contactsQuery,
                 (supabase as any).from('crm_tasks').select('*').eq('company_id', companyId),
-                (supabase as any).from('crm_documents').select('*').eq('company_id', companyId)
+                docsQuery
             ]);
 
             setDeals((dealsData as any) || []);
@@ -180,24 +200,172 @@ export const CRM: React.FC = () => {
         }
     };
 
+    const openUploadModal = async () => {
+        setNewDoc({
+            name: '',
+            related_type: 'GENERAL',
+            related_id: '',
+            file_url: ''
+        });
+        setSelectedDocFile(null);
+        setDocUploadMode('file');
+        setShowDocModal(true);
+
+        if (companyId) {
+            try {
+                const leads = await getLeads(companyId);
+                setLeadsList((leads || []).map(l => ({ id: l.id, name: l.name, company: l.company })));
+            } catch (err) {
+                console.error('Failed to load leads for doc modal:', err);
+            }
+        }
+    };
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setSelectedDocFile(file);
+        if (!newDoc.name || newDoc.name.trim() === '') {
+            const baseName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+            setNewDoc(prev => ({ ...prev, name: baseName }));
+        }
+    };
+
     const handleUploadDocument = async () => {
         if (!companyId) return alert('No company context available.');
-        if (!newDoc.name?.trim()) return alert('Document name is required.');
+        if (!newDoc.name?.trim()) return alert('Please enter a Document Name.');
+
+        setUploadingDoc(true);
         try {
-            const { error } = await (supabase as any).from('crm_documents').insert([{
-                ...newDoc,
-                name: newDoc.name.trim(),
+            let finalUrl = newDoc.file_url?.trim() || '';
+
+            if (docUploadMode === 'file') {
+                if (!selectedDocFile) {
+                    alert('Please select a file to upload from your computer or phone.');
+                    setUploadingDoc(false);
+                    return;
+                }
+
+                // Upload to Supabase storage 'documents' bucket
+                const fileExt = selectedDocFile.name.split('.').pop() || 'bin';
+                const cleanName = selectedDocFile.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+                const filePath = `crm/${companyId}/${Date.now()}_${cleanName}`;
+
+                const { data: uploadData, error: uploadError } = await supabase.storage
+                    .from('documents')
+                    .upload(filePath, selectedDocFile, {
+                        cacheControl: '3600',
+                        upsert: false
+                    });
+
+                if (uploadError) {
+                    throw new Error(`File upload failed: ${uploadError.message}`);
+                }
+
+                const { data: { publicUrl } } = supabase.storage
+                    .from('documents')
+                    .getPublicUrl(filePath);
+
+                finalUrl = publicUrl;
+            } else {
+                if (!finalUrl) {
+                    alert('Please enter a valid URL (e.g. https://...).');
+                    setUploadingDoc(false);
+                    return;
+                }
+            }
+
+            const uploaderEmployeeId = currentEmployee?.id || null;
+
+            const docPayload = {
                 company_id: companyId,
-                uploaded_by: currentEmployee?.id || null
-            }]);
-            if (error) throw error;
+                name: newDoc.name.trim(),
+                file_url: finalUrl,
+                related_type: newDoc.related_type || 'GENERAL',
+                related_id: (newDoc.related_type === 'GENERAL' || !newDoc.related_id) ? null : String(newDoc.related_id),
+                uploaded_by: uploaderEmployeeId,
+                file_size: selectedDocFile ? selectedDocFile.size : null,
+                file_type: selectedDocFile ? selectedDocFile.type : null,
+                status: 'Active'
+            };
+
+            const { error: insertError } = await (supabase as any)
+                .from('crm_documents')
+                .insert([docPayload]);
+
+            if (insertError) throw insertError;
+
             setShowDocModal(false);
             setNewDoc({});
+            setSelectedDocFile(null);
             fetchCRMData(companyId, currentEmployee?.id);
         } catch (err: any) {
             console.error('Error uploading document:', err);
             alert('Failed to upload document: ' + (err.message || 'Unknown error'));
+        } finally {
+            setUploadingDoc(false);
         }
+    };
+
+    const handleDeleteDocument = async (docId: string, docName: string) => {
+        if (!window.confirm(`Are you sure you want to delete "${docName}"?`)) return;
+        try {
+            const { error } = await (supabase as any)
+                .from('crm_documents')
+                .delete()
+                .eq('id', docId);
+            if (error) throw error;
+            if (companyId) fetchCRMData(companyId, currentEmployee?.id);
+        } catch (err: any) {
+            alert('Failed to delete document: ' + (err.message || 'Unknown error'));
+        }
+    };
+
+    const formatFileSize = (bytes?: number | null) => {
+        if (!bytes || bytes === 0) return null;
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    };
+
+    const getRelatedEntityLabel = (doc: any) => {
+        if (!doc.related_type || doc.related_type === 'GENERAL' || !doc.related_id) {
+            return {
+                type: 'General',
+                name: 'General Document',
+                badgeClass: 'bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-slate-300'
+            };
+        }
+        if (doc.related_type === 'LEAD') {
+            const lead = leadsList.find(l => String(l.id) === String(doc.related_id));
+            return {
+                type: 'Lead',
+                name: lead ? `${lead.name}` : `Lead #${String(doc.related_id).substring(0, 8)}`,
+                badgeClass: 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 border-blue-200 dark:border-blue-800'
+            };
+        }
+        if (doc.related_type === 'DEAL') {
+            const deal = deals.find(d => String(d.id) === String(doc.related_id));
+            return {
+                type: 'Deal',
+                name: deal ? `${deal.title || (deal as any).name}` : `Deal #${doc.related_id}`,
+                badgeClass: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+            };
+        }
+        if (doc.related_type === 'CUSTOMER' || doc.related_type === 'CONTACT') {
+            const contact = contacts.find(c => String(c.id) === String(doc.related_id));
+            return {
+                type: 'Customer',
+                name: contact ? `${contact.name}` : `Customer #${doc.related_id}`,
+                badgeClass: 'bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 border-purple-200 dark:border-purple-800'
+            };
+        }
+        return {
+            type: doc.related_type,
+            name: `${doc.related_type} #${doc.related_id}`,
+            badgeClass: 'bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-slate-300'
+        };
     };
 
     // --- Sub-Components (Internal for now, to move to separate files later) ---
@@ -284,67 +452,463 @@ export const CRM: React.FC = () => {
 
 
 
-    const DocumentsView = () => (
-        <div className="p-8 h-full flex flex-col animate-page-enter">
-            <div className="flex justify-between items-center mb-8">
-                <h1 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Documents</h1>
-                {hasPermission('crm.deals.manage') && (
-                    <button onClick={() => setShowDocModal(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-2xl font-bold text-sm flex items-center gap-2 shadow-lg hover:shadow-indigo-500/20 transition-all">
-                        <Plus className="w-4 h-4" /> Upload Document
-                    </button>
-                )}
-            </div>
+    const DocumentsView = () => {
+        const filteredDocuments = useMemo(() => {
+            return documents.filter(doc => {
+                const matchesCategory = docCategoryFilter === 'ALL' ||
+                    (docCategoryFilter === 'GENERAL' && (!doc.related_type || doc.related_type === 'GENERAL')) ||
+                    (doc.related_type === docCategoryFilter) ||
+                    (docCategoryFilter === 'CUSTOMER' && doc.related_type === 'CONTACT');
 
-            <div className="flex-1 bg-white/70 dark:bg-zinc-900/70 backdrop-blur-xl rounded-[2rem] border border-white/60 dark:border-zinc-800 shadow-xl p-8 overflow-y-auto">
-                {documents.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center text-slate-400">
-                        <FileText className="w-16 h-16 mb-4 opacity-30" />
-                        <h3 className="text-lg font-bold">No documents yet</h3>
-                        <p className="text-sm">Upload contracts, proposals, or invoices.</p>
+                const matchesSearch = !docSearchQuery ||
+                    doc.name?.toLowerCase().includes(docSearchQuery.toLowerCase()) ||
+                    doc.related_type?.toLowerCase().includes(docSearchQuery.toLowerCase());
+
+                return matchesCategory && matchesSearch;
+            });
+        }, [documents, docCategoryFilter, docSearchQuery]);
+
+        return (
+            <div className="p-6 lg:p-8 h-full flex flex-col animate-page-enter">
+                {/* Header */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                    <div>
+                        <h1 className="text-2xl lg:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Documents Vault</h1>
+                        <p className="text-xs lg:text-sm text-slate-500 dark:text-slate-400 mt-1">
+                            Securely manage, upload, and organize CRM proposals, contracts, and files.
+                        </p>
                     </div>
-                ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {documents.map(doc => (
-                            <div key={doc.id} className="bg-white dark:bg-zinc-900 p-5 rounded-[1.5rem] border border-slate-100 dark:border-zinc-800 shadow-sm hover:shadow-md transition-all group flex flex-col">
-                                <div className="flex items-start justify-between mb-4">
-                                    <div className="w-10 h-10 rounded-xl bg-orange-50 dark:bg-orange-900/20 flex items-center justify-center text-orange-600"><FileText className="w-5 h-5" /></div>
-                                    <span className="text-[10px] font-bold uppercase tracking-wider bg-slate-100 dark:bg-zinc-800 text-slate-500 px-2 py-1 rounded-lg">{doc.related_type} #{doc.related_id}</span>
-                                </div>
-                                <h4 className="font-bold text-slate-800 dark:text-slate-100 mb-1 truncate" title={doc.name}>{doc.name}</h4>
-                                <a href={doc.file_url} target="_blank" rel="noreferrer" className="text-xs font-bold text-indigo-600 hover:text-indigo-700 mt-auto pt-4 flex items-center gap-1">
-                                    View File <Play className="w-3 h-3 rotate-90" />
-                                </a>
-                            </div>
+                    {hasPermission('crm.deals.manage') && (
+                        <button
+                            onClick={openUploadModal}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-2xl font-bold text-sm flex items-center gap-2 shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 transition-all self-start sm:self-auto"
+                        >
+                            <UploadCloud className="w-4 h-4" /> Upload Document
+                        </button>
+                    )}
+                </div>
+
+                {/* Filter and Search Bar */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 mb-6">
+                    {/* Category Filter Pills */}
+                    <div className="flex flex-wrap items-center gap-1.5 p-1 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl shadow-sm">
+                        {[
+                            { id: 'ALL', label: 'All Documents', count: documents.length },
+                            { id: 'GENERAL', label: 'General', count: documents.filter(d => !d.related_type || d.related_type === 'GENERAL').length },
+                            { id: 'LEAD', label: 'Leads', count: documents.filter(d => d.related_type === 'LEAD').length },
+                            { id: 'DEAL', label: 'Deals', count: documents.filter(d => d.related_type === 'DEAL').length },
+                            { id: 'CUSTOMER', label: 'Customers', count: documents.filter(d => d.related_type === 'CUSTOMER' || d.related_type === 'CONTACT').length },
+                        ].map(tab => (
+                            <button
+                                key={tab.id}
+                                onClick={() => setDocCategoryFilter(tab.id as any)}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                    docCategoryFilter === tab.id
+                                        ? 'bg-indigo-600 text-white shadow-sm'
+                                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                                }`}
+                            >
+                                <span>{tab.label}</span>
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded-md ${
+                                    docCategoryFilter === tab.id
+                                        ? 'bg-indigo-700 text-white'
+                                        : 'bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-slate-400'
+                                }`}>
+                                    {tab.count}
+                                </span>
+                            </button>
                         ))}
                     </div>
-                )}
-            </div>
 
-            {/* Document Modal */}
-            {showDocModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/20 backdrop-blur-md animate-fade-in" onClick={() => setShowDocModal(false)}>
-                    <div className="bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden animate-slide-up border border-white/60 dark:border-zinc-800 flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
-                        <div className="p-8 pb-4 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center flex-shrink-0">
-                            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Upload Document</h2>
-                            <button onClick={() => setShowDocModal(false)} className="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
-                        </div>
-                        <div className="p-8 pt-4 space-y-4 overflow-y-auto flex-1">
-                            <input type="text" placeholder="Document Name" className="w-full p-3 rounded-xl border bg-slate-50" value={newDoc.name || ''} onChange={e => setNewDoc({ ...newDoc, name: e.target.value })} />
-                            <input type="text" placeholder="File URL (e.g. https://...)" className="w-full p-3 rounded-xl border bg-slate-50" value={newDoc.file_url || ''} onChange={e => setNewDoc({ ...newDoc, file_url: e.target.value })} />
-                            <div className="flex gap-4">
-                                <select className="flex-1 p-3 rounded-xl border bg-slate-50" value={newDoc.related_type || 'DEAL'} onChange={e => setNewDoc({ ...newDoc, related_type: e.target.value as any })}>
-                                    <option value="DEAL">Deal</option>
-                                    <option value="CONTACT">Contact</option>
-                                </select>
-                                <input type="number" placeholder="Related ID" className="flex-1 p-3 rounded-xl border bg-slate-50" value={newDoc.related_id || ''} onChange={e => setNewDoc({ ...newDoc, related_id: Number(e.target.value) })} />
-                            </div>
-                            <button onClick={handleUploadDocument} className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-colors">Upload</button>
-                        </div>
+                    {/* Search Input */}
+                    <div className="relative min-w-[240px]">
+                        <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                            type="text"
+                            placeholder="Search documents..."
+                            value={docSearchQuery}
+                            onChange={e => setDocSearchQuery(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2 text-xs font-medium bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
+                        />
+                        {docSearchQuery && (
+                            <button
+                                onClick={() => setDocSearchQuery('')}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                            >
+                                &times;
+                            </button>
+                        )}
                     </div>
                 </div>
-            )}
-        </div>
-    );
+
+                {/* Documents Grid / Container */}
+                <div className="flex-1 bg-white/70 dark:bg-zinc-900/70 backdrop-blur-xl rounded-[2rem] border border-white/60 dark:border-zinc-800 shadow-xl p-6 lg:p-8 overflow-y-auto">
+                    {filteredDocuments.length === 0 ? (
+                        <div className="h-full min-h-[300px] flex flex-col items-center justify-center text-slate-400">
+                            <div className="w-16 h-16 rounded-3xl bg-indigo-50 dark:bg-zinc-800/80 flex items-center justify-center mb-4 text-indigo-500">
+                                <FileText className="w-8 h-8 opacity-60" />
+                            </div>
+                            <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">
+                                {docSearchQuery || docCategoryFilter !== 'ALL' ? 'No matching documents' : 'No documents yet'}
+                            </h3>
+                            <p className="text-xs lg:text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-sm text-center">
+                                {docSearchQuery || docCategoryFilter !== 'ALL'
+                                    ? 'Try changing your search keywords or filter category.'
+                                    : 'Upload contracts, proposals, or invoices to securely store them.'}
+                            </p>
+                            {hasPermission('crm.deals.manage') && (
+                                <button
+                                    onClick={openUploadModal}
+                                    className="mt-5 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-500/20 transition-all flex items-center gap-2"
+                                >
+                                    <Plus className="w-4 h-4" /> Upload Document
+                                </button>
+                            )}
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                            {filteredDocuments.map(doc => {
+                                const rel = getRelatedEntityLabel(doc);
+                                const isPdf = doc.file_url?.toLowerCase().endsWith('.pdf') || doc.name?.toLowerCase().endsWith('.pdf');
+                                const isSheet = doc.file_url?.match(/\.(xlsx?|csv)$/i) || doc.name?.match(/\.(xlsx?|csv)$/i);
+                                const isImage = doc.file_url?.match(/\.(jpe?g|png|webp|gif)$/i) || doc.name?.match(/\.(jpe?g|png|webp|gif)$/i);
+
+                                return (
+                                    <div
+                                        key={doc.id}
+                                        className="bg-white dark:bg-zinc-900 p-5 rounded-2xl border border-slate-100 dark:border-zinc-800 shadow-sm hover:shadow-md transition-all group flex flex-col justify-between"
+                                    >
+                                        <div>
+                                            <div className="flex items-start justify-between gap-3 mb-3">
+                                                <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                                                    isPdf
+                                                        ? 'bg-rose-50 dark:bg-rose-900/20 text-rose-600'
+                                                        : isSheet
+                                                        ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600'
+                                                        : isImage
+                                                        ? 'bg-violet-50 dark:bg-violet-900/20 text-violet-600'
+                                                        : 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600'
+                                                }`}>
+                                                    {isSheet ? (
+                                                        <FileSpreadsheet className="w-5 h-5" />
+                                                    ) : (
+                                                        <FileText className="w-5 h-5" />
+                                                    )}
+                                                </div>
+                                                <span className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border flex items-center gap-1 max-w-[170px] truncate ${rel.badgeClass}`}>
+                                                    <span className="truncate">{rel.type}: {rel.name}</span>
+                                                </span>
+                                            </div>
+
+                                            <h4 className="font-bold text-slate-800 dark:text-slate-100 text-sm mb-1 break-words line-clamp-2" title={doc.name}>
+                                                {doc.name}
+                                            </h4>
+
+                                            <div className="flex items-center gap-2 text-[11px] text-slate-400 dark:text-slate-500 mt-2">
+                                                <span>{new Date(doc.created_at || Date.now()).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                                                {doc.file_size && (
+                                                    <>
+                                                        <span>•</span>
+                                                        <span>{formatFileSize(doc.file_size)}</span>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center justify-between pt-4 mt-4 border-t border-slate-100 dark:border-zinc-800/80">
+                                            <a
+                                                href={doc.file_url}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
+                                            >
+                                                <Eye className="w-3.5 h-3.5" /> View / Download
+                                            </a>
+
+                                            <div className="flex items-center gap-1">
+                                                <button
+                                                    onClick={() => {
+                                                        navigator.clipboard.writeText(doc.file_url);
+                                                        alert('Document link copied to clipboard!');
+                                                    }}
+                                                    className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
+                                                    title="Copy link"
+                                                >
+                                                    <Copy className="w-3.5 h-3.5" />
+                                                </button>
+                                                {hasPermission('crm.deals.manage') && (
+                                                    <button
+                                                        onClick={() => handleDeleteDocument(doc.id, doc.name)}
+                                                        className="p-1.5 text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                                                        title="Delete document"
+                                                    >
+                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+
+                {/* Document Modal */}
+                {showDocModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => !uploadingDoc && setShowDocModal(false)}>
+                        <div className="bg-white dark:bg-zinc-900 w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden border border-slate-200 dark:border-zinc-800 flex flex-col max-h-[92vh] animate-slide-up" onClick={e => e.stopPropagation()}>
+                            {/* Modal Header */}
+                            <div className="p-6 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center bg-slate-50/50 dark:bg-zinc-900/50">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                                        <UploadCloud className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-lg font-bold text-slate-900 dark:text-white">Upload Document</h2>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400">Attach contracts, proposals, or CRM files</p>
+                                    </div>
+                                </div>
+                                <button
+                                    disabled={uploadingDoc}
+                                    onClick={() => setShowDocModal(false)}
+                                    className="p-2 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+
+                            {/* Modal Body */}
+                            <div className="p-6 space-y-5 overflow-y-auto flex-1 text-left">
+                                {/* Upload Mode Selector: File vs URL */}
+                                <div className="flex p-1 bg-slate-100 dark:bg-zinc-800 rounded-xl">
+                                    <button
+                                        type="button"
+                                        onClick={() => setDocUploadMode('file')}
+                                        className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${
+                                            docUploadMode === 'file'
+                                                ? 'bg-white dark:bg-zinc-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                                        }`}
+                                    >
+                                        <UploadCloud className="w-3.5 h-3.5" /> Select File from Device
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setDocUploadMode('link')}
+                                        className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${
+                                            docUploadMode === 'link'
+                                                ? 'bg-white dark:bg-zinc-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                                        }`}
+                                    >
+                                        <ExternalLink className="w-3.5 h-3.5" /> External Link
+                                    </button>
+                                </div>
+
+                                {/* File Drop Area (File mode) */}
+                                {docUploadMode === 'file' ? (
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
+                                            Select Document *
+                                        </label>
+                                        <input
+                                            type="file"
+                                            ref={fileInputRef}
+                                            onChange={handleFileChange}
+                                            className="hidden"
+                                            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg,.webp"
+                                        />
+                                        {!selectedDocFile ? (
+                                            <div
+                                                onClick={() => fileInputRef.current?.click()}
+                                                className="border-2 border-dashed border-indigo-200 dark:border-zinc-700 rounded-2xl p-6 text-center hover:bg-indigo-50/40 dark:hover:bg-zinc-800/50 cursor-pointer transition-all group"
+                                            >
+                                                <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-zinc-800 flex items-center justify-center text-indigo-600 dark:text-indigo-400 mx-auto mb-3 group-hover:scale-110 transition-transform">
+                                                    <UploadCloud className="w-6 h-6" />
+                                                </div>
+                                                <p className="text-sm font-bold text-slate-800 dark:text-white">Click to select document</p>
+                                                <p className="text-xs text-slate-400 mt-1">PDF, Word, Excel, PowerPoint, Images (Max 25MB)</p>
+                                            </div>
+                                        ) : (
+                                            <div className="flex items-center justify-between p-4 bg-indigo-50/50 dark:bg-zinc-800/80 rounded-2xl border border-indigo-100 dark:border-zinc-700">
+                                                <div className="flex items-center gap-3 overflow-hidden">
+                                                    <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center flex-shrink-0">
+                                                        <FileText className="w-5 h-5" />
+                                                    </div>
+                                                    <div className="overflow-hidden">
+                                                        <p className="font-bold text-sm text-slate-800 dark:text-white truncate" title={selectedDocFile.name}>
+                                                            {selectedDocFile.name}
+                                                        </p>
+                                                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                                                            {(selectedDocFile.size / 1024 / 1024).toFixed(2)} MB • Ready to upload
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSelectedDocFile(null)}
+                                                    className="p-1.5 hover:bg-white dark:hover:bg-zinc-700 rounded-lg text-slate-400 hover:text-red-500 transition-colors ml-2"
+                                                    title="Remove file"
+                                                >
+                                                    <X className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
+                                            File URL *
+                                        </label>
+                                        <input
+                                            type="text"
+                                            placeholder="https://drive.google.com/..."
+                                            className="w-full p-3.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-sm"
+                                            value={newDoc.file_url || ''}
+                                            onChange={e => setNewDoc({ ...newDoc, file_url: e.target.value })}
+                                        />
+                                    </div>
+                                )}
+
+                                {/* Document Title / Name */}
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
+                                        Document Name *
+                                    </label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. Service Proposal v2, Q4 Contract"
+                                        className="w-full p-3.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-sm"
+                                        value={newDoc.name || ''}
+                                        onChange={e => setNewDoc({ ...newDoc, name: e.target.value })}
+                                    />
+                                </div>
+
+                                {/* Document Select Option (Related Entity Selection) */}
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
+                                            Link Document To
+                                        </label>
+                                        <select
+                                            className="w-full p-3.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-sm"
+                                            value={newDoc.related_type || 'GENERAL'}
+                                            onChange={e => {
+                                                const newType = e.target.value;
+                                                setNewDoc({ ...newDoc, related_type: newType, related_id: '' });
+                                            }}
+                                        >
+                                            <option value="GENERAL">General Document (Company-wide)</option>
+                                            <option value="LEAD">Lead</option>
+                                            <option value="DEAL">Opportunity / Deal</option>
+                                            <option value="CUSTOMER">Customer / Contact</option>
+                                        </select>
+                                    </div>
+
+                                    {/* Specific Entity Picker based on related_type */}
+                                    {newDoc.related_type === 'LEAD' && (
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
+                                                Select Lead *
+                                            </label>
+                                            <select
+                                                className="w-full p-3.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-sm"
+                                                value={newDoc.related_id || ''}
+                                                onChange={e => setNewDoc({ ...newDoc, related_id: e.target.value })}
+                                            >
+                                                <option value="">-- Choose a Lead --</option>
+                                                {leadsList.map(l => (
+                                                    <option key={l.id} value={l.id}>
+                                                        {l.name} {l.company ? `(${l.company})` : ''}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            {leadsList.length === 0 && (
+                                                <p className="text-[11px] text-amber-500 mt-1">No leads found.</p>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {newDoc.related_type === 'DEAL' && (
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
+                                                Select Opportunity / Deal *
+                                            </label>
+                                            <select
+                                                className="w-full p-3.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-sm"
+                                                value={newDoc.related_id || ''}
+                                                onChange={e => setNewDoc({ ...newDoc, related_id: e.target.value })}
+                                            >
+                                                <option value="">-- Choose a Deal / Opportunity --</option>
+                                                {deals.map(d => (
+                                                    <option key={d.id} value={d.id}>
+                                                        {d.title || (d as any).name || `Deal #${d.id}`} {d.value ? `($${d.value.toLocaleString()})` : ''}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            {deals.length === 0 && (
+                                                <p className="text-[11px] text-amber-500 mt-1">No active deals found.</p>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {newDoc.related_type === 'CUSTOMER' && (
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
+                                                Select Customer / Contact *
+                                            </label>
+                                            <select
+                                                className="w-full p-3.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-sm"
+                                                value={newDoc.related_id || ''}
+                                                onChange={e => setNewDoc({ ...newDoc, related_id: e.target.value })}
+                                            >
+                                                <option value="">-- Choose a Customer --</option>
+                                                {contacts.map(c => (
+                                                    <option key={c.id} value={c.id}>
+                                                        {c.name} {c.company ? `(${c.company})` : ''}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            {contacts.length === 0 && (
+                                                <p className="text-[11px] text-amber-500 mt-1">No customers found.</p>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {(!newDoc.related_type || newDoc.related_type === 'GENERAL') && (
+                                        <p className="text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-zinc-800/50 p-3 rounded-xl">
+                                            💡 This document will be saved as a general CRM document and available in your company's CRM documents vault.
+                                        </p>
+                                    )}
+                                </div>
+
+                                {/* Upload Button */}
+                                <button
+                                    type="button"
+                                    disabled={uploadingDoc}
+                                    onClick={handleUploadDocument}
+                                    className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-2xl font-bold transition-all shadow-lg shadow-indigo-500/30 flex items-center justify-center gap-2 mt-4"
+                                >
+                                    {uploadingDoc ? (
+                                        <>
+                                            <Loader2 className="w-5 h-5 animate-spin" />
+                                            <span>Uploading document to vault...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <UploadCloud className="w-5 h-5" />
+                                            <span>Save & Upload Document</span>
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    };
 
     const ContactsView = () => (
         <div className="h-full flex flex-col p-8 animate-page-enter">
