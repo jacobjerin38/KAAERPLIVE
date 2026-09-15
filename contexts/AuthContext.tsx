@@ -228,7 +228,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const hasPermission = (permission: string) => {
         if (permissions.includes('*')) return true; // Super admin wildcard
         if (['admin', 'super admin'].includes(userRole?.toLowerCase() || '')) return true; // Admin bypass
-        return permissions.includes(permission);
+        if (permissions.includes(permission)) return true;
+        // If checking for a .view permission, having .manage grants view capability
+        if (permission.endsWith('.view') && permissions.includes(permission.replace('.view', '.manage'))) {
+            return true;
+        }
+        return false;
     };
 
     return (

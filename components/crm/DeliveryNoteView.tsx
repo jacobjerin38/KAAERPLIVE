@@ -17,7 +17,7 @@ const statusColors: Record<string, string> = {
 };
 
 const DeliveryNoteView: React.FC<Props> = ({ companyId }) => {
-    const { user } = useAuth();
+    const { user, userRole } = useAuth();
     const [notes, setNotes] = useState<CRMDeliveryNote[]>([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
@@ -28,11 +28,14 @@ const DeliveryNoteView: React.FC<Props> = ({ companyId }) => {
     const [search, setSearch] = useState('');
     const [showPrint, setShowPrint] = useState(false);
 
-    useEffect(() => { loadData(); }, []);
+    useEffect(() => { loadData(); }, [companyId]);
 
     const loadData = async () => {
         setLoading(true);
-        const [dns, c] = await Promise.all([getDeliveryNotes(), getCustomers()]);
+        const [dns, c] = await Promise.all([
+            getDeliveryNotes(),
+            getCustomers(user?.id, userRole, 'ALL', companyId)
+        ]);
         setNotes(dns);
         setCustomers(c);
         setLoading(false);

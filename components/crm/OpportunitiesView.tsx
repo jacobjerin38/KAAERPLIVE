@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, LayoutGrid, List as ListIcon, DollarSign, Calendar, ChevronDown, MoreHorizontal, KanbanSquare, Loader2, ArrowRight, Trophy, XCircle, Link2, Lock, Shield } from 'lucide-react';
+import { Plus, LayoutGrid, List as ListIcon, DollarSign, Calendar, ChevronDown, MoreHorizontal, KanbanSquare, Loader2, ArrowRight, Trophy, XCircle, Link2, Lock, Shield, Building, Mail, Phone, Globe, MapPin, X } from 'lucide-react';
 import { Opportunity, Customer, Stage, CRMViewMode } from './types';
-import { getOpportunities, createOpportunity, updateOpportunity, getStages, getCustomers, convertOpportunityToCustomer, checkIsAdmin, getSalesReps } from './services';
+import { getOpportunities, createOpportunity, updateOpportunity, getStages, getCustomers, createCustomer, convertOpportunityToCustomer, checkIsAdmin, getSalesReps } from './services';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface OpportunitiesViewProps {
@@ -26,6 +26,29 @@ export default function OpportunitiesView({ companyId, onConvert }: Opportunitie
     const [showLossModal, setShowLossModal] = useState(false);
     const [lossReason, setLossReason] = useState('');
 
+    // Quick Add CRM Customer states
+    const [showQuickCustomerModal, setShowQuickCustomerModal] = useState(false);
+    const [savingQuickCustomer, setSavingQuickCustomer] = useState(false);
+    const [quickCustomer, setQuickCustomer] = useState<{
+        name: string;
+        customer_type: string;
+        primary_email: string;
+        primary_phone: string;
+        industry: string;
+        website: string;
+        billing_city: string;
+        billing_country: string;
+    }>({
+        name: '',
+        customer_type: 'Company',
+        primary_email: '',
+        primary_phone: '',
+        industry: '',
+        website: '',
+        billing_city: '',
+        billing_country: ''
+    });
+
     useEffect(() => {
         if (isAdmin && companyId) {
             getSalesReps(companyId).then(setSalesReps);
@@ -34,14 +57,14 @@ export default function OpportunitiesView({ companyId, onConvert }: Opportunitie
 
     useEffect(() => {
         loadData();
-    }, [user, userRole, selectedOwnerFilter]);
+    }, [user, userRole, selectedOwnerFilter, companyId]);
 
     const loadData = async () => {
         setLoading(true);
         const [oppsData, stagesData, custData] = await Promise.all([
             getOpportunities(user?.id, userRole, selectedOwnerFilter),
             getStages(),
-            getCustomers(user?.id, userRole, selectedOwnerFilter)
+            getCustomers(user?.id, userRole, selectedOwnerFilter, companyId)
         ]);
         setOpportunities(oppsData);
         setStages(stagesData);
@@ -49,14 +72,65 @@ export default function OpportunitiesView({ companyId, onConvert }: Opportunitie
         setLoading(false);
     };
 
+    const handleSaveQuickCustomer = async () => {
+        if (!quickCustomer.name?.trim()) {
+            alert("Customer Name is required.");
+            return;
+        }
+
+        setSavingQuickCustomer(true);
+        try {
+            const newCust = await createCustomer({
+                name: quickCustomer.name.trim(),
+                customer_type: quickCustomer.customer_type,
+                primary_email: quickCustomer.primary_email?.trim() || undefined,
+                primary_phone: quickCustomer.primary_phone?.trim() || undefined,
+                industry: quickCustomer.industry?.trim() || undefined,
+                website: quickCustomer.website?.trim() || undefined,
+                billing_city: quickCustomer.billing_city?.trim() || undefined,
+                billing_country: quickCustomer.billing_country?.trim() || undefined,
+                company_id: companyId,
+                owner_id: user?.id,
+                created_by: user?.id,
+                status: 'Active'
+            });
+
+            if (newCust) {
+                setCustomers(prev => [newCust, ...prev]);
+                setActiveOpp(prev => ({ ...prev, customer_id: newCust.id }));
+                setQuickCustomer({
+                    name: '',
+                    customer_type: 'Company',
+                    primary_email: '',
+                    primary_phone: '',
+                    industry: '',
+                    website: '',
+                    billing_city: '',
+                    billing_country: ''
+                });
+                setShowQuickCustomerModal(false);
+            }
+        } catch (err: any) {
+            console.error("Error creating quick customer:", err);
+            alert("Failed to create customer: " + (err.message || 'Unknown error'));
+        } finally {
+            setSavingQuickCustomer(false);
+        }
+    };
+
     const handleSave = async () => {
-        if (!activeOpp.title || !activeOpp.customer_id) {
-            alert("Opportunity Title and Customer are required.");
+        if (!activeOpp.title?.trim()) {
+            alert("Opportunity Title is required.");
+            return;
+        }
+        if (!activeOpp.customer_id) {
+            alert("Please select a customer or click '+ New Customer' to add one.");
             return;
         }
 
         const payload = {
             ...activeOpp,
+            title: activeOpp.title.trim(),
             stage_id: activeOpp.stage_id || stages[0]?.id
         };
 
@@ -381,18 +455,54 @@ export default function OpportunitiesView({ companyId, onConvert }: Opportunitie
                                     <Input label="Title" required value={activeOpp.title} onChange={(v: string) => setActiveOpp({ ...activeOpp, title: v })} />
 
                                     <div className="space-y-1">
-                                        <label className="text-xs font-medium text-slate-500">Customer</label>
+                                        <div className="flex items-center justify-between">
+                                            <label className="text-xs font-medium text-slate-500 flex items-center gap-1">
+                                                Customer <span className="text-red-500">*</span>
+                                            </label>
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowQuickCustomerModal(true)}
+                                                className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 flex items-center gap-1 transition-colors"
+                                            >
+                                                <Plus size={13} />
+                                                <span>New Customer</span>
+                                            </button>
+                                        </div>
                                         <div className="relative">
                                             <select
                                                 value={activeOpp.customer_id || ''}
-                                                onChange={e => setActiveOpp({ ...activeOpp, customer_id: e.target.value })}
+                                                onChange={e => {
+                                                    if (e.target.value === '__NEW__') {
+                                                        setShowQuickCustomerModal(true);
+                                                    } else {
+                                                        setActiveOpp({ ...activeOpp, customer_id: e.target.value });
+                                                    }
+                                                }}
                                                 className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm appearance-none"
                                             >
                                                 <option value="">Select Customer...</option>
-                                                {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                                <option value="__NEW__" className="text-indigo-600 dark:text-indigo-400 font-semibold">+ Add New Customer...</option>
+                                                {customers.map(c => (
+                                                    <option key={c.id} value={c.id}>
+                                                        {c.name} {c.customer_type ? `(${c.customer_type})` : ''}
+                                                    </option>
+                                                ))}
                                             </select>
                                             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
                                         </div>
+                                        {customers.length === 0 && (
+                                            <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">
+                                                No customers listed yet. Click{' '}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowQuickCustomerModal(true)}
+                                                    className="underline font-semibold hover:text-amber-700 dark:hover:text-amber-300"
+                                                >
+                                                    + New Customer
+                                                </button>{' '}
+                                                to add one.
+                                            </p>
+                                        )}
                                     </div>
 
                                     <Input label="Expected Closing Date" type="date" value={activeOpp.expected_closing_date} onChange={(v: string) => setActiveOpp({ ...activeOpp, expected_closing_date: v })} />
@@ -483,6 +593,162 @@ export default function OpportunitiesView({ companyId, onConvert }: Opportunitie
                         <div className="px-6 py-4 border-t border-slate-100 dark:border-zinc-800 flex justify-end gap-3">
                             <button onClick={() => { setShowLossModal(false); setLossReason(''); }} className="px-5 py-2.5 text-slate-700 hover:bg-slate-200/50 rounded-xl transition-colors font-medium text-sm">Cancel</button>
                             <button onClick={handleMarkAsLost} className="px-5 py-2.5 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors shadow-md shadow-red-600/20 font-medium text-sm">Confirm Lost</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Quick Add CRM Customer Modal */}
+            {showQuickCustomerModal && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+                    <div className="bg-white dark:bg-zinc-900 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden border border-slate-200 dark:border-zinc-800">
+                        <div className="px-6 py-4 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center bg-slate-50/50 dark:bg-zinc-800/50">
+                            <div>
+                                <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                    <Building size={18} className="text-indigo-600 dark:text-indigo-400" />
+                                    Add New CRM Customer
+                                </h3>
+                                <p className="text-xs text-slate-500 mt-0.5">
+                                    Creates an independent CRM Customer record (not linked to accounting accounts).
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setShowQuickCustomerModal(false)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+                            <div className="space-y-1">
+                                <label className="text-xs font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                                    Customer Name <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. Acme Corporation or John Smith"
+                                    value={quickCustomer.name}
+                                    onChange={e => setQuickCustomer({ ...quickCustomer, name: e.target.value })}
+                                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm"
+                                    autoFocus
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1">
+                                    <label className="text-xs font-medium text-slate-700 dark:text-slate-300">Customer Type</label>
+                                    <select
+                                        value={quickCustomer.customer_type}
+                                        onChange={e => setQuickCustomer({ ...quickCustomer, customer_type: e.target.value })}
+                                        className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm"
+                                    >
+                                        <option value="Company">Company</option>
+                                        <option value="Individual">Individual</option>
+                                    </select>
+                                </div>
+
+                                <div className="space-y-1">
+                                    <label className="text-xs font-medium text-slate-700 dark:text-slate-300">Industry / Sector</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. Oil & Gas, IT, Retail"
+                                        value={quickCustomer.industry}
+                                        onChange={e => setQuickCustomer({ ...quickCustomer, industry: e.target.value })}
+                                        className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1">
+                                    <label className="text-xs font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                                        <Mail size={12} className="text-slate-400" />
+                                        Primary Email
+                                    </label>
+                                    <input
+                                        type="email"
+                                        placeholder="contact@company.qa"
+                                        value={quickCustomer.primary_email}
+                                        onChange={e => setQuickCustomer({ ...quickCustomer, primary_email: e.target.value })}
+                                        className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm"
+                                    />
+                                </div>
+
+                                <div className="space-y-1">
+                                    <label className="text-xs font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                                        <Phone size={12} className="text-slate-400" />
+                                        Primary Phone
+                                    </label>
+                                    <input
+                                        type="tel"
+                                        placeholder="+974 ..."
+                                        value={quickCustomer.primary_phone}
+                                        onChange={e => setQuickCustomer({ ...quickCustomer, primary_phone: e.target.value })}
+                                        className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-xs font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                                    <Globe size={12} className="text-slate-400" />
+                                    Website
+                                </label>
+                                <input
+                                    type="url"
+                                    placeholder="https://..."
+                                    value={quickCustomer.website}
+                                    onChange={e => setQuickCustomer({ ...quickCustomer, website: e.target.value })}
+                                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1">
+                                    <label className="text-xs font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                                        <MapPin size={12} className="text-slate-400" />
+                                        City
+                                    </label>
+                                    <input
+                                        type="text"
+                                        placeholder="Doha"
+                                        value={quickCustomer.billing_city}
+                                        onChange={e => setQuickCustomer({ ...quickCustomer, billing_city: e.target.value })}
+                                        className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-medium text-slate-700 dark:text-slate-300">Country</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Qatar"
+                                        value={quickCustomer.billing_country}
+                                        onChange={e => setQuickCustomer({ ...quickCustomer, billing_country: e.target.value })}
+                                        className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="px-6 py-4 border-t border-slate-100 dark:border-zinc-800 flex justify-end gap-3 bg-slate-50/50 dark:bg-zinc-800/50">
+                            <button
+                                type="button"
+                                onClick={() => setShowQuickCustomerModal(false)}
+                                disabled={savingQuickCustomer}
+                                className="px-4 py-2 text-slate-700 dark:text-slate-300 hover:bg-slate-200/50 dark:hover:bg-zinc-800 rounded-xl transition-colors font-medium text-sm"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleSaveQuickCustomer}
+                                disabled={savingQuickCustomer}
+                                className="flex items-center gap-2 px-5 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shadow-md shadow-indigo-600/20 font-medium text-sm disabled:opacity-50"
+                            >
+                                {savingQuickCustomer ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                                <span>Save & Select Customer</span>
+                            </button>
                         </div>
                     </div>
                 </div>

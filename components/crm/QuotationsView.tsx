@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, FileText, Loader2, Trash2, ArrowRight, ChevronDown, Receipt, Printer } from 'lucide-react';
+import { Plus, Search, FileText, Loader2, Trash2, ArrowRight, ChevronDown, Receipt, Printer, Building, Mail, Phone, X } from 'lucide-react';
 import { CRMQuotation, CRMQuotationLine, CRMItem, CRMCustomer } from './types';
-import { getQuotations, createQuotation, updateQuotation, getQuotationLines, saveQuotationLines, getItems, getCustomers, convertQuotationToInvoice } from './services';
+import { getQuotations, createQuotation, updateQuotation, getQuotationLines, saveQuotationLines, getItems, getCustomers, createCustomer, convertQuotationToInvoice } from './services';
 import { AttachmentPanel } from './AttachmentPanel';
 import { useAuth } from '../../contexts/AuthContext';
 import PrintDocumentModal from './PrintDocumentModal';
@@ -20,7 +20,7 @@ const statusColors: Record<string, string> = {
 };
 
 const QuotationsView: React.FC<Props> = ({ companyId, onConvert }) => {
-    const { user } = useAuth();
+    const { user, userRole } = useAuth();
     const [quotations, setQuotations] = useState<CRMQuotation[]>([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
@@ -33,15 +33,68 @@ const QuotationsView: React.FC<Props> = ({ companyId, onConvert }) => {
     const [search, setSearch] = useState('');
     const [showPrint, setShowPrint] = useState(false);
 
-    useEffect(() => { loadData(); }, []);
+    // Quick customer creation
+    const [showQuickCustomerModal, setShowQuickCustomerModal] = useState(false);
+    const [savingQuickCustomer, setSavingQuickCustomer] = useState(false);
+    const [quickCustomer, setQuickCustomer] = useState<{
+        name: string;
+        customer_type: string;
+        primary_email: string;
+        primary_phone: string;
+        industry: string;
+    }>({
+        name: '',
+        customer_type: 'Company',
+        primary_email: '',
+        primary_phone: '',
+        industry: ''
+    });
+
+    useEffect(() => { loadData(); }, [companyId]);
 
     const loadData = async () => {
         setLoading(true);
-        const [q, i, c] = await Promise.all([getQuotations(), getItems(), getCustomers()]);
+        const [q, i, c] = await Promise.all([
+            getQuotations(),
+            getItems(),
+            getCustomers(user?.id, userRole, 'ALL', companyId)
+        ]);
         setQuotations(q);
         setItems(i.filter(it => it.company_id === companyId));
         setCustomers(c);
         setLoading(false);
+    };
+
+    const handleSaveQuickCustomer = async () => {
+        if (!quickCustomer.name?.trim()) {
+            alert("Customer Name is required.");
+            return;
+        }
+        setSavingQuickCustomer(true);
+        try {
+            const newCust = await createCustomer({
+                name: quickCustomer.name.trim(),
+                customer_type: quickCustomer.customer_type,
+                primary_email: quickCustomer.primary_email?.trim() || undefined,
+                primary_phone: quickCustomer.primary_phone?.trim() || undefined,
+                industry: quickCustomer.industry?.trim() || undefined,
+                company_id: companyId,
+                owner_id: user?.id,
+                created_by: user?.id,
+                status: 'Active'
+            });
+            if (newCust) {
+                setCustomers(prev => [newCust as any, ...prev]);
+                setActiveQuot(prev => ({ ...prev, customer_id: newCust.id }));
+                setQuickCustomer({ name: '', customer_type: 'Company', primary_email: '', primary_phone: '', industry: '' });
+                setShowQuickCustomerModal(false);
+            }
+        } catch (err: any) {
+            console.error('Error creating customer:', err);
+            alert('Failed to create customer: ' + (err.message || 'Unknown error'));
+        } finally {
+            setSavingQuickCustomer(false);
+        }
     };
 
     const openNew = () => {
@@ -192,12 +245,37 @@ const QuotationsView: React.FC<Props> = ({ companyId, onConvert }) => {
                             {/* Header Fields */}
                             <div className="grid grid-cols-3 gap-4">
                                 <div className="space-y-1">
-                                    <label className="text-xs font-medium text-slate-500">Customer *</label>
-                                    <select value={activeQuot.customer_id || ''} onChange={e => setActiveQuot(p => ({ ...p, customer_id: e.target.value }))}
-                                        className="w-full px-3 py-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-xs font-medium text-slate-500">Customer *</label>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowQuickCustomerModal(true)}
+                                            className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 flex items-center gap-0.5"
+                                        >
+                                            <Plus size={12} />
+                                            <span>New</span>
+                                        </button>
+                                    </div>
+                                    <select
+                                        value={activeQuot.customer_id || ''}
+                                        onChange={e => {
+                                            if (e.target.value === '__NEW__') {
+                                                setShowQuickCustomerModal(true);
+                                            } else {
+                                                setActiveQuot(p => ({ ...p, customer_id: e.target.value }));
+                                            }
+                                        }}
+                                        className="w-full px-3 py-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                                    >
                                         <option value="">Select Customer</option>
+                                        <option value="__NEW__" className="text-blue-600 font-semibold">+ Add New Customer...</option>
                                         {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                                     </select>
+                                    {customers.length === 0 && (
+                                        <p className="text-[10px] text-amber-600 dark:text-amber-400">
+                                            No customers. Click <button type="button" onClick={() => setShowQuickCustomerModal(true)} className="underline font-semibold">New</button> to add.
+                                        </p>
+                                    )}
                                 </div>
                                 <div className="space-y-1">
                                     <label className="text-xs font-medium text-slate-500">Date</label>
@@ -321,6 +399,101 @@ const QuotationsView: React.FC<Props> = ({ companyId, onConvert }) => {
                     customer={customers.find(c => c.id === activeQuot.customer_id)}
                     companyId={companyId}
                 />
+            )}
+
+            {/* Quick Customer Modal */}
+            {showQuickCustomerModal && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+                    <div className="bg-white dark:bg-zinc-900 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden border border-slate-200 dark:border-zinc-800">
+                        <div className="px-6 py-4 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center bg-slate-50/50 dark:bg-zinc-800/50">
+                            <div>
+                                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                    <Building size={16} className="text-blue-600" /> Add New CRM Customer
+                                </h3>
+                                <p className="text-xs text-slate-500">Independent CRM Customer account</p>
+                            </div>
+                            <button onClick={() => setShowQuickCustomerModal(false)} className="p-1 rounded text-slate-400 hover:text-slate-600">
+                                <X size={16} />
+                            </button>
+                        </div>
+                        <div className="p-5 space-y-3">
+                            <div>
+                                <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Customer Name *</label>
+                                <input
+                                    type="text"
+                                    placeholder="Customer / Company Name"
+                                    value={quickCustomer.name}
+                                    onChange={e => setQuickCustomer({ ...quickCustomer, name: e.target.value })}
+                                    className="w-full mt-1 px-3 py-2 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                                    autoFocus
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Type</label>
+                                    <select
+                                        value={quickCustomer.customer_type}
+                                        onChange={e => setQuickCustomer({ ...quickCustomer, customer_type: e.target.value })}
+                                        className="w-full mt-1 px-3 py-2 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm"
+                                    >
+                                        <option value="Company">Company</option>
+                                        <option value="Individual">Individual</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Industry</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Industry"
+                                        value={quickCustomer.industry}
+                                        onChange={e => setQuickCustomer({ ...quickCustomer, industry: e.target.value })}
+                                        className="w-full mt-1 px-3 py-2 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm"
+                                    />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Email</label>
+                                    <input
+                                        type="email"
+                                        placeholder="Email"
+                                        value={quickCustomer.primary_email}
+                                        onChange={e => setQuickCustomer({ ...quickCustomer, primary_email: e.target.value })}
+                                        className="w-full mt-1 px-3 py-2 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Phone</label>
+                                    <input
+                                        type="tel"
+                                        placeholder="Phone"
+                                        value={quickCustomer.primary_phone}
+                                        onChange={e => setQuickCustomer({ ...quickCustomer, primary_phone: e.target.value })}
+                                        className="w-full mt-1 px-3 py-2 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                        <div className="px-5 py-3 border-t border-slate-100 dark:border-zinc-800 flex justify-end gap-2 bg-slate-50/50 dark:bg-zinc-800/50">
+                            <button
+                                type="button"
+                                onClick={() => setShowQuickCustomerModal(false)}
+                                className="px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-200/50 rounded-lg"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleSaveQuickCustomer}
+                                disabled={savingQuickCustomer}
+                                className="flex items-center gap-1.5 px-4 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 disabled:opacity-50"
+                            >
+                                {savingQuickCustomer ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
+                                <span>Save & Select</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

@@ -203,27 +203,38 @@ export const updateLead = async (id: string, updates: Partial<Lead>): Promise<Le
 export const getCustomers = async (
   userId?: string,
   userRole?: string | null,
-  filterOwnerId?: string
+  filterOwnerId?: string,
+  companyId?: string
 ): Promise<Customer[]> => {
   let effectiveUserId = userId;
   let effectiveUserRole = userRole;
+  let effectiveCompanyId = companyId;
 
   if (!effectiveUserId && effectiveUserId !== '') {
     const { data: { user } } = await supabase.auth.getUser();
     effectiveUserId = user?.id;
   }
-  if (effectiveUserRole === undefined && effectiveUserId) {
+  if ((effectiveUserRole === undefined || !effectiveCompanyId) && effectiveUserId) {
     const { data: profile } = await supabase
       .from('profiles')
-      .select('role')
+      .select('role, company_id')
       .eq('id', effectiveUserId)
       .maybeSingle();
-    effectiveUserRole = profile?.role || null;
+    if (effectiveUserRole === undefined) {
+      effectiveUserRole = profile?.role || null;
+    }
+    if (!effectiveCompanyId && profile?.company_id) {
+      effectiveCompanyId = profile.company_id;
+    }
   }
 
   const isAdmin = checkIsAdmin(effectiveUserRole);
 
   let query = (supabase as any).from('crm_customers').select(`*`);
+
+  if (effectiveCompanyId) {
+    query = query.eq('company_id', effectiveCompanyId);
+  }
 
   if (isAdmin) {
     if (filterOwnerId && filterOwnerId !== 'ALL') {
@@ -233,7 +244,8 @@ export const getCustomers = async (
     const empId = await getLinkedEmployeeId(effectiveUserId);
     const conditions = [
       `created_by.eq.${effectiveUserId}`,
-      `owner_id.eq.${effectiveUserId}`
+      `owner_id.eq.${effectiveUserId}`,
+      `owner_id.is.null`
     ];
     if (empId) {
       conditions.push(`owner_id.eq.${empId}`);
@@ -252,14 +264,52 @@ export const getCustomers = async (
 };
 
 export const createCustomer = async (customer: Partial<Customer>): Promise<Customer | null> => {
+  if (!customer.name || !customer.name.trim()) {
+    throw new Error('Customer Name is required.');
+  }
+
+  let effectiveCompanyId = customer.company_id;
+  let effectiveUserId = customer.owner_id || customer.created_by;
+
+  if (!effectiveCompanyId || !effectiveUserId) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      if (!effectiveUserId) effectiveUserId = user.id;
+      if (!effectiveCompanyId) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('company_id')
+          .eq('id', user.id)
+          .maybeSingle();
+        effectiveCompanyId = profile?.company_id;
+      }
+    }
+  }
+
+  if (!effectiveCompanyId) {
+    throw new Error('Company context is required to create a CRM customer.');
+  }
+
+  const payload = {
+    ...customer,
+    name: customer.name.trim(),
+    company_id: effectiveCompanyId,
+    owner_id: customer.owner_id || effectiveUserId,
+    created_by: customer.created_by || effectiveUserId,
+    status: customer.status || 'Active',
+    customer_type: customer.customer_type || 'Company',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+
   const { data, error } = await (supabase as any).from('crm_customers')
-    .insert([customer])
+    .insert([payload])
     .select()
     .single();
 
   if (error) {
     console.error('Error creating customer:', error);
-    return null;
+    throw error;
   }
   return data;
 };

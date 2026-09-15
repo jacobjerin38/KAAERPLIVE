@@ -34,7 +34,7 @@ import {
 import { Modal } from '../ui/Modal';
 
 export const ProposalWorkflow: React.FC<{ companyId: string }> = ({ companyId }) => {
-    const { user } = useAuth();
+    const { user, userRole } = useAuth();
     const [requests, setRequests] = useState<ProposalRequest[]>([]);
     const [proposals, setProposals] = useState<Proposal[]>([]);
     const [customers, setCustomers] = useState<Customer[]>([]);
@@ -75,7 +75,7 @@ export const ProposalWorkflow: React.FC<{ companyId: string }> = ({ companyId })
         const [reqs, props, custs] = await Promise.all([
             getProposalRequests(companyId),
             getProposals(companyId),
-            getCustomers()
+            getCustomers(user?.id, userRole, 'ALL', companyId)
         ]);
         setRequests(reqs);
         setProposals(props);

@@ -21,7 +21,7 @@ const statusColors: Record<string, string> = {
 };
 
 const SalesInvoiceView: React.FC<Props> = ({ companyId, onConvert }) => {
-    const { user } = useAuth();
+    const { user, userRole } = useAuth();
     const [invoices, setInvoices] = useState<CRMSalesInvoice[]>([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
@@ -34,11 +34,15 @@ const SalesInvoiceView: React.FC<Props> = ({ companyId, onConvert }) => {
     const [search, setSearch] = useState('');
     const [showPrint, setShowPrint] = useState(false);
 
-    useEffect(() => { loadData(); }, []);
+    useEffect(() => { loadData(); }, [companyId]);
 
     const loadData = async () => {
         setLoading(true);
-        const [inv, i, c] = await Promise.all([getSalesInvoices(), getItems(), getCustomers()]);
+        const [inv, i, c] = await Promise.all([
+            getSalesInvoices(),
+            getItems(),
+            getCustomers(user?.id, userRole, 'ALL', companyId)
+        ]);
         setInvoices(inv);
         setItems(i.filter(it => it.company_id === companyId));
         setCustomers(c);
