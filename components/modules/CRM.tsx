@@ -131,12 +131,6 @@ export const CRM: React.FC = () => {
                     : `created_by.eq.${user.id},owner_id.eq.${user.id}`;
                 dealsQuery = dealsQuery.or(ownerFilter);
                 contactsQuery = contactsQuery.or(ownerFilter);
-
-                if (empId) {
-                    docsQuery = docsQuery.or(`uploaded_by.eq.${empId},uploaded_by.is.null,related_type.eq.GENERAL`);
-                } else {
-                    docsQuery = docsQuery.or(`uploaded_by.is.null,related_type.eq.GENERAL`);
-                }
             }
 
             // Parallel Fetch
@@ -468,6 +462,8 @@ export const CRM: React.FC = () => {
             });
         }, [documents, docCategoryFilter, docSearchQuery]);
 
+        const canManageDocs = hasPermission('crm.deals.manage') || hasPermission('crm.leads.manage') || hasPermission('crm.contacts.manage') || hasPermission('documents.view') || hasPermission('*') || checkIsAdmin(userRole);
+
         return (
             <div className="p-6 lg:p-8 h-full flex flex-col animate-page-enter">
                 {/* Header */}
@@ -478,7 +474,7 @@ export const CRM: React.FC = () => {
                             Securely manage, upload, and organize CRM proposals, contracts, and files.
                         </p>
                     </div>
-                    {hasPermission('crm.deals.manage') && (
+                    {canManageDocs && (
                         <button
                             onClick={openUploadModal}
                             className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-2xl font-bold text-sm flex items-center gap-2 shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 transition-all self-start sm:self-auto"
@@ -556,7 +552,7 @@ export const CRM: React.FC = () => {
                                     ? 'Try changing your search keywords or filter category.'
                                     : 'Upload contracts, proposals, or invoices to securely store them.'}
                             </p>
-                            {hasPermission('crm.deals.manage') && (
+                            {canManageDocs && (
                                 <button
                                     onClick={openUploadModal}
                                     className="mt-5 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-500/20 transition-all flex items-center gap-2"
@@ -636,7 +632,7 @@ export const CRM: React.FC = () => {
                                                 >
                                                     <Copy className="w-3.5 h-3.5" />
                                                 </button>
-                                                {hasPermission('crm.deals.manage') && (
+                                                {canManageDocs && (
                                                     <button
                                                         onClick={() => handleDeleteDocument(doc.id, doc.name)}
                                                         className="p-1.5 text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
