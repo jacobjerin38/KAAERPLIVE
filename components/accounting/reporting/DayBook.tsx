@@ -69,10 +69,16 @@ export const DayBook: React.FC = () => {
         currency: 'QAR'
     });
 
-    // Date range & preset - default to August 2026 so live data is immediately visible
-    const [preset, setPreset] = useState<PeriodPreset>('august_2026');
-    const [startDate, setStartDate] = useState<string>('2026-08-01');
-    const [endDate, setEndDate] = useState<string>('2026-08-31');
+    // Date range & preset - default to This Month so live transactions are immediately visible
+    const [preset, setPreset] = useState<PeriodPreset>('this_month');
+    const [startDate, setStartDate] = useState<string>(() => {
+        const today = new Date();
+        return new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+    });
+    const [endDate, setEndDate] = useState<string>(() => {
+        const today = new Date();
+        return new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
+    });
 
     // Filters & Sorting
     const [voucherTypeFilter, setVoucherTypeFilter] = useState<VoucherTypeFilter>('ALL');
@@ -218,8 +224,8 @@ export const DayBook: React.FC = () => {
         setError(null);
 
         try {
-            // Query journal entries joined with journal, partner, and lines
-            let query = supabase
+            // 1. Query journal entries joined with journal, partner, and lines
+            let jEntryQuery = supabase
                 .from('accounting_journal_entries')
                 .select(`
                     id,
@@ -246,22 +252,71 @@ export const DayBook: React.FC = () => {
                 .eq('company_id', currentCompanyId);
 
             if (startDate) {
-                query = query.gte('date', startDate);
+                jEntryQuery = jEntryQuery.gte('date', startDate);
             }
             if (endDate) {
-                query = query.lte('date', endDate);
+                jEntryQuery = jEntryQuery.lte('date', endDate);
             }
+            jEntryQuery = jEntryQuery.order('date', { ascending: true });
 
-            // Order by date
-            query = query.order('date', { ascending: true });
+            // 2. Query payment & receipt vouchers directly from accounting_payments
+            // This ensures all draft, pending, and unposted vouchers appear immediately in Day Book
+            let paymentQuery = supabase
+                .from('accounting_payments')
+                .select(`
+                    id,
+                    name,
+                    date,
+                    notes,
+                    state,
+                    payment_type,
+                    payment_category,
+                    amount,
+                    accounting_entry_id,
+                    partner_id,
+                    account_id,
+                    created_at,
+                    partner:accounting_partners(id, name),
+                    account:accounting_chart_of_accounts!account_id(id, code, name, type),
+                    journal:accounting_journals!accounting_journal_id(id, code, name, type),
+                    expense_lines,
+                    bank_lines
+                `)
+                .eq('company_id', currentCompanyId);
 
-            const { data, error: fetchErr } = await query;
-            if (fetchErr) throw fetchErr;
+            if (startDate) {
+                paymentQuery = paymentQuery.gte('date', startDate);
+            }
+            if (endDate) {
+                paymentQuery = paymentQuery.lte('date', endDate);
+            }
+            paymentQuery = paymentQuery.order('date', { ascending: true });
 
-            // Transform raw entries to DayBookVoucher items
-            const parsedVouchers: DayBookVoucher[] = (data || []).map((entry: any) => {
+            // Fetch masters for resolving ledger accounts and partner names inside multi-line vouchers
+            const [jRes, pRes, coaRes, partRes] = await Promise.all([
+                jEntryQuery,
+                paymentQuery,
+                supabase.from('accounting_chart_of_accounts').select('id, code, name, type').eq('company_id', currentCompanyId),
+                supabase.from('accounting_partners').select('id, name').eq('company_id', currentCompanyId)
+            ]);
+
+            if (jRes.error) throw jRes.error;
+            if (pRes.error) throw pRes.error;
+
+            const coaMap = new Map((coaRes.data || []).map((a: any) => [a.id, a]));
+            const partMap = new Map((partRes.data || []).map((p: any) => [p.id, p.name]));
+
+            const postedEntryIds = new Set<string>();
+            const existingReferences = new Set<string>();
+
+            // Transform raw journal entries to DayBookVoucher items
+            const parsedJournalVouchers: DayBookVoucher[] = (jRes.data || []).map((entry: any) => {
+                postedEntryIds.add(entry.id);
                 const ref = (entry.reference || '').trim();
                 const upperRef = ref.toUpperCase();
+                if (upperRef) {
+                    existingReferences.add(upperRef);
+                }
                 const jType = (entry.journal?.type || '').toLowerCase();
                 const moveType = entry.move_type || 'entry';
                 const notes = entry.notes || '';
@@ -397,7 +452,156 @@ export const DayBook: React.FC = () => {
                 };
             });
 
-            setVouchers(parsedVouchers);
+            // 3. Transform unposted or draft payment & receipt vouchers
+            const parsedPaymentVouchers: DayBookVoucher[] = [];
+
+            for (const pay of (pRes.data || [])) {
+                // If payment has already been posted to accounting_journal_entries, skip to prevent duplicates
+                if (pay.accounting_entry_id && postedEntryIds.has(pay.accounting_entry_id)) {
+                    continue;
+                }
+                const payRef = (pay.name || '').trim();
+                if (payRef && existingReferences.has(payRef.toUpperCase())) {
+                    continue;
+                }
+
+                const isReceipt = pay.payment_type === 'inbound';
+                const voucherType: DayBookVoucher['voucherType'] = isReceipt ? 'Receipt' : 'Payment';
+                const entryPartner = pay.partner?.name || (pay.partner_id ? partMap.get(pay.partner_id) : '') || '';
+                const payState = (pay.state || 'draft').toLowerCase();
+                const displayState: 'Draft' | 'Posted' | 'Cancelled' =
+                    payState === 'posted' ? 'Posted' :
+                    payState === 'cancelled' ? 'Cancelled' : 'Draft';
+
+                // Build detailed lines
+                // 3A. Bank Lines
+                const bankLines: DayBookLine[] = (pay.bank_lines || []).map((b: any, bIdx: number) => {
+                    const bAmt = Number(b.amount) || 0;
+                    const bName = b.bank_name || b.bank_account || pay.journal?.name || (isReceipt ? 'Bank / Cash Receipt' : 'Bank / Cash Payment');
+                    return {
+                        id: b.id || `bnk-${pay.id}-${bIdx}`,
+                        accountCode: '',
+                        accountName: bName,
+                        accountType: 'Bank',
+                        name: b.reference ? `${bName} (${b.reference})` : bName,
+                        debit: isReceipt ? bAmt : 0,
+                        credit: isReceipt ? 0 : bAmt,
+                        partnerName: entryPartner
+                    };
+                });
+
+                // 3B. Counterpart / Expense Lines
+                let counterpartLines: DayBookLine[] = [];
+                if (pay.expense_lines && Array.isArray(pay.expense_lines) && pay.expense_lines.length > 0) {
+                    counterpartLines = pay.expense_lines.map((e: any, eIdx: number) => {
+                        const rawAmt = Number(e.amount) || 0;
+                        const linePartner = e.partner_id ? (partMap.get(e.partner_id) || entryPartner) : entryPartner;
+                        const lineAcc = e.account_id ? coaMap.get(e.account_id) : null;
+                        const accName = lineAcc?.name || (linePartner ? `${linePartner}` : (isReceipt ? 'Customer / Income' : 'Expense / Vendor'));
+                        const accCode = lineAcc?.code || '';
+                        const accType = lineAcc?.type || '';
+
+                        let debit = 0;
+                        let credit = 0;
+
+                        if (isReceipt) {
+                            if (rawAmt < 0) {
+                                debit = Math.abs(rawAmt);
+                            } else {
+                                credit = Math.abs(rawAmt);
+                            }
+                        } else {
+                            const isCr = e.entry_type === 'credit' || rawAmt < 0;
+                            if (isCr) {
+                                credit = Math.abs(rawAmt);
+                            } else {
+                                debit = Math.abs(rawAmt);
+                            }
+                        }
+
+                        return {
+                            id: e.id || `exp-${pay.id}-${eIdx}`,
+                            accountId: e.account_id || undefined,
+                            accountCode: accCode,
+                            accountName: accName,
+                            accountType: accType,
+                            name: e.notes || accName,
+                            debit,
+                            credit,
+                            partnerName: linePartner
+                        };
+                    });
+                } else {
+                    const accName = pay.account?.name || entryPartner || (isReceipt ? 'Customer / Income' : 'Expense Account');
+                    const amt = Number(pay.amount) || 0;
+                    counterpartLines = [{
+                        id: `cp-${pay.id}`,
+                        accountId: pay.account_id || undefined,
+                        accountCode: pay.account?.code || '',
+                        accountName: accName,
+                        accountType: pay.account?.type || '',
+                        name: pay.notes || accName,
+                        debit: isReceipt ? 0 : amt,
+                        credit: isReceipt ? amt : 0,
+                        partnerName: entryPartner
+                    }];
+                }
+
+                // Determine Particulars (Tally Standard)
+                let particulars = '';
+                if (isReceipt) {
+                    if (entryPartner) {
+                        particulars = entryPartner;
+                    } else if (counterpartLines.length > 0) {
+                        particulars = counterpartLines.map(l => l.accountName).filter(Boolean).slice(0, 2).join(', ');
+                        if (counterpartLines.length > 2) particulars += '...';
+                    } else {
+                        particulars = pay.notes || 'Receipt';
+                    }
+                } else {
+                    if (entryPartner) {
+                        particulars = entryPartner;
+                    } else if (counterpartLines.length > 0) {
+                        particulars = counterpartLines.map(l => l.accountName).filter(Boolean).slice(0, 2).join(', ');
+                        if (counterpartLines.length > 2) particulars += '...';
+                    } else {
+                        particulars = pay.notes || 'Payment';
+                    }
+                }
+
+                const payTotal = Number(pay.amount) || 0;
+                const debitAmount = isReceipt ? 0 : payTotal;
+                const creditAmount = isReceipt ? payTotal : 0;
+
+                const formattedLines = isReceipt 
+                    ? [...bankLines, ...counterpartLines]
+                    : [...counterpartLines, ...bankLines];
+
+                parsedPaymentVouchers.push({
+                    id: pay.id,
+                    date: pay.date,
+                    formattedDate: formatTallyDate(pay.date),
+                    reference: payRef || 'UNNUMBERED',
+                    voucherType,
+                    particulars,
+                    debitAmount,
+                    creditAmount,
+                    notes: pay.notes || '',
+                    state: displayState,
+                    partnerName: entryPartner,
+                    journalName: pay.journal?.name || (isReceipt ? 'Receipt' : 'Payment'),
+                    lines: formattedLines
+                });
+            }
+
+            // Combine all vouchers and sort by date ascending, then reference
+            const allVouchers = [...parsedJournalVouchers, ...parsedPaymentVouchers];
+            allVouchers.sort((a, b) => {
+                if (a.date !== b.date) return a.date.localeCompare(b.date);
+                return a.reference.localeCompare(b.reference, undefined, { numeric: true });
+            });
+
+            setVouchers(allVouchers);
         } catch (err: any) {
             console.error('Error fetching day book:', err);
             setError(err.message || 'Failed to load Day Book vouchers');
@@ -663,7 +867,7 @@ export const DayBook: React.FC = () => {
                             { id: 'this_week', label: 'This Week' },
                             { id: 'this_month', label: 'This Month' },
                             { id: 'last_month', label: 'Last Month' },
-                            { id: 'august_2026', label: 'August 2026 (Live Data)' },
+                            { id: 'august_2026', label: 'August 2026' },
                             { id: 'all', label: 'All Dates' }
                         ] as const
                     ).map(p => (
@@ -856,7 +1060,7 @@ export const DayBook: React.FC = () => {
                                         <BookOpen className="w-8 h-8 mx-auto mb-2 text-slate-300 dark:text-zinc-700" />
                                         <p className="font-semibold text-slate-600 dark:text-slate-400">No vouchers found in this period</p>
                                         <p className="text-[11px] text-slate-400 mt-1">
-                                            Try switching the period preset to <span className="font-bold text-violet-600 cursor-pointer" onClick={() => handlePresetChange('august_2026')}>August 2026</span> or <span className="font-bold text-violet-600 cursor-pointer" onClick={() => handlePresetChange('all')}>All Dates</span>.
+                                            Try switching the period preset to <span className="font-bold text-violet-600 cursor-pointer" onClick={() => handlePresetChange('this_month')}>This Month</span> or <span className="font-bold text-violet-600 cursor-pointer" onClick={() => handlePresetChange('all')}>All Dates</span>.
                                         </p>
                                     </td>
                                 </tr>

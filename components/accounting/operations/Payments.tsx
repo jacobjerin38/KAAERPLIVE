@@ -95,7 +95,7 @@ export const Payments: React.FC = () => {
         if (!currentCompanyId) return;
         try {
             const [pRes, jRes, aRes, bRes] = await Promise.all([
-                supabase.from('accounting_partners').select('id, name, partner_type').eq('company_id', currentCompanyId).order('name'),
+                supabase.from('accounting_partners').select('id, name, partner_type, property_account_receivable_id, property_account_payable_id').eq('company_id', currentCompanyId).order('name'),
                 supabase.from('accounting_journals').select('id, name, type, code').eq('company_id', currentCompanyId).in('type', ['Bank', 'Cash']).order('name'),
                 supabase.from('accounting_chart_of_accounts').select('id, code, name, type, subtype, is_group, is_active').eq('company_id', currentCompanyId).eq('is_active', true).eq('is_group', false).order('code'),
                 supabase.from('org_bank_configs').select('id, name, bank_name, code').eq('company_id', currentCompanyId).order('name')
@@ -219,7 +219,14 @@ export const Payments: React.FC = () => {
         const remaining = totalBankAmount > totalExpenseAmount ? (totalBankAmount - totalExpenseAmount).toFixed(2) : '';
         setExpenseLines(prev => [
             ...prev,
-            { id: `exp-${Date.now()}-${Math.random()}`, account_id: '', partner_id: selectedPartner || '', notes: '', entry_type: 'debit', amount: remaining }
+            {
+                id: `exp-${Date.now()}-${Math.random()}`,
+                account_id: '',
+                partner_id: selectedPartner || '',
+                notes: '',
+                entry_type: paymentType === 'inbound' ? 'credit' : 'debit',
+                amount: remaining
+            }
         ]);
     };
 
@@ -335,18 +342,22 @@ export const Payments: React.FC = () => {
             setDate(pay.date || new Date().toISOString().split('T')[0]);
             setNotes(pay.notes || '');
 
+            const isPayInbound = (pay.payment_type || 'outbound') === 'inbound';
+
             // Load multi-expense lines or fallback to single legacy record
             if (pay.expense_lines && Array.isArray(pay.expense_lines) && pay.expense_lines.length > 0) {
                 setExpenseLines(pay.expense_lines.map((l: any, idx: number) => {
                     const rawAmt = l.amount !== undefined ? l.amount : '';
-                    const isCredit = l.entry_type === 'credit' || (Number(rawAmt) < 0);
+                    const isCredit = isPayInbound
+                        ? (l.entry_type === 'debit' || Number(rawAmt) < 0 ? false : true)
+                        : (l.entry_type === 'credit' || (Number(rawAmt) < 0));
                     return {
                         id: l.id || `exp-${idx}`,
                         account_id: l.account_id || '',
                         partner_id: l.partner_id || '',
                         notes: l.notes || '',
                         entry_type: isCredit ? 'credit' : 'debit',
-                        amount: rawAmt
+                        amount: Math.abs(Number(rawAmt)) || rawAmt
                     };
                 }));
             } else {
@@ -355,7 +366,7 @@ export const Payments: React.FC = () => {
                     account_id: pay.account_id || '',
                     partner_id: pay.partner_id || '',
                     notes: '',
-                    entry_type: 'debit',
+                    entry_type: isPayInbound ? 'credit' : 'debit',
                     amount: pay.amount || ''
                 }]);
             }
@@ -486,13 +497,21 @@ export const Payments: React.FC = () => {
                 }
             }
 
+            const partnerObj = partners.find((p: any) => p.id === selectedPartner);
+            const partnerDefaultAccId = paymentType === 'inbound'
+                ? partnerObj?.property_account_receivable_id
+                : partnerObj?.property_account_payable_id;
+
             const formattedExpenseLines = expenseLines.map(el => {
                 const rawAmt = Number(el.amount) || 0;
-                const isCredit = el.entry_type === 'credit' || rawAmt < 0;
+                const isCredit = paymentType === 'inbound'
+                    ? (el.entry_type === 'debit' || rawAmt < 0 ? false : true)
+                    : (el.entry_type === 'credit' || rawAmt < 0);
                 const signedAmt = isCredit ? -Math.abs(rawAmt) : Math.abs(rawAmt);
+                const resolvedAccId = el.account_id || (paymentCategory === 'partner' ? partnerDefaultAccId : null) || null;
                 return {
                     id: el.id,
-                    account_id: el.account_id,
+                    account_id: resolvedAccId,
                     partner_id: el.partner_id || selectedPartner || null,
                     notes: el.notes || null,
                     entry_type: isCredit ? 'credit' : 'debit',
@@ -510,6 +529,10 @@ export const Payments: React.FC = () => {
                 amount: Number(bl.amount)
             }));
 
+            const resolvedPrimaryAccId = primaryExpense?.account_id 
+                ? String(primaryExpense.account_id).trim() 
+                : (partnerDefaultAccId ? String(partnerDefaultAccId).trim() : null);
+
             const payload: any = {
                 company_id: currentCompanyId,
                 name: trimmedVoucher || null,
@@ -517,7 +540,7 @@ export const Payments: React.FC = () => {
                 payment_type: paymentType,
                 partner_type: paymentType === 'inbound' ? 'customer' : 'vendor',
                 partner_id: selectedPartner ? String(selectedPartner).trim() : null,
-                account_id: primaryExpense?.account_id ? String(primaryExpense.account_id).trim() : null,
+                account_id: resolvedPrimaryAccId,
                 amount: totalVoucherAmount,
                 date: date,
                 accounting_journal_id: primaryBank?.journal_id ? String(primaryBank.journal_id).trim() : null,
@@ -812,7 +835,13 @@ export const Payments: React.FC = () => {
                                 <div className="flex gap-2 p-1 bg-white dark:bg-zinc-800 rounded-xl border border-slate-200 dark:border-zinc-700">
                                     <button
                                         type="button"
-                                        onClick={() => setPaymentType('inbound')}
+                                        onClick={() => {
+                                            setPaymentType('inbound');
+                                            setExpenseLines(prev => prev.map(l => ({
+                                                ...l,
+                                                entry_type: l.entry_type === 'debit' && (!l.amount || Number(l.amount) >= 0) ? 'credit' : l.entry_type
+                                            })));
+                                        }}
                                         disabled={viewMode}
                                         className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
                                             paymentType === 'inbound'
@@ -824,7 +853,13 @@ export const Payments: React.FC = () => {
                                     </button>
                                     <button
                                         type="button"
-                                        onClick={() => setPaymentType('outbound')}
+                                        onClick={() => {
+                                            setPaymentType('outbound');
+                                            setExpenseLines(prev => prev.map(l => ({
+                                                ...l,
+                                                entry_type: l.entry_type === 'credit' && (!l.amount || Number(l.amount) >= 0) ? 'debit' : l.entry_type
+                                            })));
+                                        }}
                                         disabled={viewMode}
                                         className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
                                             paymentType === 'outbound'
@@ -988,12 +1023,23 @@ export const Payments: React.FC = () => {
                                                         disabled={viewMode}
                                                         className={`w-full p-2 border rounded-lg text-xs font-black transition-colors ${
                                                             isCredit
-                                                                ? 'bg-rose-100 dark:bg-rose-950/60 border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300'
+                                                                ? paymentType === 'inbound'
+                                                                    ? 'bg-emerald-100 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
+                                                                    : 'bg-rose-100 dark:bg-rose-950/60 border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300'
                                                                 : 'bg-indigo-50 dark:bg-zinc-700/60 border-indigo-200 dark:border-zinc-600 text-indigo-700 dark:text-indigo-300'
                                                         }`}
                                                     >
-                                                        <option value="debit">DR (Debit)</option>
-                                                        <option value="credit">CR (Credit / -ve)</option>
+                                                        {paymentType === 'inbound' ? (
+                                                            <>
+                                                                <option value="credit">CR (Receipt / Credit)</option>
+                                                                <option value="debit">DR (Deduction / Charge)</option>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <option value="debit">DR (Expense / Debit)</option>
+                                                                <option value="credit">CR (Deduction / Recovery)</option>
+                                                            </>
+                                                        )}
                                                     </select>
                                                 </div>
 
@@ -1012,10 +1058,18 @@ export const Payments: React.FC = () => {
                                                 <div className="sm:col-span-2">
                                                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5 flex justify-between items-center">
                                                         <span>Amount (QAR) <span className="text-rose-500">*</span></span>
-                                                        {isCredit ? (
-                                                            <span className="text-[9px] bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300 px-1 py-0.2 rounded font-extrabold uppercase">CR (-ve)</span>
+                                                        {paymentType === 'inbound' ? (
+                                                            isCredit ? (
+                                                                <span className="text-[9px] bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 px-1 py-0.2 rounded font-extrabold uppercase">CR (Receipt)</span>
+                                                            ) : (
+                                                                <span className="text-[9px] bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300 px-1 py-0.2 rounded font-extrabold uppercase">DR (Deduction)</span>
+                                                            )
                                                         ) : (
-                                                            <span className="text-[9px] bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 px-1 py-0.2 rounded font-extrabold uppercase">DR (+)</span>
+                                                            isCredit ? (
+                                                                <span className="text-[9px] bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300 px-1 py-0.2 rounded font-extrabold uppercase">CR (-ve)</span>
+                                                            ) : (
+                                                                <span className="text-[9px] bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 px-1 py-0.2 rounded font-extrabold uppercase">DR (+)</span>
+                                                            )
                                                         )}
                                                     </label>
                                                     <input
