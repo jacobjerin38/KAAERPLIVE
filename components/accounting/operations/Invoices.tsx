@@ -148,11 +148,16 @@ export const Invoices: React.FC = () => {
         if (arData) setArAccount(arData);
     };
 
-    // Filter accounts by type for accounting invoice mode
-    const assetAccounts = chartOfAccounts.filter(a => a.type === 'Asset');
+    // Filter accounts by type for accounting invoice mode and ledger selections
+    const wipAndAccruals = chartOfAccounts.filter(a => 
+        ['1410', '1210'].includes(a.code) || 
+        /work\s*in\s*process|wip|accrued\s*income|accrued\s*revenue|unbilled/i.test(a.name)
+    );
+    const assetAccounts = chartOfAccounts.filter(a => a.type === 'Asset' && !wipAndAccruals.some(w => w.id === a.id));
     const liabilityAccounts = chartOfAccounts.filter(a => a.type === 'Liability');
     const incomeAccounts = chartOfAccounts.filter(a => a.type === 'Income');
     const expenseAccounts = chartOfAccounts.filter(a => a.type === 'Expense');
+    const otherAccounts = chartOfAccounts.filter(a => !['Asset', 'Liability', 'Income', 'Expense'].includes(a.type) && !wipAndAccruals.some(w => w.id === a.id));
 
     const handlePartnerChange = (partnerId: string) => {
         setSelectedPartner(partnerId);
@@ -299,8 +304,8 @@ export const Invoices: React.FC = () => {
             if (voucherMode === 'item') {
                 for (let i = 0; i < lines.length; i++) {
                     const l = lines[i];
-                    if (!l.item_id && !l.sales_ledger_id) {
-                        alert(`Line #${i + 1}: Please select an Item or Sales Ledger.`);
+                    if (!l.item_id && !l.sales_ledger_id && !l.account_id) {
+                        alert(`Line #${i + 1}: Please select a Ledger Account (Sales, WIP, Accrued Income, etc.) or Item.`);
                         return;
                     }
                 }
@@ -343,17 +348,31 @@ export const Invoices: React.FC = () => {
                 return;
             }
 
-            const payloadLines = lines.map(l => ({
-                item_id: voucherMode === 'item' && l.item_id ? String(l.item_id).trim() : null,
-                account_id: voucherMode === 'accounting' && l.account_id ? String(l.account_id).trim() : (l.account_id ? String(l.account_id).trim() : null),
-                sales_ledger_id: voucherMode === 'item' && l.sales_ledger_id ? String(l.sales_ledger_id).trim() : null,
-                quantity: Number(l.quantity) || 1,
-                unit_price: Number(l.unit_price) || 0,
-                cost_center_id: l.cost_center_id ? String(l.cost_center_id).trim() : null,
-                project_cost_center_id: l.project_cost_center_id ? String(l.project_cost_center_id).trim() : null,
-                contract_cost_center_id: l.contract_cost_center_id ? String(l.contract_cost_center_id).trim() : null,
-                description: l.description ? String(l.description).trim() : null
-            }));
+            const payloadLines = lines.map(l => {
+                let accId = l.account_id ? String(l.account_id).trim() : null;
+                let slId = l.sales_ledger_id ? String(l.sales_ledger_id).trim() : null;
+
+                if (slId && !accId) {
+                    const matched = salesLedgers.find(sl => sl.id === slId);
+                    if (matched?.account_id) accId = matched.account_id;
+                }
+                if (accId && !slId) {
+                    const matched = salesLedgers.find(sl => sl.account_id === accId);
+                    if (matched) slId = matched.id;
+                }
+
+                return {
+                    item_id: voucherMode === 'item' && l.item_id ? String(l.item_id).trim() : null,
+                    account_id: accId,
+                    sales_ledger_id: slId,
+                    quantity: Number(l.quantity) || 1,
+                    unit_price: Number(l.unit_price) || 0,
+                    cost_center_id: l.cost_center_id ? String(l.cost_center_id).trim() : null,
+                    project_cost_center_id: l.project_cost_center_id ? String(l.project_cost_center_id).trim() : null,
+                    contract_cost_center_id: l.contract_cost_center_id ? String(l.contract_cost_center_id).trim() : null,
+                    description: l.description ? String(l.description).trim() : null
+                };
+            });
 
             const trimmedRef = invoiceReference.trim() || null;
 
@@ -767,28 +786,96 @@ export const Invoices: React.FC = () => {
                                     {lines.map((line, idx) => (
                                         <div key={idx} className="flex flex-wrap md:flex-nowrap gap-2 items-end border-b border-slate-100 dark:border-zinc-800 pb-3 md:pb-0 md:border-b-0">
                                             <div className="w-full md:flex-1 min-w-[150px]">
-                                                <label className="text-[10px] font-bold text-slate-400 uppercase">Item</label>
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase">Item (Optional)</label>
                                                 <select
                                                     value={line.item_id}
-                                                    onChange={e => handleLineChange(idx, 'item_id', e.target.value)}
+                                                    onChange={e => {
+                                                        const itemId = e.target.value;
+                                                        handleLineChange(idx, 'item_id', itemId);
+                                                        if (itemId) {
+                                                            const it = items.find(i => i.id === itemId);
+                                                            if (it?.income_account_id && !line.account_id) {
+                                                                handleLineChange(idx, 'account_id', it.income_account_id);
+                                                                const matchedSl = salesLedgers.find(sl => sl.account_id === it.income_account_id);
+                                                                if (matchedSl) handleLineChange(idx, 'sales_ledger_id', matchedSl.id);
+                                                            }
+                                                        }
+                                                    }}
                                                     disabled={viewMode}
                                                     className="w-full p-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-md text-sm"
                                                 >
-                                                    <option value="">Select Item</option>
-                                                    {items.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                                                    <option value="">-- No Item / WIP / Progress / Service --</option>
+                                                    {items.map(i => <option key={i.id} value={i.id}>{i.name} {i.code ? `(${i.code})` : ''}</option>)}
                                                 </select>
                                             </div>
-                                            <div className="w-full md:w-48">
-                                                <label className="text-[10px] font-bold text-slate-400 uppercase">Sales Ledger</label>
+                                            <div className="w-full md:w-64">
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase">Sales / WIP / Accrual Ledger *</label>
                                                 <select
                                                     required={!line.item_id}
-                                                    value={line.sales_ledger_id}
-                                                    onChange={e => handleLineChange(idx, 'sales_ledger_id', e.target.value)}
+                                                    value={line.account_id || (salesLedgers.find(sl => sl.id === line.sales_ledger_id)?.account_id) || ''}
+                                                    onChange={e => {
+                                                        const val = e.target.value;
+                                                        const matchedSl = salesLedgers.find(sl => sl.account_id === val);
+                                                        handleLineChange(idx, 'account_id', val);
+                                                        handleLineChange(idx, 'sales_ledger_id', matchedSl ? matchedSl.id : '');
+                                                    }}
                                                     disabled={viewMode}
-                                                    className="w-full p-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-md text-sm"
+                                                    className="w-full p-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-md text-sm font-medium"
                                                 >
-                                                    <option value="">Select Sales Ledger</option>
-                                                    {salesLedgers.map(sl => <option key={sl.id} value={sl.id}>{sl.name}</option>)}
+                                                    <option value="">Select Ledger / Account *</option>
+
+                                                    {/* Work In Process & Accruals */}
+                                                    {wipAndAccruals.length > 0 && (
+                                                        <optgroup label="🏗️ Work In Process & Accruals (Contracting / Milestones)">
+                                                            {wipAndAccruals.map(a => (
+                                                                <option key={a.id} value={a.id}>
+                                                                    [{a.code}] {a.name}
+                                                                </option>
+                                                            ))}
+                                                        </optgroup>
+                                                    )}
+
+                                                    {/* Sales & Revenue Ledgers */}
+                                                    <optgroup label="📈 Sales & Revenue Accounts">
+                                                        {incomeAccounts.map(a => (
+                                                            <option key={a.id} value={a.id}>
+                                                                [{a.code}] {a.name}
+                                                            </option>
+                                                        ))}
+                                                    </optgroup>
+
+                                                    {/* Customer Advances & Liabilities */}
+                                                    {liabilityAccounts.length > 0 && (
+                                                        <optgroup label="⚖️ Customer Advances & Liabilities">
+                                                            {liabilityAccounts.map(a => (
+                                                                <option key={a.id} value={a.id}>
+                                                                    [{a.code}] {a.name} {a.subtype ? `(${a.subtype})` : ''}
+                                                                </option>
+                                                            ))}
+                                                        </optgroup>
+                                                    )}
+
+                                                    {/* Asset Accounts */}
+                                                    {assetAccounts.length > 0 && (
+                                                        <optgroup label="💼 Asset Accounts (Equipment, Scrap, Disposal)">
+                                                            {assetAccounts.map(a => (
+                                                                <option key={a.id} value={a.id}>
+                                                                    [{a.code}] {a.name} {a.subtype ? `(${a.subtype})` : ''}
+                                                                </option>
+                                                            ))}
+                                                        </optgroup>
+                                                    )}
+
+                                                    {/* Other Accounts */}
+                                                    {otherAccounts.length > 0 && (
+                                                        <optgroup label="📋 Other General Ledgers">
+                                                            {otherAccounts.map(a => (
+                                                                <option key={a.id} value={a.id}>
+                                                                    [{a.code}] {a.name}
+                                                                </option>
+                                                            ))}
+                                                        </optgroup>
+                                                    )}
                                                 </select>
                                             </div>
                                             <div className="w-full md:flex-1 min-w-[150px]">
@@ -798,7 +885,7 @@ export const Invoices: React.FC = () => {
                                                     value={line.description || ''}
                                                     onChange={e => handleLineChange(idx, 'description', e.target.value)}
                                                     disabled={viewMode}
-                                                    placeholder="Comment / Line note"
+                                                    placeholder="e.g. Milestone 1 / WIP Progress / Service note"
                                                     className="w-full p-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-md text-sm"
                                                 />
                                             </div>
@@ -1045,6 +1132,15 @@ export const Invoices: React.FC = () => {
                                                             className="w-full p-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm font-medium focus:ring-2 focus:ring-indigo-500/20 focus:outline-none"
                                                         >
                                                             <option value="">Select Ledger Account *</option>
+                                                            {(!line.account_category || line.account_category === 'all' || line.account_category === 'asset') && wipAndAccruals.length > 0 && (
+                                                                <optgroup label="🏗️ Work In Process & Accruals (WIP 1410, Accrued Income 1210)">
+                                                                    {wipAndAccruals.map(a => (
+                                                                        <option key={a.id} value={a.id}>
+                                                                            [{a.code}] {a.name} {a.subtype ? `(${a.subtype})` : ''}
+                                                                        </option>
+                                                                    ))}
+                                                                </optgroup>
+                                                            )}
                                                             {(!line.account_category || line.account_category === 'all' || line.account_category === 'asset') && assetAccounts.length > 0 && (
                                                                 <optgroup label="💼 Asset Accounts (Fixed Assets, Advances, Equipment, Deposits)">
                                                                     {assetAccounts.map(a => (

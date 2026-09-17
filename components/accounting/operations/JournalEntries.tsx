@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
-import { Plus, Search, Filter, ArrowRight, Save, Trash2, Edit, Eye } from 'lucide-react';
+import { Plus, Search, Filter, ArrowRight, Save, Trash2, Edit, Eye, BookOpen } from 'lucide-react';
 import { Modal } from '../../ui/Modal';
 import { PrintButton } from '../../ui/PrintButton';
 
@@ -40,6 +40,7 @@ export const JournalEntries: React.FC = () => {
     const [journals, setJournals] = useState<any[]>([]);
     const [accounts, setAccounts] = useState<any[]>([]);
     const [costCenters, setCostCenters] = useState<any[]>([]);
+    const [partners, setPartners] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
@@ -65,14 +66,16 @@ export const JournalEntries: React.FC = () => {
 
     const fetchMasters = async () => {
         if (!currentCompanyId) return;
-        const [jRes, aRes, ccRes] = await Promise.all([
+        const [jRes, aRes, ccRes, pRes] = await Promise.all([
             supabase.from('accounting_journals').select('*').eq('company_id', currentCompanyId).eq('is_active', true),
             supabase.from('accounting_chart_of_accounts').select('*').eq('company_id', currentCompanyId).eq('is_active', true).eq('is_group', false).order('code'),
-            supabase.from('accounting_cost_centers').select('*').eq('company_id', currentCompanyId).eq('is_active', true)
+            supabase.from('accounting_cost_centers').select('*').eq('company_id', currentCompanyId).eq('is_active', true),
+            supabase.from('accounting_partners').select('id, name, code, partner_type').eq('company_id', currentCompanyId).order('name')
         ]);
         if (jRes.data) setJournals(jRes.data);
         if (aRes.data) setAccounts(aRes.data.filter((a: any) => !a.is_group && a.is_active !== false));
         if (ccRes.data) setCostCenters(ccRes.data);
+        if (pRes.data) setPartners(pRes.data);
     };
 
     const handleOpenCreate = () => {
@@ -84,6 +87,39 @@ export const JournalEntries: React.FC = () => {
             lines: [
                 { account_id: '', description: '', debit: 0, credit: 0 },
                 { account_id: '', description: '', debit: 0, credit: 0 }
+            ]
+        });
+        setIsModalOpen(true);
+    };
+
+    const handleOpenOpeningBalanceTemplate = () => {
+        const defaultJournal = journals.find(j => j.type === 'General') || journals[0];
+        const currentYear = new Date().getFullYear();
+        const obDate = `${currentYear}-01-01`;
+
+        // Match key accounts for opening balances
+        const bankAcc = accounts.find(a => a.subtype === 'Bank' || /bank/i.test(a.name));
+        const arAcc = accounts.find(a => a.subtype === 'Receivable' || a.code === '1110' || /receivable/i.test(a.name));
+        const wipAcc = accounts.find(a => a.code === '1410' || /work in process|wip/i.test(a.name));
+        const accruedAcc = accounts.find(a => a.code === '1210' || /accrued income/i.test(a.name));
+        const apAcc = accounts.find(a => a.subtype === 'Payable' || a.code === '2010' || /payable/i.test(a.name));
+        const advAcc = accounts.find(a => a.code === '2032' || /advances from customers/i.test(a.name));
+        const equityAcc = accounts.find(a => a.type === 'Equity' || a.code === '3000' || a.code === '3210' || /capital/i.test(a.name));
+
+        setCurrentEntry({
+            date: obDate,
+            journal_id: defaultJournal?.id || '',
+            reference: `OB-${currentYear}`,
+            notes: `Opening Balances Cut-over / Migration as of ${obDate}`,
+            state: 'Draft',
+            lines: [
+                { account_id: bankAcc?.id || '', description: 'Opening Bank Balance', debit: 0, credit: 0 },
+                { account_id: arAcc?.id || '', description: 'Opening Trade Debtors (Receivables)', debit: 0, credit: 0 },
+                { account_id: wipAcc?.id || '', description: 'Opening Work In Process (WIP)', debit: 0, credit: 0 },
+                { account_id: accruedAcc?.id || '', description: 'Opening Accrued Income Receivables', debit: 0, credit: 0 },
+                { account_id: apAcc?.id || '', description: 'Opening Trade Creditors (Payables)', debit: 0, credit: 0 },
+                { account_id: advAcc?.id || '', description: 'Opening Customer Advances', debit: 0, credit: 0 },
+                { account_id: equityAcc?.id || '', description: 'Opening Balance Capital / Equity (Balancing Figure)', debit: 0, credit: 0 }
             ]
         });
         setIsModalOpen(true);
@@ -101,6 +137,7 @@ export const JournalEntries: React.FC = () => {
             const mappedLines = (lines || []).map(line => ({
                 id: line.id,
                 account_id: line.account_id,
+                partner_id: line.partner_id || undefined,
                 description: line.name || '',
                 debit: Number(line.debit) || 0,
                 credit: Number(line.credit) || 0,
@@ -210,6 +247,7 @@ export const JournalEntries: React.FC = () => {
             const linesData = currentEntry.lines?.map(line => ({
                 entry_id: entryId,
                 account_id: line.account_id,
+                partner_id: line.partner_id || null,
                 name: line.description,
                 debit: line.debit,
                 credit: line.credit,
@@ -355,6 +393,13 @@ export const JournalEntries: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-3 no-print">
                     <PrintButton />
+                    <button 
+                        onClick={handleOpenOpeningBalanceTemplate} 
+                        className="flex items-center gap-2 px-3.5 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-semibold text-xs sm:text-sm transition shadow-xs"
+                        title="Pre-populate balanced template to enter company opening balances"
+                    >
+                        <BookOpen className="w-4 h-4" /> Opening Balance Voucher
+                    </button>
                     <button onClick={handleOpenCreate} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
                         <Plus className="w-4 h-4" /> New Entry
                     </button>
@@ -479,13 +524,14 @@ export const JournalEntries: React.FC = () => {
                                 <thead className="bg-slate-100 dark:bg-zinc-800">
                                     <tr>
                                         <th className="p-2 w-[18%] text-left">Account</th>
-                                        <th className="p-2 w-[18%] text-left">Description</th>
-                                        <th className="p-2 w-[14%] text-left">Cost Center</th>
-                                        <th className="p-2 w-[14%] text-left">Project CC</th>
-                                        <th className="p-2 w-[14%] text-left">Contract CC</th>
-                                        <th className="p-2 w-24 text-right">Debit</th>
-                                        <th className="p-2 w-24 text-right">Credit</th>
-                                        <th className="p-2 w-10"></th>
+                                        <th className="p-2 w-[14%] text-left">Description</th>
+                                        <th className="p-2 w-[14%] text-left">Partner</th>
+                                        <th className="p-2 w-[11%] text-left">Cost Center</th>
+                                        <th className="p-2 w-[11%] text-left">Project CC</th>
+                                        <th className="p-2 w-[11%] text-left">Contract CC</th>
+                                        <th className="p-2 w-20 text-right">Debit</th>
+                                        <th className="p-2 w-20 text-right">Credit</th>
+                                        <th className="p-2 w-8"></th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
@@ -510,6 +556,17 @@ export const JournalEntries: React.FC = () => {
                                                     value={line.description}
                                                     onChange={e => updateLine(idx, 'description', e.target.value)}
                                                 />
+                                            </td>
+                                            <td className="p-2">
+                                                <select
+                                                    disabled={currentEntry.state === 'Posted'}
+                                                    className="w-full p-1 border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 rounded text-xs disabled:opacity-75 disabled:bg-slate-100 dark:disabled:bg-zinc-800"
+                                                    value={line.partner_id || ''}
+                                                    onChange={e => updateLine(idx, 'partner_id', e.target.value || undefined)}
+                                                >
+                                                    <option value="">None</option>
+                                                    {partners.map(p => <option key={p.id} value={p.id}>{p.name} {p.code ? `(${p.code})` : ''}</option>)}
+                                                </select>
                                             </td>
                                             <td className="p-2">
                                                 <select
