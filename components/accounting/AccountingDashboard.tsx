@@ -25,9 +25,10 @@ import { DayBook } from './reporting/DayBook';
 import { FinanceDashboard } from './FinanceDashboard';
 import { FixedAssets } from './operations/FixedAssets';
 import { AccountingMasters } from '../modules/organisation/AccountingMasters';
+import OpeningBalances from './operations/OpeningBalances';
 
 export const AccountingDashboard: React.FC = () => {
-    const [activeTab, setActiveTab] = useState<'overview' | 'customers' | 'vendors' | 'payments' | 'daybook' | 'journal' | 'banking' | 'assets' | 'reporting' | 'masters' | 'settings'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'customers' | 'vendors' | 'payments' | 'daybook' | 'journal' | 'banking' | 'assets' | 'reporting' | 'masters' | 'opening_balances' | 'settings'>('overview');
     const [subTab, setSubTab] = useState('invoices');
 
     return (
@@ -41,7 +42,7 @@ export const AccountingDashboard: React.FC = () => {
 
                 {/* Tabs */}
                 <div className="flex flex-wrap gap-0.5 bg-slate-100 dark:bg-zinc-800 p-1 rounded-lg overflow-x-auto max-w-full">
-                    {['overview', 'customers', 'vendors', 'payments', 'daybook', 'journal', 'banking', 'assets', 'reporting', 'masters', 'settings'].map(tab => (
+                    {['overview', 'customers', 'vendors', 'payments', 'daybook', 'journal', 'banking', 'assets', 'reporting', 'masters', 'opening_balances', 'settings'].map(tab => (
                         <button
                             key={tab}
                             onClick={() => { 
@@ -57,7 +58,7 @@ export const AccountingDashboard: React.FC = () => {
                                 ? 'bg-white dark:bg-zinc-700 text-violet-600 dark:text-violet-400 shadow-sm'
                                 : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
                         >
-                            {tab === 'overview' ? '📊 Overview' : tab === 'daybook' ? '📅 Day Book' : tab === 'assets' ? '🏢 Assets' : tab === 'masters' ? '📚 Masters' : tab}
+                            {tab === 'overview' ? '📊 Overview' : tab === 'daybook' ? '📅 Day Book' : tab === 'assets' ? '🏢 Assets' : tab === 'masters' ? '📚 Masters' : tab === 'opening_balances' ? '📥 Opening Balances' : tab}
                         </button>
                     ))}
                 </div>
@@ -147,6 +148,8 @@ export const AccountingDashboard: React.FC = () => {
                 {activeTab === 'masters' && subTab === 'fiscal' && <FiscalYears />}
 
                 {activeTab === 'assets' && <FixedAssets />}
+                
+                {activeTab === 'opening_balances' && <OpeningBalances />}
 
                 {activeTab === 'settings' && <AccountingSettings />}
             </div>

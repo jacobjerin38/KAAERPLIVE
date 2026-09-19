@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
-import { Plus, Search, Filter, ArrowRight, Save, Trash2, Edit, Eye, BookOpen } from 'lucide-react';
+import { Plus, Search, Filter, ArrowRight, Save, Trash2, Edit, Eye, BookOpen, FileSpreadsheet, X } from 'lucide-react';
 import { Modal } from '../../ui/Modal';
 import { PrintButton } from '../../ui/PrintButton';
+import OpeningBalances from './OpeningBalances';
 
 
 interface JournalEntry {
@@ -34,6 +35,7 @@ export const JournalEntries: React.FC = () => {
     const { currentCompanyId } = useAuth();
     const [entries, setEntries] = useState<JournalEntry[]>([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [showOBModal, setShowOBModal] = useState(false);
     const [currentEntry, setCurrentEntry] = useState<Partial<JournalEntry>>({ lines: [] });
     
     // Masters
@@ -394,6 +396,13 @@ export const JournalEntries: React.FC = () => {
                 <div className="flex items-center gap-3 no-print">
                     <PrintButton />
                     <button 
+                        onClick={() => setShowOBModal(true)} 
+                        className="flex items-center gap-2 px-3.5 py-2 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-lg hover:bg-indigo-100 font-semibold text-xs sm:text-sm transition shadow-xs"
+                        title="Excel upload and migration tool for Trial Balance, Debtors, Creditors & Stock"
+                    >
+                        <FileSpreadsheet className="w-4 h-4 text-indigo-600" /> Excel Migration Hub
+                    </button>
+                    <button 
                         onClick={handleOpenOpeningBalanceTemplate} 
                         className="flex items-center gap-2 px-3.5 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-semibold text-xs sm:text-sm transition shadow-xs"
                         title="Pre-populate balanced template to enter company opening balances"
@@ -686,6 +695,26 @@ export const JournalEntries: React.FC = () => {
                         </div>
                     </div>
                 </Modal>
+            )}
+
+            {/* Opening Balances & Excel Migration Modal */}
+            {showOBModal && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
+                    <div className="bg-white dark:bg-zinc-900 rounded-2xl w-full max-w-6xl h-[94vh] flex flex-col shadow-2xl overflow-hidden border border-slate-200 dark:border-zinc-800">
+                        <div className="px-4 py-3 bg-slate-100 dark:bg-zinc-800 border-b border-slate-200 dark:border-zinc-700 flex justify-between items-center">
+                            <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Opening Balances & Excel Migration Hub</span>
+                            <button 
+                                onClick={() => { setShowOBModal(false); fetchEntries(); }} 
+                                className="p-1 text-slate-500 hover:text-slate-800 dark:hover:text-white rounded"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="flex-1 overflow-hidden">
+                            <OpeningBalances companyId={currentCompanyId} />
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );
