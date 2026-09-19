@@ -325,11 +325,12 @@ export default function CustomersView({ companyId }: { companyId: string }) {
                                 ? 'bg-white dark:bg-zinc-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
                                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                         }`}
+                        title="View list of clients and corporate customers"
                     >
                         <Users size={15} />
                         <span>Clients & Customers</span>
-                        <span className="px-1.5 py-0.2 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 text-[11px] rounded-full font-bold">
-                            {customers.length}
+                        <span className="px-2 py-0.5 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 text-[11px] rounded-full font-bold">
+                            {customers.length} Clients
                         </span>
                     </button>
 
@@ -340,11 +341,12 @@ export default function CustomersView({ companyId }: { companyId: string }) {
                                 ? 'bg-white dark:bg-zinc-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
                                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                         }`}
+                        title="View all Call-Off Work Orders and Purchase Orders across contracts"
                     >
                         <FileText size={15} />
                         <span>Call-Off Work Orders & POs</span>
-                        <span className="px-1.5 py-0.2 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 text-[11px] rounded-full font-bold">
-                            {workOrders.length}
+                        <span className="px-2 py-0.5 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 text-[11px] rounded-full font-bold">
+                            {workOrders.length} Orders
                         </span>
                     </button>
                 </div>
@@ -514,7 +516,7 @@ export default function CustomersView({ companyId }: { companyId: string }) {
                                                     </div>
                                                     <div className="flex items-center gap-1 font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-0.5 rounded-md">
                                                         <FileText size={11} />
-                                                        <span>{clientWOs.length} Work Orders</span>
+                                                        <span>{clientWOs.length} {clientWOs.length === 1 ? 'Work Order' : 'Work Orders'}</span>
                                                     </div>
                                                 </div>
 
