@@ -64,12 +64,23 @@ export const getLinkedEmployeeId = async (profileId: string): Promise<string | u
 
 export const getSalesReps = async (companyId: string): Promise<{ id: string; name: string; profileId?: string }[]> => {
   try {
-    const { data } = await supabase
+    let query = (supabase as any)
       .from('employees')
       .select('id, name, profile_id')
-      .eq('company_id', companyId)
-      .eq('is_active', true)
       .order('name');
+
+    if (companyId) {
+      query = query.eq('company_id', companyId);
+    }
+    query = query.neq('status', 'Resigned');
+
+    const { data, error } = await query;
+    if (error) {
+      console.warn('Could not load employees for sales reps, falling back to profiles:', error);
+      const { data: profs } = await supabase.from('profiles').select('id, full_name').order('full_name');
+      return (profs || []).map((p: any) => ({ id: p.id, name: p.full_name || 'User', profileId: p.id }));
+    }
+
     return (data || []).map((e: any) => ({
       id: e.id,
       name: e.name,
@@ -139,10 +150,7 @@ export const getLeads = async (
   const isAdmin = checkIsAdmin(effectiveUserRole);
 
   let query = (supabase as any).from('crm_leads')
-    .select(`
-        *,
-        lead_owner:employees!crm_leads_lead_owner_id_fkey(*)
-    `);
+    .select('*');
 
   if (isAdmin) {
     if (filterOwnerId && filterOwnerId !== 'ALL') {
@@ -169,7 +177,30 @@ export const getLeads = async (
     console.error('Error fetching leads:', error);
     return [];
   }
-  return data || [];
+
+  const leads = data || [];
+  if (leads.length > 0) {
+    const ownerIds = Array.from(new Set(leads.map((l: any) => l.lead_owner_id).filter(Boolean)));
+    if (ownerIds.length > 0) {
+      try {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, full_name, email')
+          .in('id', ownerIds);
+        const profMap = new Map((profiles || []).map((p: any) => [p.id, p]));
+        leads.forEach((l: any) => {
+          if (l.lead_owner_id && profMap.has(l.lead_owner_id)) {
+            const prof = profMap.get(l.lead_owner_id);
+            l.lead_owner = { id: prof.id, name: prof.full_name, email: prof.email };
+          }
+        });
+      } catch (profErr) {
+        console.warn('Could not enrich lead owners:', profErr);
+      }
+    }
+  }
+
+  return leads;
 };
 
 export const createLead = async (lead: Partial<Lead>): Promise<Lead | null> => {

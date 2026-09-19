@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
     Plus, Mail, Phone, Building, ChevronDown, Loader2, Users, ArrowRight, Link2, 
     Lock, Shield, Search, X, FileText, Printer, Download, Calendar, DollarSign, 
-    Edit, Trash2, Paperclip, Briefcase, CheckCircle2, Clock, AlertCircle, ExternalLink
+    Edit, Trash2, Paperclip, Briefcase, CheckCircle2, Clock, AlertCircle, ExternalLink, FileCheck
 } from 'lucide-react';
 import { Customer, CRMCustomer, CRMCustomerWorkOrder } from './types';
 import { 
