@@ -109,8 +109,39 @@ export interface CRMCustomer {
   owner_id?: string;
   created_by?: string;
   status: 'Active' | 'Inactive';
+
+  // Contract & PO / WO provisions
+  start_date?: string;
+  remarks?: string;
+  contract_number?: string;
+  contract_title?: string;
+  contract_type?: string;
+
   created_at: string;
 }
+
+export interface CRMCustomerWorkOrder {
+  id: string;
+  company_id: string;
+  customer_id: string;
+  customer?: CRMCustomer;
+  wo_number: string;
+  contract_ref?: string;
+  description: string;
+  amount?: number;
+  currency?: string;
+  issue_date?: string;
+  start_date?: string;
+  completion_date?: string;
+  status: 'In Progress' | 'Pending' | 'Completed' | 'Billed' | 'Cancelled';
+  remarks?: string;
+  document_url?: string;
+  created_by?: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+export type CustomerWorkOrder = CRMCustomerWorkOrder;
 
 export interface CRMOpportunity {
   id: string;

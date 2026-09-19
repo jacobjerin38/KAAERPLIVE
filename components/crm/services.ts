@@ -1,4 +1,4 @@
-import { Deal, Contact, LeadAnalysis, Task, Stage, Lead, Customer, Opportunity } from "./types";
+import { Deal, Contact, LeadAnalysis, Task, Stage, Lead, Customer, Opportunity, CRMCustomerWorkOrder } from "./types";
 import { supabase } from "../../lib/supabase";
 import { CRMStage, CRMTaskStatus, CRMTaskPriority, CRMDocument, CRMActivity } from "../../types";
 
@@ -326,6 +326,88 @@ export const updateCustomer = async (id: string, updates: Partial<Customer>): Pr
     return null;
   }
   return data;
+};
+
+// CUSTOMER WORK ORDERS & POs (Call-off contracts)
+export const getCustomerWorkOrders = async (customerId: string): Promise<CRMCustomerWorkOrder[]> => {
+  const { data, error } = await (supabase as any).from('crm_customer_work_orders')
+    .select(`
+      *,
+      customer:crm_customers(id, name, contract_number, contract_title)
+    `)
+    .eq('customer_id', customerId)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.error('Error fetching customer work orders:', error);
+    return [];
+  }
+  return data || [];
+};
+
+export const getAllWorkOrders = async (companyId: string): Promise<CRMCustomerWorkOrder[]> => {
+  const { data, error } = await (supabase as any).from('crm_customer_work_orders')
+    .select(`
+      *,
+      customer:crm_customers(id, name, contract_number, contract_title)
+    `)
+    .eq('company_id', companyId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching all work orders:', error);
+    return [];
+  }
+  return data || [];
+};
+
+export const createCustomerWorkOrder = async (wo: Partial<CRMCustomerWorkOrder>): Promise<CRMCustomerWorkOrder | null> => {
+  if (!wo.customer_id || !wo.wo_number || !wo.description) {
+    throw new Error('Customer, PO/WO Number, and Description are required.');
+  }
+
+  const { data, error } = await (supabase as any).from('crm_customer_work_orders')
+    .insert([wo])
+    .select(`
+      *,
+      customer:crm_customers(id, name, contract_number, contract_title)
+    `)
+    .single();
+
+  if (error) {
+    console.error('Error creating customer work order:', error);
+    throw error;
+  }
+  return data;
+};
+
+export const updateCustomerWorkOrder = async (id: string, updates: Partial<CRMCustomerWorkOrder>): Promise<CRMCustomerWorkOrder | null> => {
+  const { data, error } = await (supabase as any).from('crm_customer_work_orders')
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select(`
+      *,
+      customer:crm_customers(id, name, contract_number, contract_title)
+    `)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Error updating customer work order:', error);
+    throw error;
+  }
+  return data;
+};
+
+export const deleteCustomerWorkOrder = async (id: string): Promise<boolean> => {
+  const { error } = await (supabase as any).from('crm_customer_work_orders')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    console.error('Error deleting customer work order:', error);
+    return false;
+  }
+  return true;
 };
 
 // OPPORTUNITIES
