@@ -111,57 +111,177 @@ export const CRM: React.FC = () => {
         init();
     }, [user, userRole, currentCompanyId]);
 
+    // Refresh dashboard whenever switching to DASHBOARD tab
+    useEffect(() => {
+        if (activeTab === 'DASHBOARD' && companyId) {
+            fetchCRMData(companyId);
+        }
+    }, [activeTab, companyId]);
+
     const fetchCRMData = async (companyId: string, employeeIdOverride?: string) => {
         setLoading(true);
         try {
             const isAdmin = checkIsAdmin(userRole);
             const empId = employeeIdOverride || currentEmployee?.id;
             
-            let dealsQuery = (supabase as any).from('crm_deals').select('*').eq('company_id', companyId);
-            let contactsQuery = (supabase as any).from('crm_contacts').select('*').eq('company_id', companyId);
+            // 1. Opportunities Query (with customer and stage)
+            let oppsQuery = (supabase as any)
+                .from('crm_opportunities')
+                .select(`
+                    *,
+                    customer:crm_customers(*),
+                    stage:org_crm_stages(*)
+                `)
+                .eq('company_id', companyId)
+                .order('created_at', { ascending: false });
+
+            // 2. Customers Query
+            let customersQuery = (supabase as any)
+                .from('crm_customers')
+                .select('*')
+                .eq('company_id', companyId)
+                .order('name', { ascending: true });
+
+            // 3. Leads Query
+            let leadsQuery = (supabase as any)
+                .from('crm_leads')
+                .select('id, first_name, last_name, organization_name, status, created_at')
+                .eq('company_id', companyId);
+
+            // 4. Tasks Query
+            let tasksQuery = (supabase as any)
+                .from('crm_tasks')
+                .select('*')
+                .eq('company_id', companyId)
+                .order('due_date', { ascending: true });
+
+            // 5. Documents Query
             let docsQuery = (supabase as any)
                 .from('crm_documents')
                 .select('*')
                 .eq('company_id', companyId)
                 .order('created_at', { ascending: false });
 
+            // 6. Activity Log Query
+            let activityQuery = (supabase as any)
+                .from('crm_activity_log')
+                .select('*')
+                .eq('company_id', companyId)
+                .order('created_at', { ascending: false })
+                .limit(20);
+
             if (!isAdmin && user?.id) {
                 const ownerFilter = empId
-                    ? `created_by.eq.${user.id},owner_id.eq.${user.id},owner_id.eq.${empId}`
+                    ? `created_by.eq.${user.id},owner_id.eq.${user.id}`
                     : `created_by.eq.${user.id},owner_id.eq.${user.id}`;
-                dealsQuery = dealsQuery.or(ownerFilter);
-                contactsQuery = contactsQuery.or(ownerFilter);
+                oppsQuery = oppsQuery.or(ownerFilter);
+                customersQuery = customersQuery.or(ownerFilter);
             }
 
             // Parallel Fetch
             const [
-                { data: dealsData },
-                { data: contactsData },
+                { data: oppsData },
+                { data: customersData },
+                { data: leadsData },
                 { data: tasksData },
-                { data: documentsData }
+                { data: documentsData },
+                { data: activityData }
             ] = await Promise.all([
-                dealsQuery,
-                contactsQuery,
-                (supabase as any).from('crm_tasks').select('*').eq('company_id', companyId),
-                docsQuery
+                oppsQuery,
+                customersQuery,
+                leadsQuery,
+                tasksQuery,
+                docsQuery,
+                activityQuery
             ]);
 
-            setDeals((dealsData as any) || []);
-            setContacts((contactsData as any) || []);
-            setTasks((tasksData as any) || []);
+            const mappedDeals: Deal[] = (oppsData || []).map((opp: any) => ({
+                id: opp.id,
+                company_id: opp.company_id,
+                title: opp.title,
+                company: opp.customer?.name || 'Unknown Client',
+                value: Number(opp.amount || 0),
+                currency: opp.currency || 'QAR',
+                stage_id: opp.stage_id,
+                stage: opp.stage,
+                status: opp.status === 'Won' || opp.stage?.name === 'Won' ? 'WON' : opp.status === 'Lost' || opp.stage?.name === 'Lost' ? 'LOST' : 'OPEN',
+                expected_close_date: opp.expected_closing_date,
+                created_at: opp.created_at,
+                created_by: opp.created_by,
+                owner_id: opp.owner_id
+            } as any));
+
+            const mappedContacts: Contact[] = (customersData || []).map((c: any) => ({
+                id: c.id,
+                company_id: c.company_id,
+                name: c.name,
+                company: c.name,
+                email: c.primary_email || '',
+                phone: c.primary_phone || '',
+                role: c.customer_type || 'Customer',
+                status: c.status || 'Active',
+                created_at: c.created_at
+            } as any));
+
+            const mappedTasks: Task[] = (tasksData || []).map((t: any) => ({
+                id: t.id,
+                company_id: t.company_id,
+                title: t.title,
+                description: t.description,
+                due_date: t.due_date,
+                status: t.status,
+                priority_details: { name: t.priority || 'Medium' },
+                created_at: t.created_at
+            } as any));
+
+            setDeals(mappedDeals);
+            setContacts(mappedContacts);
+            setTasks(mappedTasks);
             setDocuments(documentsData || []);
 
-            // Calculate Stats
-            const totalPipeline = (dealsData || []).reduce((acc: number, d: any) => acc + (d.amount || d.value || 0), 0);
-            const wonDeals = (dealsData || []).filter((d: any) => d.stage_id === 4 || d.status === 'Won');
-            const conversionRate = dealsData?.length ? (wonDeals.length / dealsData.length) * 100 : 0;
+            // Calculate Stats accurately from real opportunities & customers
+            const totalPipeline = mappedDeals.reduce((acc: number, d: any) => acc + (d.value || 0), 0);
+            const wonDeals = mappedDeals.filter((d: any) => d.status === 'WON' || d.stage?.name === 'Won');
+            const activeDeals = mappedDeals.filter((d: any) => d.status === 'OPEN');
+            const totalContacts = (customersData || []).length + (leadsData || []).length;
+            const conversionRate = mappedDeals.length ? (wonDeals.length / mappedDeals.length) * 100 : 0;
 
             setStats({
                 totalRevenue: totalPipeline,
-                activeDeals: (dealsData || []).filter((d: any) => d.status === 'Open' || !d.status).length,
-                totalContacts: (contactsData || []).length,
+                activeDeals: activeDeals.length,
+                totalContacts: totalContacts,
                 conversionRate: conversionRate
             });
+
+            // Process Activities
+            if (activityData && activityData.length > 0) {
+                setActivities(activityData.map((act: any) => ({
+                    id: act.id,
+                    description: act.description,
+                    created_at: act.created_at,
+                    performer: { name: user?.email?.split('@')[0] || 'PEC Sales' }
+                } as any)));
+            } else {
+                const syntheticActivities: CRMActivity[] = [];
+                (oppsData || []).slice(0, 6).forEach((opp: any) => {
+                    syntheticActivities.push({
+                        id: `act-opp-${opp.id}`,
+                        description: `${opp.status === 'Won' || opp.stage?.name === 'Won' ? 'Closed won' : 'Created'} opportunity "${opp.title}" for ${opp.customer?.name || 'client'} (${opp.currency || 'QAR'} ${Number(opp.amount || 0).toLocaleString()})`,
+                        created_at: opp.created_at,
+                        performer: { name: user?.email?.split('@')[0] || 'PEC Sales' }
+                    } as any);
+                });
+                (customersData || []).slice(0, 3).forEach((cust: any) => {
+                    syntheticActivities.push({
+                        id: `act-cust-${cust.id}`,
+                        description: `Registered client account "${cust.name}"`,
+                        created_at: cust.created_at,
+                        performer: { name: user?.email?.split('@')[0] || 'PEC Sales' }
+                    } as any);
+                });
+                syntheticActivities.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+                setActivities(syntheticActivities);
+            }
 
         } catch (error) {
             console.error('Error fetching CRM data:', error);
@@ -839,7 +959,7 @@ export const CRM: React.FC = () => {
                                                 <option value="">-- Choose a Deal / Opportunity --</option>
                                                 {deals.map(d => (
                                                     <option key={d.id} value={d.id}>
-                                                        {d.title || (d as any).name || `Deal #${d.id}`} {d.value ? `($${d.value.toLocaleString()})` : ''}
+                                                        {d.title || (d as any).name || `Deal #${d.id}`} {d.value ? `(QAR ${d.value.toLocaleString()})` : ''}
                                                     </option>
                                                 ))}
                                             </select>
@@ -1177,7 +1297,16 @@ export const CRM: React.FC = () => {
                     </div>
                 ) : (
                     <>
-                        {activeTab === 'DASHBOARD' && <SummaryView stats={stats} activities={activities} deals={deals} tasks={tasks} />}
+                        {activeTab === 'DASHBOARD' && (
+                            <SummaryView 
+                                stats={stats} 
+                                activities={activities} 
+                                deals={deals} 
+                                tasks={tasks} 
+                                companyId={companyId || undefined}
+                                onRefresh={() => companyId && fetchCRMData(companyId)}
+                            />
+                        )}
                         {activeTab === 'LEADS' && <LeadsView companyId={companyId} onConvert={(tab) => setActiveTab(tab)} />}
                         {activeTab === 'OPPORTUNITIES' && <OpportunitiesView companyId={companyId} onConvert={(tab) => setActiveTab(tab)} />}
                         {activeTab === 'CUSTOMERS' && <CustomersView companyId={companyId} />}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, LayoutGrid, List as ListIcon, DollarSign, Calendar, ChevronDown, MoreHorizontal, KanbanSquare, Loader2, ArrowRight, Trophy, XCircle, Link2, Lock, Shield, Building, Mail, Phone, Globe, MapPin, X } from 'lucide-react';
+import { Plus, LayoutGrid, List as ListIcon, Calendar, ChevronDown, MoreHorizontal, KanbanSquare, Loader2, ArrowRight, Trophy, XCircle, Link2, Lock, Shield, Building, Mail, Phone, Globe, MapPin, X } from 'lucide-react';
 import { Opportunity, Customer, Stage, CRMViewMode } from './types';
 import { getOpportunities, createOpportunity, updateOpportunity, getStages, getCustomers, createCustomer, convertOpportunityToCustomer, checkIsAdmin, getSalesReps } from './services';
 import { useAuth } from '../../contexts/AuthContext';
@@ -18,7 +18,7 @@ export default function OpportunitiesView({ companyId, onConvert }: Opportunitie
     const [stages, setStages] = useState<Stage[]>([]);
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [showModal, setShowModal] = useState(false);
-    const [activeOpp, setActiveOpp] = useState<Partial<Opportunity>>({});
+    const [activeOpp, setActiveOpp] = useState<Partial<Opportunity>>({ currency: 'QAR' });
     const [viewMode, setViewMode] = useState<'KANBAN' | 'LIST'>('KANBAN');
     const [draggedOppId, setDraggedOppId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
@@ -130,6 +130,7 @@ export default function OpportunitiesView({ companyId, onConvert }: Opportunitie
 
         const payload = {
             ...activeOpp,
+            currency: activeOpp.currency || 'QAR',
             title: activeOpp.title.trim(),
             stage_id: activeOpp.stage_id || stages[0]?.id
         };
@@ -267,7 +268,7 @@ export default function OpportunitiesView({ companyId, onConvert }: Opportunitie
                     </div>
 
                     <button
-                        onClick={() => { setActiveOpp({}); setShowModal(true); }}
+                        onClick={() => { setActiveOpp({ currency: 'QAR' }); setShowModal(true); }}
                         className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shadow-md shadow-indigo-600/20 text-sm font-medium"
                     >
                         <Plus size={18} />
@@ -343,8 +344,7 @@ export default function OpportunitiesView({ companyId, onConvert }: Opportunitie
 
                                                     <div className="flex justify-between items-center text-xs text-slate-500 pt-2.5 border-t border-slate-50 dark:border-zinc-800">
                                                         <div className="flex items-center gap-1">
-                                                            <DollarSign size={12} />
-                                                            <span className="font-medium text-slate-900 dark:text-white">{opp.currency} {opp.amount?.toLocaleString()}</span>
+                                                            <span className="font-semibold text-slate-900 dark:text-white">{opp.currency || 'QAR'} {Number(opp.amount || 0).toLocaleString()}</span>
                                                         </div>
                                                         <div className="flex items-center gap-1">
                                                             <Calendar size={12} />
@@ -398,7 +398,7 @@ export default function OpportunitiesView({ companyId, onConvert }: Opportunitie
                                         <td className="py-3 px-5 text-sm text-slate-500">{opp.customer?.name}</td>
                                         <td className="py-3 px-5 text-sm"><span className="px-2 py-1 bg-slate-100 dark:bg-zinc-800 rounded-lg text-xs font-medium">{opp.stage?.name}</span></td>
                                         <td className="py-3 px-5"><span className={`px-2 py-1 rounded-lg text-xs font-medium border ${getStatusBadge(opp.status)}`}>{opp.status}</span></td>
-                                        <td className="py-3 px-5 text-sm text-slate-900 dark:text-white text-right font-medium">{opp.currency} {opp.amount?.toLocaleString()}</td>
+                                        <td className="py-3 px-5 text-sm text-slate-900 dark:text-white text-right font-medium">{opp.currency || 'QAR'} {Number(opp.amount || 0).toLocaleString()}</td>
                                     </tr>
                                 ))}
                             </tbody>

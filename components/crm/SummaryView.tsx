@@ -1,19 +1,22 @@
-import React, { useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
     TrendingUp, Briefcase, Users, PieChart as PieChartIcon,
-    CheckSquare, Plus, ArrowUpRight
+    CheckSquare, Plus, ArrowUpRight, X, Calendar as CalendarIcon, Loader2
 } from 'lucide-react';
 import {
     AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
 import { CRMStats, CRMActivity, Deal, Task } from './types';
 import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
 
 interface SummaryViewProps {
     stats: CRMStats | null;
     activities: CRMActivity[];
     deals: Deal[];
     tasks: Task[];
+    companyId?: string;
+    onRefresh?: () => void;
 }
 
 const StatCard = ({ title, value, icon: Icon, color }: any) => {
@@ -38,8 +41,13 @@ const StatCard = ({ title, value, icon: Icon, color }: any) => {
     );
 };
 
-export default function SummaryView({ stats, activities, deals, tasks }: SummaryViewProps) {
+export default function SummaryView({ stats, activities, deals, tasks, companyId, onRefresh }: SummaryViewProps) {
     const { user } = useAuth();
+    const [showTaskModal, setShowTaskModal] = useState(false);
+    const [savingTask, setSavingTask] = useState(false);
+    const [taskTitle, setTaskTitle] = useState('');
+    const [taskPriority, setTaskPriority] = useState('Medium');
+    const [taskDueDate, setTaskDueDate] = useState(new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0]);
 
     // Compute monthly revenue from real deals data
     const revenueChartData = useMemo(() => {
@@ -56,7 +64,33 @@ export default function SummaryView({ stats, activities, deals, tasks }: Summary
         return months.map((name, i) => ({ name, value: monthlyTotals[i] }));
     }, [deals]);
 
+    const topDeals = useMemo(() => {
+        return [...(deals || [])].sort((a, b) => (b.value || 0) - (a.value || 0)).slice(0, 4);
+    }, [deals]);
+
     const hasChartData = revenueChartData.some(d => d.value > 0);
+
+    const handleSaveTask = async () => {
+        if (!taskTitle.trim() || !companyId) return;
+        setSavingTask(true);
+        try {
+            await (supabase as any).from('crm_tasks').insert([{
+                company_id: companyId,
+                title: taskTitle.trim(),
+                priority: taskPriority,
+                due_date: taskDueDate || null,
+                status: 'Pending',
+                owner_id: user?.id || null
+            }]);
+            setShowTaskModal(false);
+            setTaskTitle('');
+            onRefresh?.();
+        } catch (err) {
+            console.error('Error creating task:', err);
+        } finally {
+            setSavingTask(false);
+        }
+    };
 
     return (
         <div className="p-6 lg:p-8 h-full flex flex-col overflow-y-auto">
@@ -70,7 +104,7 @@ export default function SummaryView({ stats, activities, deals, tasks }: Summary
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                 <StatCard
                     title="Total Pipeline"
-                    value={`$${(stats?.totalRevenue || 0).toLocaleString()}`}
+                    value={`QAR ${(stats?.totalRevenue || 0).toLocaleString()}`}
                     icon={TrendingUp}
                     color="indigo"
                 />
@@ -116,9 +150,15 @@ export default function SummaryView({ stats, activities, deals, tasks }: Summary
                                     </defs>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} dy={10} />
-                                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
+                                    <YAxis 
+                                        axisLine={false} 
+                                        tickLine={false} 
+                                        tick={{ fill: '#94a3b8', fontSize: 12 }} 
+                                        tickFormatter={(val) => val >= 1000000 ? `${(val / 1000000).toFixed(1)}M` : val >= 1000 ? `${(val / 1000).toFixed(0)}k` : String(val)}
+                                    />
                                     <Tooltip
                                         contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', padding: '8px 12px' }}
+                                        formatter={(val: any) => [`QAR ${Number(val || 0).toLocaleString()}`, 'Revenue']}
                                         cursor={{ stroke: '#6366f1', strokeWidth: 2 }}
                                     />
                                     <Area type="monotone" dataKey="value" stroke="#6366f1" strokeWidth={2.5} fillOpacity={1} fill="url(#colorValue)" />
@@ -172,14 +212,14 @@ export default function SummaryView({ stats, activities, deals, tasks }: Summary
                     <div className="flex justify-between items-center mb-5">
                         <h3 className="text-lg font-bold text-slate-900 dark:text-white">Top Deals</h3>
                     </div>
-                    {(deals || []).length === 0 ? (
+                    {topDeals.length === 0 ? (
                         <div className="h-32 flex flex-col items-center justify-center text-slate-400">
                             <Briefcase className="w-8 h-8 mb-2 opacity-30" />
                             <p className="text-sm">No deals yet</p>
                         </div>
                     ) : (
                         <div className="space-y-3">
-                            {(deals || []).slice(0, 4).map((deal) => (
+                            {topDeals.map((deal) => (
                                 <div key={deal.id} className="flex items-center justify-between p-3.5 bg-slate-50 dark:bg-zinc-800/50 rounded-xl hover:bg-white dark:hover:bg-zinc-800 hover:shadow-sm transition-all border border-transparent hover:border-slate-100 dark:hover:border-zinc-700">
                                     <div className="flex items-center gap-3">
                                         <div className="w-10 h-10 bg-white dark:bg-zinc-900 rounded-lg flex items-center justify-center text-indigo-600 shadow-sm">
@@ -187,12 +227,12 @@ export default function SummaryView({ stats, activities, deals, tasks }: Summary
                                         </div>
                                         <div>
                                             <h4 className="font-semibold text-slate-800 dark:text-white text-sm">{deal.title}</h4>
-                                            <p className="text-xs text-slate-500 mt-0.5">{deal.stage?.name || 'Unknown Stage'}</p>
+                                            <p className="text-xs text-slate-500 mt-0.5">{deal.company ? `${deal.company} • ` : ''}{deal.stage?.name || 'Unknown Stage'}</p>
                                         </div>
                                     </div>
                                     <div className="text-right">
                                         <p className="font-bold text-slate-900 dark:text-white text-sm">QAR {deal.value.toLocaleString()}</p>
-                                        <span className="text-[10px] font-medium text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 px-1.5 py-0.5 rounded">{deal.stage?.win_probability || 0}%</span>
+                                        <span className="text-[10px] font-medium text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 px-1.5 py-0.5 rounded">{Number(deal.stage?.win_probability || 0)}%</span>
                                     </div>
                                 </div>
                             ))}
@@ -217,10 +257,10 @@ export default function SummaryView({ stats, activities, deals, tasks }: Summary
                                     'Low': 'bg-emerald-500'
                                 };
                                 return (
-                                    <div key={task.id} className="bg-white/10 backdrop-blur-md p-3.5 rounded-xl border border-white/10 hover:bg-white/20 transition-all flex items-center gap-3 cursor-pointer">
+                                    <div key={task.id} className="bg-white/10 backdrop-blur-md p-3.5 rounded-xl border border-white/10 hover:bg-white/20 transition-all flex items-center gap-3">
                                         <div className="flex-1 min-w-0">
                                             <p className="font-medium text-sm truncate">{task.title}</p>
-                                            <p className="text-[11px] opacity-70 mt-0.5">{new Date(task.due_date).toLocaleDateString()}</p>
+                                            <p className="text-[11px] opacity-70 mt-0.5">{task.due_date ? new Date(task.due_date).toLocaleDateString() : 'No date'}</p>
                                         </div>
                                         <span className={`w-2 h-2 rounded-full ${priorityColors[task.priority_details?.name || ''] || 'bg-slate-400'}`}></span>
                                     </div>
@@ -228,11 +268,82 @@ export default function SummaryView({ stats, activities, deals, tasks }: Summary
                             })}
                         </div>
                     )}
-                    <button className="mt-4 w-full py-2.5 bg-white/15 backdrop-blur-md rounded-xl font-medium text-sm hover:bg-white/25 transition-colors flex items-center justify-center gap-2 relative z-10">
+                    <button 
+                        onClick={() => setShowTaskModal(true)} 
+                        className="mt-4 w-full py-2.5 bg-white/15 backdrop-blur-md rounded-xl font-medium text-sm hover:bg-white/25 transition-colors flex items-center justify-center gap-2 relative z-10"
+                    >
                         <Plus className="w-4 h-4" /> Add Task
                     </button>
                 </div>
             </div>
+
+            {/* Quick Add Task Modal */}
+            {showTaskModal && (
+                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white dark:bg-zinc-900 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden border border-slate-200 dark:border-zinc-800 p-6">
+                        <div className="flex justify-between items-center mb-5">
+                            <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                <CheckSquare className="w-5 h-5 text-indigo-600" /> New Task
+                            </h3>
+                            <button onClick={() => setShowTaskModal(false)} className="text-slate-400 hover:text-slate-600">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">Task Title *</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. Follow up with client regarding quotation"
+                                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                    value={taskTitle}
+                                    onChange={e => setTaskTitle(e.target.value)}
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">Priority</label>
+                                    <select
+                                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                        value={taskPriority}
+                                        onChange={e => setTaskPriority(e.target.value)}
+                                    >
+                                        <option value="High">High</option>
+                                        <option value="Medium">Medium</option>
+                                        <option value="Low">Low</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">Due Date</label>
+                                    <input
+                                        type="date"
+                                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                        value={taskDueDate}
+                                        onChange={e => setTaskDueDate(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex gap-3 pt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowTaskModal(false)}
+                                    className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-slate-300 text-sm font-semibold hover:bg-slate-50 dark:hover:bg-zinc-800"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={!taskTitle.trim() || savingTask}
+                                    onClick={handleSaveTask}
+                                    className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-md shadow-indigo-600/20"
+                                >
+                                    {savingTask ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Task'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

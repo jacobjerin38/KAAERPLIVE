@@ -723,7 +723,7 @@ export const CRM: React.FC = () => {
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-sm font-bold text-slate-700 mb-1">Value ($)</label>
+                                        <label className="block text-sm font-bold text-slate-700 mb-1">Value (QAR)</label>
                                         <input required type="number" name="value" className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20" placeholder="0.00" />
                                     </div>
                                     <div>
