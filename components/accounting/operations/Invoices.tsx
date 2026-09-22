@@ -92,6 +92,8 @@ export const Invoices: React.FC<InvoicesProps> = ({ initialSearch, initialId, on
     const [creditPeriod, setCreditPeriod] = useState<string>('30');
     const [dueDate, setDueDate] = useState(new Date().toISOString().split('T')[0]);
     const [invoiceReference, setInvoiceReference] = useState('');
+    const [clientPoNumber, setClientPoNumber] = useState('');
+    const [clientPoDate, setClientPoDate] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
 
     // Edit/View State
@@ -370,6 +372,8 @@ export const Invoices: React.FC<InvoicesProps> = ({ initialSearch, initialId, on
             setInvoiceDate(invDate);
             setDueDate(invDueDate);
             setInvoiceReference(inv.reference || '');
+            setClientPoNumber(inv.client_po_number || '');
+            setClientPoDate(inv.client_po_date || '');
             setEditMode(!readonly);
             setViewMode(readonly);
 
@@ -431,6 +435,8 @@ export const Invoices: React.FC<InvoicesProps> = ({ initialSearch, initialId, on
             setMoveType(defaultMoveType);
             setSelectedPartner('');
             setInvoiceReference('');
+            setClientPoNumber('');
+            setClientPoDate('');
             if (journals.length > 0) setSelectedJournal(journals[0].id);
             setInvoiceDate(today);
             setCreditPeriod('30');
@@ -620,7 +626,11 @@ export const Invoices: React.FC<InvoicesProps> = ({ initialSearch, initialId, on
                 };
                 const { error } = await (supabase.rpc as any)('rpc_update_accounting_invoice', updatePayload);
                 if (error) throw error;
-                await supabase.from('accounting_journal_entries').update({ reference: trimmedRef }).eq('id', editingInvoiceId);
+                await supabase.from('accounting_journal_entries').update({ 
+                    reference: trimmedRef,
+                    client_po_number: clientPoNumber.trim() || null,
+                    client_po_date: clientPoDate || null
+                }).eq('id', editingInvoiceId);
                 alert(moveType === 'out_refund' ? 'Sales Return (Credit Note) updated successfully!' : 'Invoice updated successfully!');
             } else {
                 const payload = {
@@ -639,7 +649,11 @@ export const Invoices: React.FC<InvoicesProps> = ({ initialSearch, initialId, on
                 const { data: newId, error } = await (supabase.rpc as any)('rpc_create_accounting_invoice', payload);
                 if (error) throw error;
                 if (newId) {
-                    await supabase.from('accounting_journal_entries').update({ reference: trimmedRef }).eq('id', newId);
+                    await supabase.from('accounting_journal_entries').update({ 
+                        reference: trimmedRef,
+                        client_po_number: clientPoNumber.trim() || null,
+                        client_po_date: clientPoDate || null
+                    }).eq('id', newId);
                 }
                 alert(moveType === 'out_refund' ? 'Sales Return (Credit Note) created successfully!' : 'Invoice created successfully!');
             }
@@ -696,6 +710,8 @@ export const Invoices: React.FC<InvoicesProps> = ({ initialSearch, initialId, on
         if (typeFilter !== 'all' && inv.move_type !== typeFilter) return false;
         const matchesSearch = 
             (inv.reference || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (inv.client_po_number || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (inv.client_po_date || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
             (inv.partner?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
             (inv.partner?.reference_code || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
             (inv.partner?.code || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -770,7 +786,7 @@ export const Invoices: React.FC<InvoicesProps> = ({ initialSearch, initialId, on
                     <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                     <input
                         type="text"
-                        placeholder="Search by customer, reference #, or voucher ID..."
+                        placeholder="Search by customer, PO ref #, invoice #, or voucher ID..."
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
                         className="w-full pl-9 pr-4 py-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
@@ -783,22 +799,24 @@ export const Invoices: React.FC<InvoicesProps> = ({ initialSearch, initialId, on
                 <table className="w-full text-left text-sm">
                     <thead className="bg-slate-50 dark:bg-zinc-800/50 text-slate-500 font-medium">
                         <tr>
-                            <th className="px-6 py-4">Number / Type</th>
-                            <th className="px-6 py-4">Customer</th>
-                            <th className="px-6 py-4">Date</th>
-                            <th className="px-6 py-4">Status</th>
-                            <th className="px-6 py-4 text-right">Total</th>
-                            <th className="px-6 py-4 text-center">Actions</th>
+                            <th className="px-5 py-4">Number / Type</th>
+                            <th className="px-5 py-4">Customer</th>
+                            <th className="px-4 py-4">Client PO Ref #</th>
+                            <th className="px-4 py-4">PO Date</th>
+                            <th className="px-4 py-4">Date</th>
+                            <th className="px-4 py-4">Status</th>
+                            <th className="px-5 py-4 text-right">Total</th>
+                            <th className="px-5 py-4 text-center">Actions</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
                         {loading ? (
-                            <tr><td colSpan={6} className="px-6 py-8 text-center text-slate-500">Loading...</td></tr>
+                            <tr><td colSpan={8} className="px-6 py-8 text-center text-slate-500">Loading...</td></tr>
                         ) : filteredInvoices.length === 0 ? (
-                            <tr><td colSpan={6} className="px-6 py-8 text-center text-slate-400">No records found.</td></tr>
+                            <tr><td colSpan={8} className="px-6 py-8 text-center text-slate-400">No records found.</td></tr>
                         ) : filteredInvoices.map(inv => (
                             <tr key={inv.id} className="hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-colors">
-                                <td className="px-6 py-4">
+                                <td className="px-5 py-4">
                                     <div className="flex flex-col gap-1">
                                         <span className="font-bold text-slate-700 dark:text-slate-300 font-mono text-xs">
                                             {inv.reference || `${inv.move_type === 'out_refund' ? 'CRN' : 'INV'}-${inv.id.slice(0, 5).toUpperCase()}`}
@@ -814,7 +832,7 @@ export const Invoices: React.FC<InvoicesProps> = ({ initialSearch, initialId, on
                                         )}
                                     </div>
                                 </td>
-                                <td className="px-6 py-4">
+                                <td className="px-5 py-4">
                                     <div className="flex items-center gap-1.5">
                                         <span>{inv.partner?.name || '—'}</span>
                                         {(inv.partner?.reference_code || inv.partner?.code) && (
@@ -824,8 +842,20 @@ export const Invoices: React.FC<InvoicesProps> = ({ initialSearch, initialId, on
                                         )}
                                     </div>
                                 </td>
-                                <td className="px-6 py-4 text-slate-500">{inv.date}</td>
-                                <td className="px-6 py-4">
+                                <td className="px-4 py-4">
+                                    {inv.client_po_number ? (
+                                        <span className="font-mono text-xs font-bold text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 px-2 py-0.5 rounded inline-block">
+                                            {inv.client_po_number}
+                                        </span>
+                                    ) : (
+                                        <span className="text-slate-400 text-xs">—</span>
+                                    )}
+                                </td>
+                                <td className="px-4 py-4 text-slate-600 dark:text-slate-300 text-xs font-mono">
+                                    {inv.client_po_date || '—'}
+                                </td>
+                                <td className="px-4 py-4 text-slate-500">{inv.date}</td>
+                                <td className="px-4 py-4">
                                     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${inv.state === 'Posted'
                                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
                                              : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
@@ -1088,6 +1118,31 @@ export const Invoices: React.FC<InvoicesProps> = ({ initialSearch, initialId, on
                                         </span>
                                     </div>
                                 )}
+                            </div>
+                            <div className="lg:col-span-2">
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                                    Client PO Reference Number
+                                </label>
+                                <input 
+                                    type="text" 
+                                    placeholder="e.g. PO-443368, LPO-0922"
+                                    value={clientPoNumber} 
+                                    onChange={e => setClientPoNumber(e.target.value)} 
+                                    disabled={viewMode} 
+                                    className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm font-mono font-semibold" 
+                                />
+                            </div>
+                            <div className="lg:col-span-2">
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                                    PO Date
+                                </label>
+                                <input 
+                                    type="date" 
+                                    value={clientPoDate} 
+                                    onChange={e => setClientPoDate(e.target.value)} 
+                                    disabled={viewMode} 
+                                    className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm font-mono" 
+                                />
                             </div>
                         </div>
 

@@ -431,6 +431,8 @@ export type Database = {
           reference: string | null
           state: string
           supplier_invoice_number: string | null
+          client_po_number: string | null
+          client_po_date: string | null
         }
         Insert: {
           amount_residual?: number
@@ -450,6 +452,8 @@ export type Database = {
           reference?: string | null
           state?: string
           supplier_invoice_number?: string | null
+          client_po_number?: string | null
+          client_po_date?: string | null
         }
         Update: {
           amount_residual?: number
@@ -469,6 +473,8 @@ export type Database = {
           reference?: string | null
           state?: string
           supplier_invoice_number?: string | null
+          client_po_number?: string | null
+          client_po_date?: string | null
         }
         Relationships: [
           {

@@ -53,6 +53,8 @@ export interface DayBookVoucher {
     state: 'Draft' | 'Posted' | 'Cancelled';
     partnerName?: string;
     journalName?: string;
+    clientPoNumber?: string;
+    clientPoDate?: string;
     lines: DayBookLine[];
 }
 
@@ -259,6 +261,8 @@ export const DayBook: React.FC<DayBookProps> = ({ onNavigateToEntry }) => {
                     move_type,
                     amount_total,
                     created_at,
+                    client_po_number,
+                    client_po_date,
                     journal:accounting_journals(id, name, code, type),
                     partner:accounting_partners(id, name),
                     lines:accounting_journal_lines(
@@ -471,6 +475,8 @@ export const DayBook: React.FC<DayBookProps> = ({ onNavigateToEntry }) => {
                     state: entry.state || 'Draft',
                     partnerName: entryPartner,
                     journalName: entry.journal?.name,
+                    clientPoNumber: entry.client_po_number || undefined,
+                    clientPoDate: entry.client_po_date || undefined,
                     lines: formattedLines
                 };
             });
@@ -660,6 +666,7 @@ export const DayBook: React.FC<DayBookProps> = ({ onNavigateToEntry }) => {
                 const matchType = v.voucherType.toLowerCase().includes(query);
                 const matchNotes = v.notes.toLowerCase().includes(query);
                 const matchPartner = (v.partnerName || '').toLowerCase().includes(query);
+                const matchPo = (v.clientPoNumber || '').toLowerCase().includes(query) || (v.clientPoDate || '').toLowerCase().includes(query);
                 const matchAmount =
                     v.debitAmount.toString().includes(query) ||
                     v.creditAmount.toString().includes(query);
@@ -668,7 +675,7 @@ export const DayBook: React.FC<DayBookProps> = ({ onNavigateToEntry }) => {
                     l.accountCode.toLowerCase().includes(query) ||
                     (l.name || '').toLowerCase().includes(query)
                 );
-                return matchRef || matchParticulars || matchType || matchNotes || matchPartner || matchAmount || matchLines;
+                return matchRef || matchParticulars || matchType || matchNotes || matchPartner || matchPo || matchAmount || matchLines;
             });
         }
 
@@ -1123,8 +1130,13 @@ export const DayBook: React.FC<DayBookProps> = ({ onNavigateToEntry }) => {
 
                                                 {/* Particulars (Ledger / Party) */}
                                                 <td className="py-2.5 px-3 text-slate-900 dark:text-white font-semibold">
-                                                    <div className="flex items-center gap-2">
+                                                    <div className="flex items-center gap-2 flex-wrap">
                                                         <span>{v.particulars}</span>
+                                                        {v.clientPoNumber && (
+                                                            <span className="text-[10px] font-mono font-bold bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60 px-1.5 py-0.5 rounded" title={`Client PO Date: ${v.clientPoDate || 'N/A'}`}>
+                                                                PO: {v.clientPoNumber}
+                                                            </span>
+                                                        )}
                                                         {v.notes && !isExpanded && (
                                                             <span className="text-[10px] text-slate-400 font-normal truncate max-w-[200px]" title={v.notes}>
                                                                 — {v.notes}
