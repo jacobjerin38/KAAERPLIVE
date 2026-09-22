@@ -193,18 +193,20 @@ export const getLeads = async (
 ): Promise<Lead[]> => {
   let effectiveUserId = userId;
   let effectiveUserRole = userRole;
+  let effectiveCompanyId = companyId;
 
   if (!effectiveUserId && effectiveUserId !== '') {
     const { data: { user } } = await supabase.auth.getUser();
     effectiveUserId = user?.id;
   }
-  if (effectiveUserRole === undefined && effectiveUserId) {
+  if ((effectiveUserRole === undefined || !effectiveCompanyId) && effectiveUserId) {
     const { data: profile } = await supabase
       .from('profiles')
-      .select('role')
+      .select('role, company_id')
       .eq('id', effectiveUserId)
       .maybeSingle();
-    effectiveUserRole = profile?.role || null;
+    if (effectiveUserRole === undefined) effectiveUserRole = profile?.role || null;
+    if (!effectiveCompanyId) effectiveCompanyId = profile?.company_id || undefined;
   }
 
   const isAdmin = checkIsAdmin(effectiveUserRole);
@@ -212,24 +214,23 @@ export const getLeads = async (
   let query = (supabase as any).from('crm_leads')
     .select('*');
 
-  if (companyId) {
-    query = query.eq('company_id', companyId);
+  if (effectiveCompanyId) {
+    query = query.eq('company_id', effectiveCompanyId);
   }
 
   if (isAdmin) {
     if (filterOwnerId && filterOwnerId !== 'ALL') {
-      query = query.or(`created_by.eq.${filterOwnerId},owner_id.eq.${filterOwnerId},lead_owner_id.eq.${filterOwnerId}`);
+      query = query.or(`created_by.eq.${filterOwnerId},lead_owner_id.eq.${filterOwnerId}`);
     }
   } else if (effectiveUserId) {
     const empId = await getLinkedEmployeeId(effectiveUserId);
     const conditions = [
       `created_by.eq.${effectiveUserId}`,
-      `owner_id.eq.${effectiveUserId}`,
-      `lead_owner_id.eq.${effectiveUserId}`
+      `lead_owner_id.eq.${effectiveUserId}`,
+      `lead_owner_id.is.null`
     ];
     if (empId) {
       conditions.push(`lead_owner_id.eq.${empId}`);
-      conditions.push(`owner_id.eq.${empId}`);
       conditions.push(`created_by.eq.${empId}`);
     }
     query = query.or(conditions.join(','));
@@ -244,8 +245,10 @@ export const getLeads = async (
 
   const leads = data || [];
   if (leads.length > 0) {
-    const resolve = await getPersonResolver(companyId);
+    const resolve = await getPersonResolver(effectiveCompanyId);
     leads.forEach((l: any) => {
+      l.name = [l.first_name, l.last_name].filter(Boolean).join(' ') || l.organization_name || 'Unnamed Lead';
+      l.company = l.organization_name;
       if (l.lead_owner_id) {
         l.lead_owner = resolve(l.lead_owner_id);
       }
@@ -259,8 +262,34 @@ export const getLeads = async (
 };
 
 export const createLead = async (lead: Partial<Lead>): Promise<Lead | null> => {
+  const cleanLead: any = { ...lead };
+  delete cleanLead.creator;
+  delete cleanLead.lead_owner;
+  delete cleanLead.owner;
+
+  // crm_leads.first_name is NOT NULL in database
+  if (!cleanLead.first_name && cleanLead.last_name) {
+    cleanLead.first_name = cleanLead.last_name;
+  }
+  if (!cleanLead.first_name && cleanLead.organization_name) {
+    cleanLead.first_name = cleanLead.organization_name;
+  }
+  if (!cleanLead.first_name) {
+    cleanLead.first_name = 'New Lead';
+  }
+
+  // Ensure company_id is populated
+  if (!cleanLead.company_id && cleanLead.created_by) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('company_id')
+      .eq('id', cleanLead.created_by)
+      .maybeSingle();
+    if (profile?.company_id) cleanLead.company_id = profile.company_id;
+  }
+
   const { data, error } = await (supabase as any).from('crm_leads')
-    .insert([lead])
+    .insert([cleanLead])
     .select()
     .single();
 
@@ -285,8 +314,14 @@ export const createLead = async (lead: Partial<Lead>): Promise<Lead | null> => {
 };
 
 export const updateLead = async (id: string, updates: Partial<Lead>): Promise<Lead | null> => {
+  const cleanUpdates: any = { ...updates };
+  delete cleanUpdates.creator;
+  delete cleanUpdates.lead_owner;
+  delete cleanUpdates.owner;
+  delete cleanUpdates.id;
+
   const { data, error } = await (supabase as any).from('crm_leads')
-    .update(updates)
+    .update(cleanUpdates)
     .eq('id', id)
     .select()
     .single();

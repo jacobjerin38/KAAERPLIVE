@@ -18,6 +18,7 @@ export default function LeadsView({ companyId, onConvert }: LeadsViewProps) {
     const [showModal, setShowModal] = useState(false);
     const [loading, setLoading] = useState(true);
     const [converting, setConverting] = useState(false);
+    const [saving, setSaving] = useState(false);
     const [activeLead, setActiveLead] = useState<Partial<Lead>>({});
 
     useEffect(() => {
@@ -28,37 +29,76 @@ export default function LeadsView({ companyId, onConvert }: LeadsViewProps) {
 
     useEffect(() => {
         loadLeads();
-    }, [user?.id, userRole, selectedOwnerFilter]);
+    }, [user?.id, userRole, selectedOwnerFilter, companyId]);
 
     const loadLeads = async (silent = false) => {
         if (!silent && leads.length === 0) setLoading(true);
-        const data = await getLeads(user?.id, userRole, selectedOwnerFilter);
-        setLeads(data);
-        setLoading(false);
+        try {
+            const data = await getLeads(user?.id, userRole, selectedOwnerFilter, companyId);
+            setLeads(data);
+        } catch (err) {
+            console.error('Failed to load leads:', err);
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleSave = async () => {
-        if (!activeLead.last_name || !activeLead.organization_name) {
-            alert("Last Name and Organization Name are required.");
+        const firstName = (activeLead.first_name || '').trim();
+        const lastName = (activeLead.last_name || '').trim();
+        const orgName = (activeLead.organization_name || '').trim();
+
+        if (!orgName) {
+            alert("Organization Name is required.");
+            return;
+        }
+        if (!firstName && !lastName) {
+            alert("Contact Name (First Name or Last Name) is required.");
             return;
         }
 
-        if (activeLead.id) {
-            await updateLead(activeLead.id, {
-                ...activeLead,
-                lead_owner_id: activeLead.lead_owner_id || null
-            });
-        } else {
-            await createLead({
-                ...activeLead,
-                status: 'New',
-                lead_owner_id: activeLead.lead_owner_id || user?.id,
-                created_by: user?.id,
-                company_id: companyId
-            });
+        const effectiveFirstName = firstName || lastName || orgName;
+        const effectiveLastName = lastName;
+        const effectiveCompanyId = companyId || (user as any)?.company_id;
+
+        setSaving(true);
+        try {
+            let result: Lead | null = null;
+            if (activeLead.id) {
+                result = await updateLead(activeLead.id, {
+                    ...activeLead,
+                    first_name: effectiveFirstName,
+                    last_name: effectiveLastName,
+                    organization_name: orgName,
+                    lead_owner_id: activeLead.lead_owner_id || null
+                });
+            } else {
+                result = await createLead({
+                    ...activeLead,
+                    first_name: effectiveFirstName,
+                    last_name: effectiveLastName,
+                    organization_name: orgName,
+                    status: activeLead.status || 'New',
+                    lead_owner_id: activeLead.lead_owner_id || user?.id,
+                    created_by: user?.id,
+                    company_id: effectiveCompanyId
+                });
+            }
+
+            if (!result) {
+                alert("Failed to save lead. Please check the details and try again.");
+                setSaving(false);
+                return;
+            }
+
+            setShowModal(false);
+            await loadLeads(true);
+        } catch (err: any) {
+            console.error('Error saving lead:', err);
+            alert("Error saving lead: " + (err?.message || "Please try again."));
+        } finally {
+            setSaving(false);
         }
-        setShowModal(false);
-        await loadLeads(true);
     };
 
     const handleConvertToOpportunity = async () => {
@@ -350,8 +390,15 @@ export default function LeadsView({ companyId, onConvert }: LeadsViewProps) {
                             </div>
                             {/* Right: Save/Cancel */}
                             <div className="flex gap-3">
-                                <button type="button" onClick={() => setShowModal(false)} className="px-5 py-2.5 text-slate-700 hover:bg-slate-200/50 rounded-xl transition-colors font-medium text-sm">Cancel</button>
-                                <button type="button" onClick={handleSave} className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shadow-md shadow-indigo-600/20 font-medium text-sm">Save Lead</button>
+                                <button
+                                    type="button"
+                                    onClick={handleSave}
+                                    disabled={saving}
+                                    className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shadow-md shadow-indigo-600/20 font-medium text-sm disabled:opacity-50"
+                                >
+                                    {saving && <Loader2 size={16} className="animate-spin" />}
+                                    <span>{saving ? 'Saving...' : 'Save Lead'}</span>
+                                </button>
                             </div>
                         </div>
                     </div>

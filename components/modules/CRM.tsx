@@ -335,7 +335,7 @@ export const CRM: React.FC = () => {
 
         if (companyId) {
             try {
-                const leads = await getLeads(companyId);
+                const leads = await getLeads(user?.id, userRole, undefined, companyId);
                 setLeadsList((leads || []).map(l => ({ id: l.id, name: l.name, company: l.company })));
             } catch (err) {
                 console.error('Failed to load leads for doc modal:', err);
