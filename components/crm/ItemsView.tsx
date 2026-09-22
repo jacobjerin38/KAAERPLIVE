@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Package, Edit3, Loader2, IndianRupee, Tag, Box, UploadCloud, Download } from 'lucide-react';
+import { Plus, Search, Package, Edit3, Loader2, Banknote, Tag, Box, UploadCloud, Download } from 'lucide-react';
 import { CRMItem } from './types';
 import { getItems, createItem, updateItem, importItems } from './services';
 import { read, utils } from 'xlsx';
@@ -44,8 +44,8 @@ const ItemsView: React.FC<Props> = ({ companyId }) => {
                 category: row['Category'] || null,
                 weight: parseFloat(row['Weight']) || undefined,
                 expiry_date: row['Expiry Date'] ? new Date(row['Expiry Date']).toISOString().split('T')[0] : undefined,
-                selling_price: parseFloat(row['Selling Price']) || 0,
-                buying_price: parseFloat(row['Buying Price']) || 0,
+                selling_price: parseFloat(row['Selling Price (QAR)'] || row['Selling Price']) || 0,
+                buying_price: parseFloat(row['Buying Price (QAR)'] || row['Buying Price']) || 0,
                 description: row['Description'] || '',
                 status: 'Active',
                 is_stockable: true
@@ -139,8 +139,8 @@ const ItemsView: React.FC<Props> = ({ companyId }) => {
                                 <th className="px-5 py-3">Category</th>
                                 <th className="px-5 py-3">UOM</th>
                                 <th className="px-5 py-3">Weight (Kg)</th>
-                                <th className="px-5 py-3 text-right">Selling Price</th>
-                                <th className="px-5 py-3 text-right">Buying Price</th>
+                                <th className="px-5 py-3 text-right">Selling Price (QAR)</th>
+                                <th className="px-5 py-3 text-right">Buying Price (QAR)</th>
                                 <th className="px-5 py-3">Status</th>
                                 <th className="px-5 py-3"></th>
                             </tr>
@@ -153,8 +153,8 @@ const ItemsView: React.FC<Props> = ({ companyId }) => {
                                     <td className="px-5 py-3 text-slate-500">{item.category || '-'}</td>
                                     <td className="px-5 py-3 text-slate-500">{item.uom}</td>
                                     <td className="px-5 py-3 text-slate-500">{item.weight ? `${item.weight} Kg` : '-'}</td>
-                                    <td className="px-5 py-3 text-right font-medium text-emerald-600">QAR {(item.selling_price || 0).toLocaleString()}</td>
-                                    <td className="px-5 py-3 text-right text-slate-500">QAR {(item.buying_price || 0).toLocaleString()}</td>
+                                    <td className="px-5 py-3 text-right font-medium text-emerald-600">{(item.selling_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} QAR</td>
+                                    <td className="px-5 py-3 text-right text-slate-500">{(item.buying_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} QAR</td>
                                     <td className="px-5 py-3">
                                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${item.status === 'Active' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
                                             {item.status || 'Active'}
@@ -219,14 +219,38 @@ const ItemsView: React.FC<Props> = ({ companyId }) => {
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1">
-                                    <label className="text-xs font-medium text-slate-500 flex items-center gap-1"><IndianRupee size={11} /> Selling Price</label>
-                                    <input type="number" value={activeItem.selling_price || ''} onChange={e => setActiveItem(p => ({ ...p, selling_price: parseFloat(e.target.value) || 0 }))} placeholder="0.00"
-                                        className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/20" />
+                                    <label className="text-xs font-medium text-slate-500 flex items-center gap-1.5">
+                                        <Banknote size={13} className="text-emerald-600 dark:text-emerald-400" />
+                                        <span>Selling Price (QAR)</span>
+                                    </label>
+                                    <div className="relative">
+                                        <input 
+                                            type="number" 
+                                            step="0.01"
+                                            value={activeItem.selling_price ?? ''} 
+                                            onChange={e => setActiveItem(p => ({ ...p, selling_price: parseFloat(e.target.value) || 0 }))} 
+                                            placeholder="0.00"
+                                            className="w-full pl-3.5 pr-12 py-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/20" 
+                                        />
+                                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400 pointer-events-none">QAR</span>
+                                    </div>
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-xs font-medium text-slate-500 flex items-center gap-1"><IndianRupee size={11} /> Buying Price</label>
-                                    <input type="number" value={activeItem.buying_price || ''} onChange={e => setActiveItem(p => ({ ...p, buying_price: parseFloat(e.target.value) || 0 }))} placeholder="0.00"
-                                        className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/20" />
+                                    <label className="text-xs font-medium text-slate-500 flex items-center gap-1.5">
+                                        <Banknote size={13} className="text-slate-400" />
+                                        <span>Buying Price (QAR)</span>
+                                    </label>
+                                    <div className="relative">
+                                        <input 
+                                            type="number" 
+                                            step="0.01"
+                                            value={activeItem.buying_price ?? ''} 
+                                            onChange={e => setActiveItem(p => ({ ...p, buying_price: parseFloat(e.target.value) || 0 }))} 
+                                            placeholder="0.00"
+                                            className="w-full pl-3.5 pr-12 py-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/20" 
+                                        />
+                                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400 pointer-events-none">QAR</span>
+                                    </div>
                                 </div>
                             </div>
                             <div className="space-y-1">
@@ -274,8 +298,8 @@ const ItemsView: React.FC<Props> = ({ companyId }) => {
                                     <li>Name (Required)</li>
                                     <li>UOM (Nos, Kg, etc.)</li>
                                     <li>Category</li>
-                                    <li>Selling Price</li>
-                                    <li>Buying Price</li>
+                                    <li>Selling Price (QAR)</li>
+                                    <li>Buying Price (QAR)</li>
                                 </ul>
                             </div>
                             
