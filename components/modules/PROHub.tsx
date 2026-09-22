@@ -1016,7 +1016,7 @@ export const PROHub: React.FC = () => {
                                 <h3 className="font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2"><UserCheck className="w-5 h-5 text-emerald-600" /> PRO Performance</h3>
                                 <div className="space-y-2">
                                     {[
-                                        { label: 'Total Govt Fees Paid', value: `$${tasks.filter(t => t.status === 'COMPLETED').reduce((a, t) => a + (parseFloat(t.fee_paid) || 0), 0).toLocaleString()}` },
+                                        { label: 'Total Govt Fees Paid', value: `QAR ${tasks.filter(t => t.status === 'COMPLETED').reduce((a, t) => a + (parseFloat(t.fee_paid) || 0), 0).toLocaleString()}` },
                                         { label: 'Total Documents Stored', value: documents.length },
                                         { label: 'Avg. Processing Time', value: 'N/A' },
                                         { label: 'Active Company Licenses', value: licenses.filter(l => getDaysRemaining(l.expiry_date) > 0).length }

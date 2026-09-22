@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
     Plus, Mail, Phone, Building, ChevronDown, Loader2, Users, User, ArrowRight, Link2, 
-    Lock, Shield, Search, X, FileText, Printer, Download, Calendar, DollarSign, 
+    Lock, Shield, Search, X, FileText, Printer, Download, Calendar, Banknote, 
     Edit, Trash2, Paperclip, Briefcase, CheckCircle2, Clock, AlertCircle, ExternalLink, FileCheck
 } from 'lucide-react';
 import { Customer, CRMCustomer, CRMCustomerWorkOrder } from './types';
@@ -266,8 +266,18 @@ export default function CustomersView({ companyId }: { companyId: string }) {
     const totalWOs = workOrders.length;
     const inProgressWOs = workOrders.filter(w => w.status === 'In Progress').length;
     const completedWOs = workOrders.filter(w => w.status === 'Completed').length;
-    const totalValueUSD = workOrders.reduce((sum, w) => sum + (w.currency === 'USD' ? (Number(w.amount) || 0) : 0), 0);
-    const totalValueQAR = workOrders.reduce((sum, w) => sum + (w.currency === 'QAR' || !w.currency ? (Number(w.amount) || 0) : 0), 0);
+    const totalValueQAR = workOrders.reduce((sum, w) => {
+        const amt = Number(w.amount) || 0;
+        const inQar = w.currency === 'USD' ? amt * 3.64 : amt;
+        return sum + inQar;
+    }, 0);
+
+    const formatWOAmount = (amount?: number | null, currency?: string) => {
+        if (amount === undefined || amount === null || amount === 0) return '—';
+        const num = Number(amount) || 0;
+        const qarAmount = currency === 'USD' ? num * 3.64 : num;
+        return `${qarAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} QAR`;
+    };
 
     // CSV Export
     const handleExportCSV = () => {
@@ -275,19 +285,23 @@ export default function CustomersView({ companyId }: { companyId: string }) {
             alert("No work orders to export.");
             return;
         }
-        const headers = ["SL.NO", "Client", "Description", "PO / WO Number", "Contract Ref", "Amount", "Currency", "Status", "Issue Date", "Remarks"];
-        const rows = filteredWorkOrders.map((wo, idx) => [
-            idx + 1,
-            `"${(wo.customer?.name || '').replace(/"/g, '""')}"`,
-            `"${(wo.description || '').replace(/"/g, '""')}"`,
-            `"${(wo.wo_number || '').replace(/"/g, '""')}"`,
-            `"${(wo.contract_ref || '').replace(/"/g, '""')}"`,
-            wo.amount || 0,
-            wo.currency || 'QAR',
-            wo.status || '',
-            wo.issue_date || '',
-            `"${(wo.remarks || '').replace(/"/g, '""')}"`
-        ]);
+        const headers = ["SL.NO", "Client", "Description", "PO / WO Number", "Contract Ref", "Amount (QAR)", "Currency", "Status", "Issue Date", "Remarks"];
+        const rows = filteredWorkOrders.map((wo, idx) => {
+            const num = Number(wo.amount) || 0;
+            const qarAmt = wo.currency === 'USD' ? num * 3.64 : num;
+            return [
+                idx + 1,
+                `"${(wo.customer?.name || '').replace(/"/g, '""')}"`,
+                `"${(wo.description || '').replace(/"/g, '""')}"`,
+                `"${(wo.wo_number || '').replace(/"/g, '""')}"`,
+                `"${(wo.contract_ref || '').replace(/"/g, '""')}"`,
+                qarAmt.toFixed(2),
+                'QAR',
+                wo.status || '',
+                wo.issue_date || '',
+                `"${(wo.remarks || '').replace(/"/g, '""')}"`
+            ];
+        });
 
         const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
         const encodedUri = encodeURI(csvContent);
@@ -654,15 +668,13 @@ export default function CustomersView({ companyId }: { companyId: string }) {
 
                         <div className="bg-white dark:bg-zinc-900 p-3 rounded-xl border border-slate-200 dark:border-zinc-800 flex items-center justify-between">
                             <div>
-                                <p className="text-[11px] font-medium text-slate-500">Logged Value (USD / QAR)</p>
+                                <p className="text-[11px] font-medium text-slate-500">Logged Value (QAR)</p>
                                 <p className="text-sm font-bold text-slate-900 dark:text-white mt-0.5">
-                                    {totalValueUSD > 0 ? `$${totalValueUSD.toLocaleString()} USD` : ''} 
-                                    {totalValueUSD > 0 && totalValueQAR > 0 ? ' + ' : ''}
-                                    {totalValueQAR > 0 ? `${totalValueQAR.toLocaleString()} QAR` : (totalValueUSD === 0 ? '0' : '')}
+                                    {totalValueQAR > 0 ? `${totalValueQAR.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} QAR` : '0.00 QAR'}
                                 </p>
                             </div>
-                            <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 flex items-center justify-center">
-                                <DollarSign size={16} />
+                            <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 flex items-center justify-center">
+                                <Banknote size={16} />
                             </div>
                         </div>
                     </div>
@@ -782,7 +794,7 @@ export default function CustomersView({ companyId }: { companyId: string }) {
                                                 {wo.contract_ref || '—'}
                                             </td>
                                             <td className="py-3 px-3 font-semibold text-slate-800 dark:text-slate-200 whitespace-nowrap">
-                                                {wo.amount ? `${wo.amount.toLocaleString()} ${wo.currency || 'QAR'}` : '—'}
+                                                {formatWOAmount(wo.amount, wo.currency)}
                                             </td>
                                             <td className="py-3 px-3">
                                                 <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
@@ -1123,7 +1135,7 @@ export default function CustomersView({ companyId }: { companyId: string }) {
                                                                 {wo.description}
                                                             </td>
                                                             <td className="py-2.5 px-3 font-semibold text-slate-800 dark:text-slate-200">
-                                                                {wo.amount ? `${wo.amount.toLocaleString()} ${wo.currency || 'QAR'}` : '—'}
+                                                                {formatWOAmount(wo.amount, wo.currency)}
                                                             </td>
                                                             <td className="py-2.5 px-3">
                                                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400">
@@ -1277,16 +1289,16 @@ export default function CustomersView({ companyId }: { companyId: string }) {
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                 <div className="sm:col-span-2">
                                     <Input
-                                        label="Amount (Value)"
+                                        label="Amount (QAR)"
                                         type="number"
                                         value={activeWO.amount}
                                         onChange={(v: string) => setActiveWO({ ...activeWO, amount: Number(v) })}
-                                        placeholder="e.g. 14116.49"
+                                        placeholder="e.g. 50000.00"
                                     />
                                 </div>
                                 <Select
                                     label="Currency"
-                                    options={['QAR', 'USD', 'EUR', 'SAR']}
+                                    options={['QAR']}
                                     value={activeWO.currency || 'QAR'}
                                     onChange={(v: string) => setActiveWO({ ...activeWO, currency: v })}
                                 />
@@ -1443,7 +1455,7 @@ export default function CustomersView({ companyId }: { companyId: string }) {
                                                 {wo.status}
                                             </td>
                                             <td className="py-2.5 px-3 border border-slate-300 text-right font-semibold text-slate-900">
-                                                {wo.amount ? `${wo.amount.toLocaleString()} ${wo.currency || 'QAR'}` : '—'}
+                                                {formatWOAmount(wo.amount, wo.currency)}
                                             </td>
                                         </tr>
                                     ))}

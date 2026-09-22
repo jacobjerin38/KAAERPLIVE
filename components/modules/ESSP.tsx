@@ -700,7 +700,7 @@ export const ESSP: React.FC = () => {
                             </div>
                             <div>
                                 <span className="text-4xl font-black text-slate-800 dark:text-white group-hover:text-indigo-600 transition-colors">
-                                    {lastSalary ? `$${lastSalary.toLocaleString()}` : '--'}
+                                    {lastSalary ? `QAR ${lastSalary.toLocaleString()}` : '--'}
                                 </span>
                                 <p className="text-sm font-bold text-slate-500">Net Salary</p>
                             </div>
