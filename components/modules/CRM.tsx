@@ -6,7 +6,7 @@ import { TableSkeleton, DashboardSkeleton } from '../ui/LoadingSkeletons';
 import {
     LayoutDashboard, Users, FileText, CheckSquare, Calendar, Folder, Briefcase, Plus, Search,
     X, ChevronRight, ChevronDown, Sparkles, Workflow, Mic, Play, KanbanSquare, Bell, Loader2, BarChart3,
-    Package, Receipt, Truck, FileSpreadsheet, Menu, UploadCloud, Trash2, ExternalLink, Paperclip, CheckCircle2, Download, Copy, Eye
+    Package, Menu, UploadCloud, Trash2, ExternalLink, Paperclip, CheckCircle2, Download, Copy, Eye
 } from 'lucide-react';
 import { ReportsListView } from './reports/ReportsListView';
 import { LiveView } from '../crm/LiveView';
@@ -16,9 +16,6 @@ import OpportunitiesView from '../crm/OpportunitiesView';
 import CustomersView from '../crm/CustomersView';
 import SummaryView from '../crm/SummaryView';
 import ItemsView from '../crm/ItemsView';
-import QuotationsView from '../crm/QuotationsView';
-import SalesInvoiceView from '../crm/SalesInvoiceView';
-import DeliveryNoteView from '../crm/DeliveryNoteView';
 import { ProposalWorkflow } from '../crm/ProposalWorkflow';
 import {
     Deal, Contact, Task, CRMActivity, CRMViewMode, CRMStats,
@@ -502,9 +499,6 @@ export const CRM: React.FC = () => {
             { id: 'LEADS', icon: Users, label: 'Leads', permission: 'crm.leads.view' },
             { id: 'OPPORTUNITIES', icon: KanbanSquare, label: 'Opportunities', permission: 'crm.deals.view' },
             { id: 'CUSTOMERS', icon: Briefcase, label: 'Customers', permission: 'crm.contacts.view' },
-            { id: 'QUOTATIONS', icon: FileText, label: 'Quotations', permission: 'crm.deals.view' },
-            { id: 'SALES_INVOICES', icon: FileSpreadsheet, label: 'Sales Invoices', permission: 'crm.deals.view' },
-            { id: 'DELIVERY_NOTES', icon: Truck, label: 'Delivery Notes', permission: 'crm.deals.view' },
             { id: 'ITEMS', icon: Package, label: 'Items', permission: 'crm.deals.view' },
             { id: 'TASKS', icon: CheckSquare, label: 'Tasks', permission: 'crm.tasks.view' },
             { id: 'DOCUMENTS', icon: Folder, label: 'Documents', permission: 'crm.deals.view' },
@@ -1323,9 +1317,6 @@ export const CRM: React.FC = () => {
                         {activeTab === 'CUSTOMERS' && <CustomersView companyId={companyId} />}
 
                         {activeTab === 'ITEMS' && <ItemsView companyId={companyId} />}
-                        {activeTab === 'QUOTATIONS' && <QuotationsView companyId={companyId} onConvert={(tab) => setActiveTab(tab as any)} />}
-                        {activeTab === 'SALES_INVOICES' && <SalesInvoiceView companyId={companyId} onConvert={(tab) => setActiveTab(tab as any)} />}
-                        {activeTab === 'DELIVERY_NOTES' && <DeliveryNoteView companyId={companyId} />}
 
                         {activeTab === 'WEBSITE_FINDER' && <WebsiteFinderView companyId={companyId} />}
                         {activeTab === 'TASKS' && <TasksView />}

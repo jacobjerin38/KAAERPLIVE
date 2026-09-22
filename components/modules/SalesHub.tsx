@@ -1,18 +1,20 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
     ShoppingCart, Users, Briefcase, FileText, CheckSquare, Settings,
-    BarChart3, Plus, Search, DollarSign, Package, LayoutDashboard, Send
+    BarChart3, Plus, Search, DollarSign, Package, LayoutDashboard, Send, FileSpreadsheet, Truck
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import QuotationsView from '../crm/QuotationsView';
+import SalesInvoiceView from '../crm/SalesInvoiceView';
+import DeliveryNoteView from '../crm/DeliveryNoteView';
 import { ProposalWorkflow } from '../crm/ProposalWorkflow';
 import LeadsView from '../crm/LeadsView';
 import CustomersView from '../crm/CustomersView';
 import ItemsView from '../crm/ItemsView';
 import { ReportsListView } from './reports/ReportsListView';
 
-export type SalesViewMode = 'DASHBOARD' | 'LEADS' | 'CUSTOMERS' | 'QUOTATIONS' | 'PROPOSALS' | 'SALES_ORDERS' | 'CONTRACTS' | 'PRICE_LISTS' | 'REPORTS' | 'SETTINGS';
+export type SalesViewMode = 'DASHBOARD' | 'LEADS' | 'CUSTOMERS' | 'QUOTATIONS' | 'PROPOSALS' | 'SALES_ORDERS' | 'SALES_INVOICES' | 'DELIVERY_NOTES' | 'CONTRACTS' | 'PRICE_LISTS' | 'REPORTS' | 'SETTINGS';
 
 interface SalesHubProps {
     defaultTab?: string;
@@ -40,6 +42,8 @@ export const SalesHub: React.FC<SalesHubProps> = ({ defaultTab }) => {
         { id: 'QUOTATIONS', icon: FileText, label: 'Quotations' },
         { id: 'PROPOSALS', icon: Send, label: 'Proposals' },
         { id: 'SALES_ORDERS', icon: ShoppingCart, label: 'Sales Orders' },
+        { id: 'SALES_INVOICES', icon: FileSpreadsheet, label: 'Sales Invoices' },
+        { id: 'DELIVERY_NOTES', icon: Truck, label: 'Delivery Notes' },
         { id: 'CONTRACTS', icon: FileText, label: 'Contracts' },
         { id: 'PRICE_LISTS', icon: Package, label: 'Price Lists' },
         { id: 'REPORTS', icon: BarChart3, label: 'Reports' },
@@ -164,8 +168,18 @@ export const SalesHub: React.FC<SalesHubProps> = ({ defaultTab }) => {
                         <ItemsView companyId={companyId} />
                     </div>
                 )}
+                {activeTab === 'SALES_INVOICES' && (
+                    <div className="p-8 h-full overflow-y-auto">
+                        <SalesInvoiceView companyId={companyId} onConvert={(tab) => setActiveTab(tab as any)} />
+                    </div>
+                )}
+                {activeTab === 'DELIVERY_NOTES' && (
+                    <div className="p-8 h-full overflow-y-auto">
+                        <DeliveryNoteView companyId={companyId} />
+                    </div>
+                )}
                 {activeTab === 'REPORTS' && <ReportsListView moduleFilter="SALES" />}
-                {activeTab !== 'DASHBOARD' && activeTab !== 'LEADS' && activeTab !== 'CUSTOMERS' && activeTab !== 'QUOTATIONS' && activeTab !== 'PROPOSALS' && activeTab !== 'PRICE_LISTS' && activeTab !== 'REPORTS' && (
+                {activeTab !== 'DASHBOARD' && activeTab !== 'LEADS' && activeTab !== 'CUSTOMERS' && activeTab !== 'QUOTATIONS' && activeTab !== 'PROPOSALS' && activeTab !== 'SALES_INVOICES' && activeTab !== 'DELIVERY_NOTES' && activeTab !== 'PRICE_LISTS' && activeTab !== 'REPORTS' && (
                     <div className="p-12 text-center text-slate-400">
                         <ShoppingCart className="w-16 h-16 mx-auto mb-4 opacity-20" />
                         <h3 className="text-xl font-bold text-slate-600 dark:text-slate-300 mb-1">{activeTab.replace('_', ' ')}</h3>
