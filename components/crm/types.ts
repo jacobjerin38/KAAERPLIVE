@@ -83,6 +83,8 @@ export interface CRMLead {
   qualification_notes?: string;
 
   created_by?: string;
+  creator?: { id: string; name: string; email?: string };
+  lead_owner?: { id: string; name: string; email?: string };
   created_at: string;
 }
 
@@ -107,7 +109,9 @@ export interface CRMCustomer {
   industry?: string;
   tax_id?: string;
   owner_id?: string;
+  owner?: { id: string; name: string; email?: string };
   created_by?: string;
+  creator?: { id: string; name: string; email?: string };
   status: 'Active' | 'Inactive';
 
   // Contract & PO / WO provisions
@@ -137,6 +141,7 @@ export interface CRMCustomerWorkOrder {
   remarks?: string;
   document_url?: string;
   created_by?: string;
+  creator?: { id: string; name: string; email?: string };
   created_at: string;
   updated_at?: string;
 }
@@ -166,7 +171,9 @@ export interface CRMOpportunity {
   amount: number;
 
   owner_id?: string;
+  owner?: { id: string; name: string; email?: string };
   created_by?: string;
+  creator?: { id: string; name: string; email?: string };
   created_at: string;
 }
 

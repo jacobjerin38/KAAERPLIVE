@@ -97,7 +97,7 @@ export default function SummaryView({ stats, activities, deals, tasks, companyId
             {/* Header */}
             <div className="mb-8">
                 <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Dashboard</h1>
-                <p className="text-slate-500 text-sm mt-1">Welcome back, {user?.email?.split('@')[0]} 👋</p>
+                <p className="text-slate-500 text-sm mt-1">Welcome back, {user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User'} 👋</p>
             </div>
 
             {/* Stats Grid */}
@@ -183,23 +183,31 @@ export default function SummaryView({ stats, activities, deals, tasks, companyId
                         </div>
                     ) : (
                         <div className="space-y-4">
-                            {activities.slice(0, 8).map((act) => (
-                                <div key={act.id} className="flex gap-3 group">
-                                    <div className="flex flex-col items-center">
-                                        <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-zinc-800 flex items-center justify-center text-[10px] font-bold text-slate-500 border border-slate-200 dark:border-zinc-700">
-                                            {(act.performer?.name || 'Sys').substring(0, 2).toUpperCase()}
+                            {activities.slice(0, 8).map((act) => {
+                                const actDate = act.created_at ? new Date(act.created_at) : null;
+                                const timeStr = actDate 
+                                    ? actDate.toDateString() === new Date().toDateString()
+                                        ? actDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                        : `${actDate.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${actDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                                    : '';
+                                return (
+                                    <div key={act.id} className="flex gap-3 group">
+                                        <div className="flex flex-col items-center">
+                                            <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-zinc-800 flex items-center justify-center text-[10px] font-bold text-slate-500 border border-slate-200 dark:border-zinc-700">
+                                                {(act.performer?.name || 'Sys').substring(0, 2).toUpperCase()}
+                                            </div>
+                                            <div className="w-px flex-1 bg-slate-100 dark:bg-zinc-800 my-1 group-last:hidden"></div>
                                         </div>
-                                        <div className="w-px flex-1 bg-slate-100 dark:bg-zinc-800 my-1 group-last:hidden"></div>
+                                        <div className="pb-1">
+                                            <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+                                                <span className="font-semibold text-slate-900 dark:text-white">{act.performer?.name || 'System'}</span>
+                                                {' '}{act.description}
+                                            </p>
+                                            <span className="text-[11px] text-slate-400 mt-0.5 block">{timeStr}</span>
+                                        </div>
                                     </div>
-                                    <div className="pb-1">
-                                        <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
-                                            <span className="font-semibold text-slate-900 dark:text-white">{act.performer?.name || 'System'}</span>
-                                            {' '}{act.description}
-                                        </p>
-                                        <span className="text-[11px] text-slate-400 mt-0.5 block">{new Date(act.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                                    </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
                 </div>

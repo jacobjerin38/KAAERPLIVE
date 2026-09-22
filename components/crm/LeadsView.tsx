@@ -28,10 +28,10 @@ export default function LeadsView({ companyId, onConvert }: LeadsViewProps) {
 
     useEffect(() => {
         loadLeads();
-    }, [user, userRole, selectedOwnerFilter]);
+    }, [user?.id, userRole, selectedOwnerFilter]);
 
-    const loadLeads = async () => {
-        setLoading(true);
+    const loadLeads = async (silent = false) => {
+        if (!silent && leads.length === 0) setLoading(true);
         const data = await getLeads(user?.id, userRole, selectedOwnerFilter);
         setLeads(data);
         setLoading(false);
@@ -44,18 +44,21 @@ export default function LeadsView({ companyId, onConvert }: LeadsViewProps) {
         }
 
         if (activeLead.id) {
-            await updateLead(activeLead.id, activeLead);
+            await updateLead(activeLead.id, {
+                ...activeLead,
+                lead_owner_id: activeLead.lead_owner_id || null
+            });
         } else {
             await createLead({
                 ...activeLead,
                 status: 'New',
-                lead_owner_id: user?.id,
+                lead_owner_id: activeLead.lead_owner_id || user?.id,
                 created_by: user?.id,
                 company_id: companyId
             });
         }
         setShowModal(false);
-        loadLeads();
+        await loadLeads(true);
     };
 
     const handleConvertToOpportunity = async () => {
@@ -76,7 +79,7 @@ export default function LeadsView({ companyId, onConvert }: LeadsViewProps) {
             );
             if (result) {
                 setShowModal(false);
-                loadLeads();
+                await loadLeads(true);
                 onConvert?.('OPPORTUNITIES');
             } else {
                 alert("Conversion failed. Please try again.");
@@ -213,8 +216,20 @@ export default function LeadsView({ companyId, onConvert }: LeadsViewProps) {
                                             {lead.mobile && <div className="flex items-center gap-1.5"><Phone size={13} className="text-slate-400" /> {lead.mobile}</div>}
                                         </div>
                                     </td>
-                                    <td className="px-6 py-4 text-sm text-slate-500">
-                                        {lead.lead_owner_id ? 'Assigned' : 'Unassigned'}
+                                    <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 font-semibold text-xs">
+                                                {(lead.lead_owner?.name || lead.creator?.name || 'U')[0].toUpperCase()}
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <span className="text-xs font-medium text-slate-900 dark:text-white leading-tight">
+                                                    {lead.lead_owner?.name || lead.creator?.name || 'Unassigned'}
+                                                </span>
+                                                {lead.creator?.name && lead.creator?.name !== lead.lead_owner?.name && (
+                                                    <span className="text-[10px] text-slate-400">By: {lead.creator.name}</span>
+                                                )}
+                                            </div>
+                                        </div>
                                     </td>
                                 </tr>
                             ))}
@@ -231,7 +246,7 @@ export default function LeadsView({ companyId, onConvert }: LeadsViewProps) {
                             <h3 className="text-lg font-bold text-slate-900 dark:text-white">
                                 {activeLead.id ? 'Edit Lead' : 'New Lead'}
                             </h3>
-                            <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600 text-xl">{'\u00D7'}</button>
+                            <button type="button" onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600 text-xl font-bold">×</button>
                         </div>
 
                         {/* Converted Banner */}
@@ -256,6 +271,30 @@ export default function LeadsView({ companyId, onConvert }: LeadsViewProps) {
                                     <Select label="Gender" options={['Male', 'Female', 'Other']} value={activeLead.gender} onChange={v => setActiveLead({ ...activeLead, gender: v })} />
                                     <Select label="Lead Type" options={['Hot', 'Warm', 'Cold']} value={activeLead.lead_type} onChange={v => setActiveLead({ ...activeLead, lead_type: v })} />
                                     <Select label="Request Type" options={['Product Info', 'Demo', 'Quote']} value={activeLead.request_type} onChange={v => setActiveLead({ ...activeLead, request_type: v })} />
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-medium text-slate-500">Lead Owner / Sales Rep</label>
+                                        <div className="relative">
+                                            <select
+                                                value={activeLead.lead_owner_id || ''}
+                                                onChange={e => setActiveLead({ ...activeLead, lead_owner_id: e.target.value || null as any })}
+                                                className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm appearance-none cursor-pointer"
+                                            >
+                                                <option value="">Unassigned</option>
+                                                {salesReps.map(rep => (
+                                                    <option key={rep.id} value={rep.profileId || rep.id}>{rep.name}</option>
+                                                ))}
+                                            </select>
+                                            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                                        </div>
+                                    </div>
+                                    {activeLead.creator?.name && (
+                                        <div className="col-span-3 p-3 bg-slate-50 dark:bg-zinc-800/50 rounded-xl border border-slate-100 dark:border-zinc-800 flex items-center justify-between text-xs text-slate-500">
+                                            <span>Created by: <strong className="font-semibold text-slate-700 dark:text-slate-300">{activeLead.creator.name}</strong></span>
+                                            {activeLead.created_at && (
+                                                <span>{new Date(activeLead.created_at).toLocaleDateString()}</span>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             </Section>
                             <Section title="Contact Info">
@@ -299,6 +338,7 @@ export default function LeadsView({ companyId, onConvert }: LeadsViewProps) {
                             <div>
                                 {activeLead.id && !activeLead.is_converted && (
                                     <button
+                                        type="button"
                                         onClick={handleConvertToOpportunity}
                                         disabled={converting}
                                         className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-colors shadow-md shadow-emerald-600/20 text-sm font-medium disabled:opacity-50"
@@ -310,8 +350,8 @@ export default function LeadsView({ companyId, onConvert }: LeadsViewProps) {
                             </div>
                             {/* Right: Save/Cancel */}
                             <div className="flex gap-3">
-                                <button onClick={() => setShowModal(false)} className="px-5 py-2.5 text-slate-700 hover:bg-slate-200/50 rounded-xl transition-colors font-medium text-sm">Cancel</button>
-                                <button onClick={handleSave} className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shadow-md shadow-indigo-600/20 font-medium text-sm">Save Lead</button>
+                                <button type="button" onClick={() => setShowModal(false)} className="px-5 py-2.5 text-slate-700 hover:bg-slate-200/50 rounded-xl transition-colors font-medium text-sm">Cancel</button>
+                                <button type="button" onClick={handleSave} className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shadow-md shadow-indigo-600/20 font-medium text-sm">Save Lead</button>
                             </div>
                         </div>
                     </div>

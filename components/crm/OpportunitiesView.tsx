@@ -57,10 +57,10 @@ export default function OpportunitiesView({ companyId, onConvert }: Opportunitie
 
     useEffect(() => {
         loadData();
-    }, [user, userRole, selectedOwnerFilter, companyId]);
+    }, [user?.id, userRole, selectedOwnerFilter, companyId]);
 
-    const loadData = async () => {
-        setLoading(true);
+    const loadData = async (silent = false) => {
+        if (!silent && opportunities.length === 0) setLoading(true);
         const [oppsData, stagesData, custData] = await Promise.all([
             getOpportunities(user?.id, userRole, selectedOwnerFilter),
             getStages(),
@@ -132,7 +132,8 @@ export default function OpportunitiesView({ companyId, onConvert }: Opportunitie
             ...activeOpp,
             currency: activeOpp.currency || 'QAR',
             title: activeOpp.title.trim(),
-            stage_id: activeOpp.stage_id || stages[0]?.id
+            stage_id: activeOpp.stage_id || stages[0]?.id,
+            owner_id: activeOpp.owner_id || null
         };
 
         if (activeOpp.id) {
@@ -141,13 +142,13 @@ export default function OpportunitiesView({ companyId, onConvert }: Opportunitie
             await createOpportunity({
                 ...payload,
                 status: 'Open',
-                owner_id: user?.id,
+                owner_id: activeOpp.owner_id || user?.id,
                 created_by: user?.id,
                 company_id: companyId
             });
         }
         setShowModal(false);
-        loadData();
+        await loadData(true);
     };
 
     const handleMarkAsWon = async () => {
@@ -161,7 +162,7 @@ export default function OpportunitiesView({ companyId, onConvert }: Opportunitie
             );
             if (result) {
                 setShowModal(false);
-                loadData();
+                await loadData(true);
                 onConvert?.('CUSTOMERS');
             } else {
                 alert("Conversion failed. Please try again.");
@@ -182,7 +183,7 @@ export default function OpportunitiesView({ companyId, onConvert }: Opportunitie
         setShowLossModal(false);
         setShowModal(false);
         setLossReason('');
-        loadData();
+        await loadData(true);
     };
 
     const onDragStart = (e: React.DragEvent, oppId: string) => {
@@ -351,6 +352,23 @@ export default function OpportunitiesView({ companyId, onConvert }: Opportunitie
                                                             <span>{opp.expected_closing_date ? new Date(opp.expected_closing_date).toLocaleDateString() : '-'}</span>
                                                         </div>
                                                     </div>
+
+                                                    {/* Owner & Creator Details */}
+                                                    <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1.5 border-t border-slate-50 dark:border-zinc-800/60 mt-1.5">
+                                                        <div className="flex items-center gap-1.5 truncate">
+                                                            <div className="w-3.5 h-3.5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 flex items-center justify-center text-[8px] font-bold">
+                                                                {(opp.owner?.name || opp.creator?.name || 'U')[0].toUpperCase()}
+                                                            </div>
+                                                            <span className="truncate">
+                                                                {opp.owner?.name || opp.creator?.name || 'Unassigned'}
+                                                            </span>
+                                                        </div>
+                                                        {opp.creator?.name && opp.creator?.name !== opp.owner?.name && (
+                                                            <span className="text-[9px] text-slate-400 truncate max-w-[80px]" title={`Created by ${opp.creator.name}`}>
+                                                                By: {opp.creator.name}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             ))}
                                         {opportunities.filter(o => o.stage_id === stage.id).length === 0 && (
@@ -382,6 +400,7 @@ export default function OpportunitiesView({ companyId, onConvert }: Opportunitie
                                     <th className="text-left py-3 px-5 text-xs font-semibold text-slate-400 uppercase">Customer</th>
                                     <th className="text-left py-3 px-5 text-xs font-semibold text-slate-400 uppercase">Stage</th>
                                     <th className="text-left py-3 px-5 text-xs font-semibold text-slate-400 uppercase">Status</th>
+                                    <th className="text-left py-3 px-5 text-xs font-semibold text-slate-400 uppercase">Owner / Rep</th>
                                     <th className="text-right py-3 px-5 text-xs font-semibold text-slate-400 uppercase">Amount</th>
                                 </tr>
                             </thead>
@@ -398,6 +417,21 @@ export default function OpportunitiesView({ companyId, onConvert }: Opportunitie
                                         <td className="py-3 px-5 text-sm text-slate-500">{opp.customer?.name}</td>
                                         <td className="py-3 px-5 text-sm"><span className="px-2 py-1 bg-slate-100 dark:bg-zinc-800 rounded-lg text-xs font-medium">{opp.stage?.name}</span></td>
                                         <td className="py-3 px-5"><span className={`px-2 py-1 rounded-lg text-xs font-medium border ${getStatusBadge(opp.status)}`}>{opp.status}</span></td>
+                                        <td className="py-3 px-5 text-sm text-slate-600 dark:text-slate-300">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 font-semibold text-xs">
+                                                    {(opp.owner?.name || opp.creator?.name || 'U')[0].toUpperCase()}
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <span className="text-xs font-medium text-slate-900 dark:text-white leading-tight">
+                                                        {opp.owner?.name || opp.creator?.name || 'Unassigned'}
+                                                    </span>
+                                                    {opp.creator?.name && opp.creator?.name !== opp.owner?.name && (
+                                                        <span className="text-[10px] text-slate-400">By: {opp.creator.name}</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </td>
                                         <td className="py-3 px-5 text-sm text-slate-900 dark:text-white text-right font-medium">{opp.currency || 'QAR'} {Number(opp.amount || 0).toLocaleString()}</td>
                                     </tr>
                                 ))}
@@ -415,7 +449,7 @@ export default function OpportunitiesView({ companyId, onConvert }: Opportunitie
                             <h3 className="text-lg font-bold text-slate-900 dark:text-white">
                                 {activeOpp.id ? 'Edit Opportunity' : 'New Opportunity'}
                             </h3>
-                            <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600 text-xl">{'\u00D7'}</button>
+                            <button type="button" onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600 text-xl font-bold">×</button>
                         </div>
 
                         {/* Status Banners */}
@@ -505,9 +539,35 @@ export default function OpportunitiesView({ companyId, onConvert }: Opportunitie
                                         )}
                                     </div>
 
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-medium text-slate-500">Opportunity Owner / Sales Rep</label>
+                                        <div className="relative">
+                                            <select
+                                                value={activeOpp.owner_id || ''}
+                                                onChange={e => setActiveOpp({ ...activeOpp, owner_id: e.target.value || null as any })}
+                                                className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm appearance-none cursor-pointer"
+                                            >
+                                                <option value="">Unassigned</option>
+                                                {salesReps.map(rep => (
+                                                    <option key={rep.id} value={rep.profileId || rep.id}>{rep.name}</option>
+                                                ))}
+                                            </select>
+                                            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                                        </div>
+                                    </div>
+
                                     <Input label="Expected Closing Date" type="date" value={activeOpp.expected_closing_date} onChange={(v: string) => setActiveOpp({ ...activeOpp, expected_closing_date: v })} />
                                     <Input label="Probability (%)" type="number" value={activeOpp.probability} onChange={(v: string) => setActiveOpp({ ...activeOpp, probability: parseFloat(v) })} />
                                     <Input label="Status" value={activeOpp.status} disabled />
+
+                                    {activeOpp.creator?.name && (
+                                        <div className="col-span-3 p-3 bg-slate-50 dark:bg-zinc-800/50 rounded-xl border border-slate-100 dark:border-zinc-800 flex items-center justify-between text-xs text-slate-500">
+                                            <span>Created by: <strong className="font-semibold text-slate-700 dark:text-slate-300">{activeOpp.creator.name}</strong></span>
+                                            {activeOpp.created_at && (
+                                                <span>{new Date(activeOpp.created_at).toLocaleDateString()}</span>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             </Section>
 
@@ -542,6 +602,7 @@ export default function OpportunitiesView({ companyId, onConvert }: Opportunitie
                                 {activeOpp.id && activeOpp.status === 'Open' && (
                                     <>
                                         <button
+                                            type="button"
                                             onClick={handleMarkAsWon}
                                             disabled={converting}
                                             className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-colors shadow-md shadow-emerald-600/20 text-sm font-medium disabled:opacity-50"
@@ -550,6 +611,7 @@ export default function OpportunitiesView({ companyId, onConvert }: Opportunitie
                                             Won {'\u2192'} Customer
                                         </button>
                                         <button
+                                            type="button"
                                             onClick={() => setShowLossModal(true)}
                                             className="flex items-center gap-2 px-4 py-2.5 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors shadow-md shadow-red-600/20 text-sm font-medium"
                                         >
@@ -561,8 +623,8 @@ export default function OpportunitiesView({ companyId, onConvert }: Opportunitie
                             </div>
                             {/* Right: Save/Cancel */}
                             <div className="flex gap-3">
-                                <button onClick={() => setShowModal(false)} className="px-5 py-2.5 text-slate-700 hover:bg-slate-200/50 rounded-xl transition-colors font-medium text-sm">Cancel</button>
-                                <button onClick={handleSave} className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shadow-md shadow-indigo-600/20 font-medium text-sm">Save Opportunity</button>
+                                <button type="button" onClick={() => setShowModal(false)} className="px-5 py-2.5 text-slate-700 hover:bg-slate-200/50 rounded-xl transition-colors font-medium text-sm">Cancel</button>
+                                <button type="button" onClick={handleSave} className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shadow-md shadow-indigo-600/20 font-medium text-sm">Save Opportunity</button>
                             </div>
                         </div>
                     </div>
@@ -591,8 +653,8 @@ export default function OpportunitiesView({ companyId, onConvert }: Opportunitie
                             </div>
                         </div>
                         <div className="px-6 py-4 border-t border-slate-100 dark:border-zinc-800 flex justify-end gap-3">
-                            <button onClick={() => { setShowLossModal(false); setLossReason(''); }} className="px-5 py-2.5 text-slate-700 hover:bg-slate-200/50 rounded-xl transition-colors font-medium text-sm">Cancel</button>
-                            <button onClick={handleMarkAsLost} className="px-5 py-2.5 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors shadow-md shadow-red-600/20 font-medium text-sm">Confirm Lost</button>
+                            <button type="button" onClick={() => { setShowLossModal(false); setLossReason(''); }} className="px-5 py-2.5 text-slate-700 hover:bg-slate-200/50 rounded-xl transition-colors font-medium text-sm">Cancel</button>
+                            <button type="button" onClick={handleMarkAsLost} className="px-5 py-2.5 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors shadow-md shadow-red-600/20 font-medium text-sm">Confirm Lost</button>
                         </div>
                     </div>
                 </div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
-    Plus, Mail, Phone, Building, ChevronDown, Loader2, Users, ArrowRight, Link2, 
+    Plus, Mail, Phone, Building, ChevronDown, Loader2, Users, User, ArrowRight, Link2, 
     Lock, Shield, Search, X, FileText, Printer, Download, Calendar, DollarSign, 
     Edit, Trash2, Paperclip, Briefcase, CheckCircle2, Clock, AlertCircle, ExternalLink, FileCheck
 } from 'lucide-react';
@@ -62,18 +62,18 @@ export default function CustomersView({ companyId }: { companyId: string }) {
     useEffect(() => {
         loadCustomers();
         loadAllWOs();
-    }, [user, userRole, selectedOwnerFilter, companyId]);
+    }, [user?.id, userRole, selectedOwnerFilter, companyId]);
 
-    const loadCustomers = async () => {
-        setLoading(true);
+    const loadCustomers = async (silent = false) => {
+        if (!silent && customers.length === 0) setLoading(true);
         const data = await getCustomers(user?.id, userRole, selectedOwnerFilter, companyId);
         setCustomers(data);
         setLoading(false);
     };
 
-    const loadAllWOs = async () => {
+    const loadAllWOs = async (silent = false) => {
         if (!companyId) return;
-        setWoLoading(true);
+        if (!silent && workOrders.length === 0) setWoLoading(true);
         const data = await getAllWorkOrders(companyId);
         setWorkOrders(data);
         setWoLoading(false);
@@ -104,22 +104,23 @@ export default function CustomersView({ companyId }: { companyId: string }) {
             if (activeCustomer.id) {
                 await updateCustomer(activeCustomer.id, {
                     ...activeCustomer,
-                    name: activeCustomer.name.trim()
+                    name: activeCustomer.name.trim(),
+                    owner_id: activeCustomer.owner_id || null
                 });
             } else {
                 await createCustomer({
                     ...activeCustomer,
                     name: activeCustomer.name.trim(),
                     status: activeCustomer.status || 'Active',
-                    owner_id: user?.id,
+                    owner_id: activeCustomer.owner_id || user?.id,
                     created_by: user?.id,
                     company_id: companyId,
                     contract_type: activeCustomer.contract_type || 'Call-Off / Work Order Basis'
                 });
             }
             setShowModal(false);
-            await loadCustomers();
-            await loadAllWOs();
+            await loadCustomers(true);
+            await loadAllWOs(true);
         } catch (err: any) {
             console.error('Error saving customer:', err);
             alert("Failed to save customer: " + (err.message || 'Unknown error'));
@@ -199,7 +200,7 @@ export default function CustomersView({ companyId }: { companyId: string }) {
             }
 
             setShowWOModal(false);
-            await loadAllWOs();
+            await loadAllWOs(true);
             if (activeCustomer.id) {
                 await loadCustomerWOs(activeCustomer.id);
             }
@@ -215,7 +216,7 @@ export default function CustomersView({ companyId }: { companyId: string }) {
         if (!confirm("Are you sure you want to delete this Work Order / PO?")) return;
         try {
             await deleteCustomerWorkOrder(id);
-            await loadAllWOs();
+            await loadAllWOs(true);
             if (activeCustomer.id) {
                 await loadCustomerWOs(activeCustomer.id);
             }
@@ -518,6 +519,23 @@ export default function CustomersView({ companyId }: { companyId: string }) {
                                                         <FileText size={11} />
                                                         <span>{clientWOs.length} {clientWOs.length === 1 ? 'Work Order' : 'Work Orders'}</span>
                                                     </div>
+                                                </div>
+
+                                                {/* Owner & Creator Details */}
+                                                <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500 border-t border-slate-100 dark:border-zinc-800/80 pt-2">
+                                                    <div className="flex items-center gap-1.5 truncate">
+                                                        <div className="w-4 h-4 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 flex items-center justify-center text-[9px] font-bold">
+                                                            {(customer.owner?.name || customer.creator?.name || 'U')[0].toUpperCase()}
+                                                        </div>
+                                                        <span className="truncate">
+                                                            Owner: <strong className="font-semibold text-slate-700 dark:text-slate-300">{customer.owner?.name || customer.creator?.name || 'Unassigned'}</strong>
+                                                        </span>
+                                                    </div>
+                                                    {customer.creator?.name && customer.creator?.name !== customer.owner?.name && (
+                                                        <span className="text-[10px] text-slate-400 truncate max-w-[120px]" title={`Created by ${customer.creator.name}`}>
+                                                            By: {customer.creator.name}
+                                                        </span>
+                                                    )}
                                                 </div>
 
                                                 {/* Remarks Preview */}
@@ -825,7 +843,7 @@ export default function CustomersView({ companyId }: { companyId: string }) {
                                     CRM Client Master & Call-Off Contract Setup (Doc upload, remarks, start date, and work order provisions)
                                 </p>
                             </div>
-                            <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600 text-xl font-bold">×</button>
+                            <button type="button" onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600 text-xl font-bold">×</button>
                         </div>
 
                         {/* Modal Tabs Header */}
@@ -914,6 +932,22 @@ export default function CustomersView({ companyId }: { companyId: string }) {
                                                 value={activeCustomer.status || 'Active'}
                                                 onChange={(v: string) => setActiveCustomer({ ...activeCustomer, status: v })}
                                             />
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-medium text-slate-500">Account Owner / Sales Rep</label>
+                                                <div className="relative">
+                                                    <select
+                                                        value={activeCustomer.owner_id || ''}
+                                                        onChange={e => setActiveCustomer({ ...activeCustomer, owner_id: e.target.value || null as any })}
+                                                        className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-xs appearance-none text-slate-800 dark:text-slate-200 cursor-pointer"
+                                                    >
+                                                        <option value="">Unassigned</option>
+                                                        {salesReps.map(rep => (
+                                                            <option key={rep.id} value={rep.profileId || rep.id}>{rep.name}</option>
+                                                        ))}
+                                                    </select>
+                                                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                                                </div>
+                                            </div>
                                             <Input
                                                 label="Industry / Sector"
                                                 value={activeCustomer.industry}
@@ -934,6 +968,14 @@ export default function CustomersView({ companyId }: { companyId: string }) {
                                                     placeholder="https://..."
                                                 />
                                             </div>
+                                            {activeCustomer.creator?.name && (
+                                                <div className="sm:col-span-3 p-3 bg-slate-50 dark:bg-zinc-800/50 rounded-xl border border-slate-100 dark:border-zinc-800 flex items-center justify-between text-xs text-slate-500">
+                                                    <span>Created by: <strong className="font-semibold text-slate-700 dark:text-slate-300">{activeCustomer.creator.name}</strong></span>
+                                                    {activeCustomer.created_at && (
+                                                        <span>{new Date(activeCustomer.created_at).toLocaleDateString()}</span>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                     </Section>
 
@@ -1137,12 +1179,14 @@ export default function CustomersView({ companyId }: { companyId: string }) {
                         {/* Modal Footer */}
                         <div className="px-6 py-4 border-t border-slate-100 dark:border-zinc-800 flex justify-between items-center bg-slate-50/50 dark:bg-zinc-800/50">
                             <button
+                                type="button"
                                 onClick={() => setShowModal(false)}
                                 className="px-4 py-2 text-slate-600 hover:bg-slate-200/50 rounded-xl transition-colors font-semibold text-xs"
                             >
                                 Cancel
                             </button>
                             <button
+                                type="button"
                                 onClick={handleSaveCustomer}
                                 disabled={saving}
                                 className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shadow-md shadow-indigo-600/20 font-bold text-xs disabled:opacity-50"
@@ -1169,7 +1213,7 @@ export default function CustomersView({ companyId }: { companyId: string }) {
                                     Execute work order under client's call-off contract (e.g. QCTCM2922)
                                 </p>
                             </div>
-                            <button onClick={() => setShowWOModal(false)} className="text-slate-400 hover:text-slate-600 text-xl font-bold">×</button>
+                            <button type="button" onClick={() => setShowWOModal(false)} className="text-slate-400 hover:text-slate-600 text-xl font-bold">×</button>
                         </div>
 
                         <div className="flex-1 overflow-y-auto p-6 space-y-4">
@@ -1301,12 +1345,14 @@ export default function CustomersView({ companyId }: { companyId: string }) {
 
                         <div className="px-6 py-4 border-t border-slate-100 dark:border-zinc-800 flex justify-between items-center bg-slate-50/50 dark:bg-zinc-800/50">
                             <button
+                                type="button"
                                 onClick={() => setShowWOModal(false)}
                                 className="px-4 py-2 text-slate-600 hover:bg-slate-200/50 rounded-xl transition-colors font-semibold text-xs"
                             >
                                 Cancel
                             </button>
                             <button
+                                type="button"
                                 onClick={handleSaveWO}
                                 disabled={savingWO}
                                 className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-colors shadow-md shadow-emerald-600/20 font-bold text-xs disabled:opacity-50"

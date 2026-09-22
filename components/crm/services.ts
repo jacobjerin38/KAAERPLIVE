@@ -92,6 +92,65 @@ export const getSalesReps = async (companyId: string): Promise<{ id: string; nam
   }
 };
 
+export interface ResolvedPerson {
+  id: string;
+  name: string;
+  email?: string;
+}
+
+export const getPersonResolver = async (companyId?: string): Promise<(idOrEmail?: string | null) => ResolvedPerson | undefined> => {
+  try {
+    let empQuery = (supabase as any)
+      .from('employees')
+      .select('id, name, profile_id, email, office_email, personal_email');
+    if (companyId) empQuery = empQuery.eq('company_id', companyId);
+
+    const [{ data: emps }, { data: profs }] = await Promise.all([
+      empQuery,
+      supabase.from('profiles').select('id, full_name, email, employee_id')
+    ]);
+
+    const map = new Map<string, ResolvedPerson>();
+
+    (emps || []).forEach((e: any) => {
+      const person: ResolvedPerson = { 
+        id: e.id, 
+        name: e.name || 'Employee', 
+        email: e.email || e.office_email || e.personal_email 
+      };
+      map.set(e.id, person);
+      if (e.profile_id) map.set(e.profile_id, person);
+      if (e.email) map.set(e.email.toLowerCase(), person);
+      if (e.office_email) map.set(e.office_email.toLowerCase(), person);
+      if (e.personal_email) map.set(e.personal_email.toLowerCase(), person);
+    });
+
+    (profs || []).forEach((p: any) => {
+      if (!map.has(p.id)) {
+        const person: ResolvedPerson = { 
+          id: p.id, 
+          name: p.full_name || p.email?.split('@')[0] || 'User', 
+          email: p.email 
+        };
+        map.set(p.id, person);
+        if (p.email) map.set(p.email.toLowerCase(), person);
+      }
+      if (p.employee_id && map.has(p.employee_id)) {
+        map.set(p.id, map.get(p.employee_id)!);
+      }
+    });
+
+    return (idOrEmail?: string | null): ResolvedPerson | undefined => {
+      if (!idOrEmail) return undefined;
+      const key = idOrEmail.trim();
+      return map.get(key) || map.get(key.toLowerCase());
+    };
+  } catch (err) {
+    console.warn('Error creating person resolver:', err);
+    return () => undefined;
+  }
+};
+
 interface AccessFilter {
   isSalesRep: boolean;
   userId?: string;
@@ -129,7 +188,8 @@ const getAccessFilter = async (): Promise<AccessFilter> => {
 export const getLeads = async (
   userId?: string,
   userRole?: string | null,
-  filterOwnerId?: string
+  filterOwnerId?: string,
+  companyId?: string
 ): Promise<Lead[]> => {
   let effectiveUserId = userId;
   let effectiveUserRole = userRole;
@@ -151,6 +211,10 @@ export const getLeads = async (
 
   let query = (supabase as any).from('crm_leads')
     .select('*');
+
+  if (companyId) {
+    query = query.eq('company_id', companyId);
+  }
 
   if (isAdmin) {
     if (filterOwnerId && filterOwnerId !== 'ALL') {
@@ -180,24 +244,15 @@ export const getLeads = async (
 
   const leads = data || [];
   if (leads.length > 0) {
-    const ownerIds = Array.from(new Set(leads.map((l: any) => l.lead_owner_id).filter(Boolean)));
-    if (ownerIds.length > 0) {
-      try {
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, full_name, email')
-          .in('id', ownerIds);
-        const profMap = new Map((profiles || []).map((p: any) => [p.id, p]));
-        leads.forEach((l: any) => {
-          if (l.lead_owner_id && profMap.has(l.lead_owner_id)) {
-            const prof = profMap.get(l.lead_owner_id);
-            l.lead_owner = { id: prof.id, name: prof.full_name, email: prof.email };
-          }
-        });
-      } catch (profErr) {
-        console.warn('Could not enrich lead owners:', profErr);
+    const resolve = await getPersonResolver(companyId);
+    leads.forEach((l: any) => {
+      if (l.lead_owner_id) {
+        l.lead_owner = resolve(l.lead_owner_id);
       }
-    }
+      if (l.created_by) {
+        l.creator = resolve(l.created_by);
+      }
+    });
   }
 
   return leads;
@@ -213,6 +268,19 @@ export const createLead = async (lead: Partial<Lead>): Promise<Lead | null> => {
     console.error('Error creating lead:', error);
     return null;
   }
+
+  if (data) {
+    const leadName = [data.first_name, data.last_name].filter(Boolean).join(' ');
+    await logActivity({
+      company_id: data.company_id,
+      entity_type: 'lead',
+      entity_id: data.id,
+      action: 'created',
+      description: `Added new lead "${leadName}"${data.organization_name ? ` (${data.organization_name})` : ''}`,
+      performed_by: data.lead_owner_id || data.created_by
+    });
+  }
+
   return data;
 };
 
@@ -291,7 +359,21 @@ export const getCustomers = async (
     console.error('Error fetching customers:', error);
     return [];
   }
-  return data || [];
+
+  const customers = data || [];
+  if (customers.length > 0) {
+    const resolve = await getPersonResolver(effectiveCompanyId);
+    customers.forEach((c: any) => {
+      if (c.owner_id) {
+        c.owner = resolve(c.owner_id);
+      }
+      if (c.created_by) {
+        c.creator = resolve(c.created_by);
+      }
+    });
+  }
+
+  return customers;
 };
 
 export const createCustomer = async (customer: Partial<Customer>): Promise<Customer | null> => {
@@ -342,6 +424,18 @@ export const createCustomer = async (customer: Partial<Customer>): Promise<Custo
     console.error('Error creating customer:', error);
     throw error;
   }
+
+  if (data) {
+    await logActivity({
+      company_id: data.company_id,
+      entity_type: 'customer',
+      entity_id: data.id,
+      action: 'created',
+      description: `Added customer "${data.name}"`,
+      performed_by: data.owner_id || data.created_by
+    });
+  }
+
   return data;
 };
 
@@ -495,19 +589,49 @@ export const getOpportunities = async (
     console.error('Error fetching opportunities:', error);
     return [];
   }
-  return data || [];
+
+  const opps = data || [];
+  if (opps.length > 0) {
+    const resolve = await getPersonResolver();
+    opps.forEach((o: any) => {
+      if (o.owner_id) {
+        o.owner = resolve(o.owner_id);
+      }
+      if (o.created_by) {
+        o.creator = resolve(o.created_by);
+      }
+    });
+  }
+
+  return opps;
 };
 
 export const createOpportunity = async (opp: Partial<Opportunity>): Promise<Opportunity | null> => {
   const { data, error } = await (supabase as any).from('crm_opportunities')
     .insert([opp])
-    .select()
+    .select(`
+      *,
+      customer:crm_customers(*),
+      stage:org_crm_stages(*)
+    `)
     .maybeSingle();
 
   if (error) {
     console.error('Error creating opportunity:', error);
     return null;
   }
+
+  if (data) {
+    await logActivity({
+      company_id: data.company_id,
+      entity_type: 'opportunity',
+      entity_id: data.id,
+      action: 'created',
+      description: `Created opportunity "${data.title}"${data.customer?.name ? ` for ${data.customer.name}` : ''} (${data.currency || 'QAR'} ${Number(data.amount || 0).toLocaleString()})`,
+      performed_by: data.owner_id || data.created_by
+    });
+  }
+
   return data;
 };
 
@@ -515,13 +639,39 @@ export const updateOpportunity = async (id: string, updates: Partial<Opportunity
   const { data, error } = await (supabase as any).from('crm_opportunities')
     .update(updates)
     .eq('id', id)
-    .select()
+    .select(`
+      *,
+      customer:crm_customers(*),
+      stage:org_crm_stages(*)
+    `)
     .maybeSingle();
 
   if (error) {
     console.error('Error updating opportunity:', error);
     return null;
   }
+
+  if (data) {
+    let action = 'updated';
+    let desc = `Updated opportunity "${data.title}"`;
+    if (updates.status === 'Won' || data.status === 'Won') {
+      action = 'won';
+      desc = `Closed won opportunity "${data.title}"${data.customer?.name ? ` for ${data.customer.name}` : ''} (${data.currency || 'QAR'} ${Number(data.amount || 0).toLocaleString()})`;
+    } else if (updates.status === 'Lost' || data.status === 'Lost') {
+      action = 'lost';
+      desc = `Marked opportunity "${data.title}" as lost`;
+    }
+
+    await logActivity({
+      company_id: data.company_id,
+      entity_type: 'opportunity',
+      entity_id: data.id,
+      action: action,
+      description: desc,
+      performed_by: data.owner_id || data.created_by
+    });
+  }
+
   return data;
 };
 
@@ -932,7 +1082,27 @@ export const getActivities = async (): Promise<CRMActivity[]> => {
     console.error('Error fetching activities:', error);
     return [];
   }
-  return data || [];
+
+  const resolver = await getPersonResolver();
+  const activities = (data || []).map((act: any) => {
+    let perf = act.performer;
+    if (!perf || !perf.name) {
+      const resolved = resolver(act.performed_by);
+      if (resolved) {
+        perf = {
+          id: resolved.id,
+          name: resolved.name,
+          email: resolved.email
+        };
+      }
+    }
+    return {
+      ...act,
+      performer: perf
+    };
+  });
+
+  return activities;
 };
 
 export async function logActivity(activity: Partial<CRMActivity>): Promise<void> {
@@ -941,9 +1111,26 @@ export async function logActivity(activity: Partial<CRMActivity>): Promise<void>
   if (!performerId) {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-      // Try to find employee linked to this user
-      const { data: emp } = await (supabase as any).from('employees').select('id').eq('email', user.email).maybeSingle();
-      if (emp) performerId = emp.id;
+      // 1. Try to find employee by profile_id
+      const { data: empByProfile } = await (supabase as any).from('employees').select('id').eq('profile_id', user.id).maybeSingle();
+      if (empByProfile) {
+        performerId = empByProfile.id;
+      } else {
+        // 2. Try to find employee by email
+        const userEmail = user.email ? user.email.toLowerCase() : '';
+        const { data: empByEmail } = await (supabase as any).from('employees').select('id')
+          .or(`email.ilike.${userEmail},office_email.ilike.${userEmail},personal_email.ilike.${userEmail}`)
+          .maybeSingle();
+        if (empByEmail) {
+          performerId = empByEmail.id;
+        } else {
+          // 3. Check profile.employee_id
+          const { data: prof } = await supabase.from('profiles').select('employee_id').eq('id', user.id).maybeSingle();
+          if (prof?.employee_id) {
+            performerId = prof.employee_id;
+          }
+        }
+      }
     }
   }
 

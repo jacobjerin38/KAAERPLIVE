@@ -24,7 +24,7 @@ import {
     Deal, Contact, Task, CRMActivity, CRMViewMode, CRMStats,
     CRMDeal, CRMContact, CRMTask, CRMDocument
 } from '../crm/types';
-import { checkIsAdmin, getLeads } from '../crm/services';
+import { checkIsAdmin, getLeads, getPersonResolver } from '../crm/services';
 import { MASTER_CONFIG } from './Organisation';
 
 // --- Placeholder Components for Missing Views ---
@@ -109,17 +109,17 @@ export const CRM: React.FC = () => {
             fetchCRMData(currentCompanyId, empRecord?.id);
         };
         init();
-    }, [user, userRole, currentCompanyId]);
+    }, [user?.id, userRole, currentCompanyId]);
 
     // Refresh dashboard whenever switching to DASHBOARD tab
     useEffect(() => {
         if (activeTab === 'DASHBOARD' && companyId) {
-            fetchCRMData(companyId);
+            fetchCRMData(companyId, undefined, true);
         }
     }, [activeTab, companyId]);
 
-    const fetchCRMData = async (companyId: string, employeeIdOverride?: string) => {
-        setLoading(true);
+    const fetchCRMData = async (companyId: string, employeeIdOverride?: string, silent = false) => {
+        if (!silent && deals.length === 0) setLoading(true);
         try {
             const isAdmin = checkIsAdmin(userRole);
             const empId = employeeIdOverride || currentEmployee?.id;
@@ -165,7 +165,7 @@ export const CRM: React.FC = () => {
             // 6. Activity Log Query
             let activityQuery = (supabase as any)
                 .from('crm_activity_log')
-                .select('*')
+                .select('*, performer:employees(*)')
                 .eq('company_id', companyId)
                 .order('created_at', { ascending: false })
                 .limit(20);
@@ -194,6 +194,8 @@ export const CRM: React.FC = () => {
                 docsQuery,
                 activityQuery
             ]);
+
+            const resolver = await getPersonResolver(companyId);
 
             const mappedDeals: Deal[] = (oppsData || []).map((opp: any) => ({
                 id: opp.id,
@@ -255,28 +257,37 @@ export const CRM: React.FC = () => {
 
             // Process Activities
             if (activityData && activityData.length > 0) {
-                setActivities(activityData.map((act: any) => ({
-                    id: act.id,
-                    description: act.description,
-                    created_at: act.created_at,
-                    performer: { name: user?.email?.split('@')[0] || 'PEC Sales' }
-                } as any)));
+                setActivities(activityData.map((act: any) => {
+                    let perfName = act.performer?.name;
+                    if (!perfName) {
+                        const resolved = resolver(act.performed_by);
+                        perfName = resolved?.name || 'Team Member';
+                    }
+                    return {
+                        id: act.id,
+                        description: act.description,
+                        created_at: act.created_at,
+                        performer: { name: perfName }
+                    } as any;
+                }));
             } else {
                 const syntheticActivities: CRMActivity[] = [];
                 (oppsData || []).slice(0, 6).forEach((opp: any) => {
+                    const resolvedPerson = resolver(opp.owner_id || opp.created_by);
                     syntheticActivities.push({
                         id: `act-opp-${opp.id}`,
                         description: `${opp.status === 'Won' || opp.stage?.name === 'Won' ? 'Closed won' : 'Created'} opportunity "${opp.title}" for ${opp.customer?.name || 'client'} (${opp.currency || 'QAR'} ${Number(opp.amount || 0).toLocaleString()})`,
                         created_at: opp.created_at,
-                        performer: { name: user?.email?.split('@')[0] || 'PEC Sales' }
+                        performer: { name: resolvedPerson?.name || 'Sales Team' }
                     } as any);
                 });
                 (customersData || []).slice(0, 3).forEach((cust: any) => {
+                    const resolvedPerson = resolver(cust.owner_id || cust.created_by);
                     syntheticActivities.push({
                         id: `act-cust-${cust.id}`,
                         description: `Registered client account "${cust.name}"`,
                         created_at: cust.created_at,
-                        performer: { name: user?.email?.split('@')[0] || 'PEC Sales' }
+                        performer: { name: resolvedPerson?.name || 'Sales Team' }
                     } as any);
                 });
                 syntheticActivities.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
