@@ -60,6 +60,13 @@ const AppContent: React.FC = () => {
     }
   }, [normalizedPath]);
 
+  // Redirect hidden modules for all users
+  useEffect(() => {
+    if (['/marketing', '/loans', '/procurement'].includes(normalizedPath)) {
+      navigate('/', { replace: true });
+    }
+  }, [normalizedPath, navigate]);
+
   // Initial Theme Check
   useEffect(() => {
     if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {

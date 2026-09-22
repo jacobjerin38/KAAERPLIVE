@@ -5,9 +5,9 @@ import { Search, Command, Bell, Settings, Building2, XCircle, ShieldAlert } from
 import { useNavigate } from 'react-router-dom';
 import {
   EmployeesWidget, AttendanceWidget, LeaveWidget, PayrollWidget, CRMWidget, OrganisationWidget, ESSPWidget, UpcomingWidget,
-  AccountingWidget, InventoryWidget, ManufacturingWidget, ProcurementWidget,
-  ProjectsWidget, DocumentsWidget, SalesWidget, HelpDeskWidget, MarketingWidget,
-  RecruitmentWidget, PerformanceWidget, LoansWidget, TravelWidget
+  AccountingWidget, InventoryWidget, ManufacturingWidget,
+  ProjectsWidget, DocumentsWidget, SalesWidget, HelpDeskWidget,
+  RecruitmentWidget, PerformanceWidget, TravelWidget
 } from './DashboardWidgets';
 import { useUI } from '../contexts/UIContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -349,8 +349,7 @@ export const Dashboard: React.FC = () => {
         return <ManufacturingWidget onClick={() => handleNavigate(AppView.MANUFACTURING)} className="md:col-span-1 min-h-[180px]" />;
 
       case AppView.PROCUREMENT:
-        if (!hasPermission('procurement.view') && !hasPermission('*')) return null;
-        return <ProcurementWidget onClick={() => handleNavigate(AppView.PROCUREMENT)} className="md:col-span-1 min-h-[180px]" />;
+        return null;
 
       case AppView.PROJECTS:
         if (!hasPermission('projects.view')) return null;
@@ -386,13 +385,7 @@ export const Dashboard: React.FC = () => {
         );
 
       case AppView.MARKETING:
-        if (!hasPermission('marketing.view')) return null;
-        return (
-          <MarketingWidget
-            onClick={() => handleNavigate(AppView.MARKETING)}
-            className="md:col-span-1 min-h-[200px]"
-          />
-        );
+        return null;
 
       case AppView.RECRUITMENT:
         if (!hasPermission('recruitment.view')) return null;
@@ -404,13 +397,7 @@ export const Dashboard: React.FC = () => {
         );
 
       case AppView.LOANS:
-        if (!hasPermission('loans.view')) return null;
-        return (
-          <LoansWidget
-            onClick={() => handleNavigate(AppView.LOANS)}
-            className="md:col-span-1 min-h-[200px]"
-          />
-        );
+        return null;
 
       case AppView.PERFORMANCE:
         if (!hasPermission('performance.view')) return null;
@@ -551,7 +538,8 @@ export const Dashboard: React.FC = () => {
               AppView.EMPLOYEES, AppView.ATTENDANCE, AppView.LEAVE, AppView.PAYROLL,
               AppView.CRM, AppView.SALES, AppView.ESSP, 
               AppView.ORGANISATION, AppView.DASHBOARD, AppView.PROJECTS, 
-              AppView.DOCUMENTS, AppView.ACCOUNTING, AppView.INVENTORY
+              AppView.DOCUMENTS, AppView.ACCOUNTING, AppView.INVENTORY,
+              AppView.PROCUREMENT, AppView.MARKETING, AppView.LOANS
             ].includes(m.id))
             .map(m => renderModuleWidget(m.id))
           }

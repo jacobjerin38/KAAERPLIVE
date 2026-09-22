@@ -134,22 +134,6 @@ export const MODULES: ModuleConfig[] = [
     bgColor: "bg-slate-100",
   },
   {
-    id: AppView.PROCUREMENT,
-    name: "Procurement",
-    description: "Purchase Orders, RFQs & Vendors",
-    icon: ShoppingCart,
-    color: "text-blue-600",
-    bgColor: "bg-blue-100",
-  },
-  {
-    id: AppView.MARKETING,
-    name: "Marketing",
-    description: "Campaigns & Automation",
-    icon: Megaphone,
-    color: "text-orange-600",
-    bgColor: "bg-orange-100",
-  },
-  {
     id: AppView.DOCUMENTS,
     name: "Documents",
     description: "Policies, Contracts & Records",
@@ -164,14 +148,6 @@ export const MODULES: ModuleConfig[] = [
     icon: Briefcase,
     color: "text-amber-600",
     bgColor: "bg-amber-100",
-  },
-  {
-    id: AppView.LOANS,
-    name: "Loans & Benefits",
-    description: "Advances, Insurance & Claims",
-    icon: DollarSign,
-    color: "text-emerald-600",
-    bgColor: "bg-emerald-100",
   },
   {
     id: AppView.PERFORMANCE,
