@@ -126,14 +126,6 @@ export const MODULES: ModuleConfig[] = [
     bgColor: "bg-pink-100",
   },
   {
-    id: AppView.MANUFACTURING,
-    name: "Manufacturing",
-    description: "Work Orders, BOM & PLM",
-    icon: Factory,
-    color: "text-slate-600",
-    bgColor: "bg-slate-100",
-  },
-  {
     id: AppView.DOCUMENTS,
     name: "Documents",
     description: "Policies, Contracts & Records",

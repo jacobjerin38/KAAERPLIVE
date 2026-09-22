@@ -62,7 +62,7 @@ const AppContent: React.FC = () => {
 
   // Redirect hidden modules for all users
   useEffect(() => {
-    if (['/marketing', '/loans', '/procurement'].includes(normalizedPath)) {
+    if (['/marketing', '/loans', '/procurement', '/manufacturing'].includes(normalizedPath)) {
       navigate('/', { replace: true });
     }
   }, [normalizedPath, navigate]);

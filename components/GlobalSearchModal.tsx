@@ -46,7 +46,6 @@ export const GlobalSearchModal: React.FC = () => {
         { id: 'nav-essp', type: 'NAVIGATION', title: 'ESSP', subtitle: 'Employee Self Service', icon: <User className="w-4 h-4" />, action: () => navigate('/essp') },
         { id: 'nav-accounting', type: 'NAVIGATION', title: 'Accounting', subtitle: 'Financials, Banking & Audit', icon: <FileText className="w-4 h-4" />, action: () => navigate('/accounting') },
         { id: 'nav-inventory', type: 'NAVIGATION', title: 'Inventory', subtitle: 'Stock, Logistics & Warehouse', icon: <FileText className="w-4 h-4" />, action: () => navigate('/inventory') },
-        { id: 'nav-manufacturing', type: 'NAVIGATION', title: 'Manufacturing', subtitle: 'Work Orders, BOM & PLM', icon: <FileText className="w-4 h-4" />, action: () => navigate('/manufacturing') },
         { id: 'nav-sales', type: 'NAVIGATION', title: 'Sales', subtitle: 'Sales Orders & Customers', icon: <FileText className="w-4 h-4" />, action: () => navigate('/sales') },
         { id: 'nav-help-desk', type: 'NAVIGATION', title: 'Help Desk', subtitle: 'Tickets & Customer Support', icon: <Headphones className="w-4 h-4" />, action: () => navigate('/help_desk') },
         { id: 'nav-recruitment', type: 'NAVIGATION', title: 'Recruitment', subtitle: 'ATS, Hiring & Job Openings', icon: <Briefcase className="w-4 h-4" />, action: () => navigate('/recruitment') },

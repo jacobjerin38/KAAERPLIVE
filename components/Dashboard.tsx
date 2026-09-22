@@ -5,7 +5,7 @@ import { Search, Command, Bell, Settings, Building2, XCircle, ShieldAlert } from
 import { useNavigate } from 'react-router-dom';
 import {
   EmployeesWidget, AttendanceWidget, LeaveWidget, PayrollWidget, CRMWidget, OrganisationWidget, ESSPWidget, UpcomingWidget,
-  AccountingWidget, InventoryWidget, ManufacturingWidget,
+  AccountingWidget, InventoryWidget,
   ProjectsWidget, DocumentsWidget, SalesWidget, HelpDeskWidget,
   RecruitmentWidget, PerformanceWidget, TravelWidget
 } from './DashboardWidgets';
@@ -345,8 +345,7 @@ export const Dashboard: React.FC = () => {
         );
 
       case AppView.MANUFACTURING:
-        if (!hasPermission('manufacturing.view') && !hasPermission('*')) return null;
-        return <ManufacturingWidget onClick={() => handleNavigate(AppView.MANUFACTURING)} className="md:col-span-1 min-h-[180px]" />;
+        return null;
 
       case AppView.PROCUREMENT:
         return null;
@@ -539,7 +538,8 @@ export const Dashboard: React.FC = () => {
               AppView.CRM, AppView.SALES, AppView.ESSP, 
               AppView.ORGANISATION, AppView.DASHBOARD, AppView.PROJECTS, 
               AppView.DOCUMENTS, AppView.ACCOUNTING, AppView.INVENTORY,
-              AppView.PROCUREMENT, AppView.MARKETING, AppView.LOANS
+              AppView.PROCUREMENT, AppView.MARKETING, AppView.LOANS,
+              AppView.MANUFACTURING
             ].includes(m.id))
             .map(m => renderModuleWidget(m.id))
           }
