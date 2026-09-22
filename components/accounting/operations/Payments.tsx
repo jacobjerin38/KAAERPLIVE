@@ -214,11 +214,11 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
     }, [totalExpenseAmount, totalBankAmount]);
 
     const isBalanced = useMemo(() => {
-        if (paymentCategory === 'partner' && expenseLines.length === 0) {
-            return totalBankAmount > 0;
+        if (paymentCategory === 'partner') {
+            return !!selectedPartner && totalBankAmount > 0;
         }
         return totalExpenseAmount > 0 && Math.abs(balanceDifference) < 0.001;
-    }, [paymentCategory, expenseLines, totalExpenseAmount, totalBankAmount, balanceDifference]);
+    }, [paymentCategory, selectedPartner, totalExpenseAmount, totalBankAmount, balanceDifference]);
 
     // Multi-Line Handlers: Expense Lines
     const handleAddExpenseLine = () => {
@@ -533,6 +533,9 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
             if (paymentCategory === 'direct_account' && Math.abs(balanceDifference) > 0.001) {
                 throw new Error(`Voucher is unbalanced. Net Allocation (QAR ${totalExpenseAmount.toFixed(2)}) must equal Total Bank/Payment (QAR ${totalBankAmount.toFixed(2)}). Difference: QAR ${balanceDifference.toFixed(2)}`);
             }
+            if (paymentCategory === 'partner' && totalBankAmount <= 0) {
+                throw new Error('Please enter the received/disbursed amount in Section 2 (Bank & Cash Payment Sources).');
+            }
 
             const totalVoucherAmount = paymentCategory === 'direct_account' ? totalExpenseAmount : totalBankAmount;
             const primaryExpense = expenseLines[0];
@@ -555,26 +558,30 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
             }
 
             const partnerObj = partners.find((p: any) => p.id === selectedPartner);
+            const defaultReceivable = accounts.find(a => a.code === '1110' || a.subtype === 'Receivable')?.id;
+            const defaultPayable = accounts.find(a => ['2110', '2010'].includes(a.code) || a.subtype === 'Payable')?.id;
             const partnerDefaultAccId = paymentType === 'inbound'
-                ? partnerObj?.property_account_receivable_id
-                : partnerObj?.property_account_payable_id;
+                ? (partnerObj?.property_account_receivable_id || defaultReceivable)
+                : (partnerObj?.property_account_payable_id || defaultPayable);
 
-            const formattedExpenseLines = expenseLines.map(el => {
-                const rawAmt = Number(el.amount) || 0;
-                const isCredit = paymentType === 'inbound'
-                    ? (el.entry_type === 'debit' || rawAmt < 0 ? false : true)
-                    : (el.entry_type === 'credit' || rawAmt < 0);
-                const signedAmt = isCredit ? -Math.abs(rawAmt) : Math.abs(rawAmt);
-                const resolvedAccId = el.account_id || (paymentCategory === 'partner' ? partnerDefaultAccId : null) || null;
-                return {
-                    id: el.id,
-                    account_id: resolvedAccId,
-                    partner_id: el.partner_id || selectedPartner || null,
-                    notes: el.notes || null,
-                    entry_type: isCredit ? 'credit' : 'debit',
-                    amount: signedAmt
-                };
-            });
+            const formattedExpenseLines = paymentCategory === 'partner'
+                ? []
+                : expenseLines.map(el => {
+                    const rawAmt = Number(el.amount) || 0;
+                    const isCredit = paymentType === 'inbound'
+                        ? (el.entry_type === 'debit' || rawAmt < 0 ? false : true)
+                        : (el.entry_type === 'credit' || rawAmt < 0);
+                    const signedAmt = isCredit ? -Math.abs(rawAmt) : Math.abs(rawAmt);
+                    const resolvedAccId = el.account_id || null;
+                    return {
+                        id: el.id,
+                        account_id: resolvedAccId,
+                        partner_id: el.partner_id || selectedPartner || null,
+                        notes: el.notes || null,
+                        entry_type: isCredit ? 'credit' : 'debit',
+                        amount: signedAmt
+                    };
+                });
 
             const formattedBankLines = bankLines.map(bl => ({
                 id: bl.id,
@@ -586,9 +593,9 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                 amount: Number(bl.amount)
             }));
 
-            const resolvedPrimaryAccId = primaryExpense?.account_id 
-                ? String(primaryExpense.account_id).trim() 
-                : (partnerDefaultAccId ? String(partnerDefaultAccId).trim() : null);
+            const resolvedPrimaryAccId = paymentCategory === 'partner'
+                ? (partnerDefaultAccId ? String(partnerDefaultAccId).trim() : null)
+                : (primaryExpense?.account_id ? String(primaryExpense.account_id).trim() : null);
 
             const payload: any = {
                 company_id: currentCompanyId,
@@ -1338,25 +1345,47 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                                     )}
                                     <div>
                                         <h4 className="text-xs font-bold">
-                                            {isBalanced
-                                                ? `Voucher Balanced: Total QAR ${totalBankAmount.toFixed(2)}`
-                                                : `Unbalanced Voucher: Difference of QAR ${Math.abs(balanceDifference).toFixed(2)}`}
+                                            {paymentCategory === 'partner' ? (
+                                                isBalanced
+                                                    ? `Party Voucher Ready: QAR ${totalBankAmount.toFixed(2)}`
+                                                    : 'Incomplete Party Voucher'
+                                            ) : (
+                                                isBalanced
+                                                    ? `Voucher Balanced: Total QAR ${totalBankAmount.toFixed(2)}`
+                                                    : `Unbalanced Voucher: Difference of QAR ${Math.abs(balanceDifference).toFixed(2)}`
+                                            )}
                                         </h4>
                                         <p className="text-[11px] opacity-80">
-                                            {totalExpenseCredits > 0 ? (
-                                                <>
-                                                    Gross DR: <strong>QAR {totalExpenseDebits.toFixed(2)}</strong> | Deductions / CR: <strong>-QAR {totalExpenseCredits.toFixed(2)}</strong> | Net Payout: <strong>QAR {totalExpenseAmount.toFixed(2)}</strong> | Bank Payment: <strong>QAR {totalBankAmount.toFixed(2)}</strong>
-                                                </>
+                                            {paymentCategory === 'partner' ? (
+                                                !selectedPartner ? (
+                                                    <span className="text-amber-700 dark:text-amber-300 font-semibold">
+                                                        ⚠️ Please select a {paymentType === 'inbound' ? 'Customer' : 'Vendor'} partner tag in the header.
+                                                    </span>
+                                                ) : totalBankAmount <= 0 ? (
+                                                    <span className="text-amber-700 dark:text-amber-300 font-semibold">
+                                                        ⚠️ Please enter the {paymentType === 'inbound' ? 'received' : 'disbursed'} amount in Section 2 (Bank & Cash Sources).
+                                                    </span>
+                                                ) : (
+                                                    <>
+                                                        {paymentType === 'inbound' ? 'Receipt from Customer' : 'Payment to Vendor'}: <strong>{partners.find(p => p.id === selectedPartner)?.name || 'Selected Partner'}</strong> | Total: <strong>QAR {totalBankAmount.toFixed(2)}</strong> (Settles to Accounts {paymentType === 'inbound' ? 'Receivable' : 'Payable'})
+                                                    </>
+                                                )
                                             ) : (
-                                                <>
-                                                    Expenses: <strong>QAR {totalExpenseAmount.toFixed(2)}</strong> | Payment Sources: <strong>QAR {totalBankAmount.toFixed(2)}</strong>
-                                                </>
+                                                totalExpenseCredits > 0 ? (
+                                                    <>
+                                                        Gross DR: <strong>QAR {totalExpenseDebits.toFixed(2)}</strong> | Deductions / CR: <strong>-QAR {totalExpenseCredits.toFixed(2)}</strong> | Net Payout: <strong>QAR {totalExpenseAmount.toFixed(2)}</strong> | Bank Payment: <strong>QAR {totalBankAmount.toFixed(2)}</strong>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        Expenses: <strong>QAR {totalExpenseAmount.toFixed(2)}</strong> | Payment Sources: <strong>QAR {totalBankAmount.toFixed(2)}</strong>
+                                                    </>
+                                                )
                                             )}
                                         </p>
                                     </div>
                                 </div>
 
-                                {!viewMode && !isBalanced && Math.abs(balanceDifference) > 0.001 && (
+                                {!viewMode && paymentCategory === 'direct_account' && !isBalanced && Math.abs(balanceDifference) > 0.001 && (
                                     <button
                                         type="button"
                                         onClick={handleAutoBalance}

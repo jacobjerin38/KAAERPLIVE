@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
 import { read, utils, write } from 'xlsx';
-import { Plus, Search, Edit3, Trash2, Phone, Mail, MapPin, FileText, UploadCloud, Download, Loader2 } from 'lucide-react';
+import { Plus, Search, Edit3, Trash2, Phone, Mail, MapPin, FileText, UploadCloud, Download, Loader2, AlertTriangle, AlertCircle, ShieldAlert, CheckCircle2 } from 'lucide-react';
 import { Modal } from '../../ui/Modal';
 import { PrintButton } from '../../ui/PrintButton';
 
@@ -24,6 +24,7 @@ interface Partner {
     country: string;
     postal_code: string;
     credit_limit: number;
+    is_active?: boolean;
 }
 
 interface Account {
@@ -34,6 +35,13 @@ interface Account {
     is_group?: boolean;
 }
 
+interface UsageResult {
+    partner: Partner;
+    can_delete: boolean;
+    total_usage: number;
+    details: string[];
+}
+
 export const Partners: React.FC<{ type?: 'Customer' | 'Vendor' }> = ({ type }) => {
     const { currentCompanyId } = useAuth();
     const [partners, setPartners] = useState<Partner[]>([]);
@@ -41,6 +49,11 @@ export const Partners: React.FC<{ type?: 'Customer' | 'Vendor' }> = ({ type }) =
     const [search, setSearch] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingPartner, setEditingPartner] = useState<Partner | null>(null);
+
+    // Delete validation state
+    const [deleteModalState, setDeleteModalState] = useState<UsageResult | null>(null);
+    const [isCheckingUsage, setIsCheckingUsage] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     // Import state
     const [showImportModal, setShowImportModal] = useState(false);
@@ -145,11 +158,83 @@ export const Partners: React.FC<{ type?: 'Customer' | 'Vendor' }> = ({ type }) =
         }
     };
 
-    const handleDelete = async (id: string) => {
-        if (!confirm('Are you sure? This cannot be undone.')) return;
-        const { error } = await supabase.from('accounting_partners').delete().eq('id', id);
-        if (error) alert('Error deleting: ' + error.message);
-        else fetchPartners();
+    const handleDeleteClick = async (partner: Partner) => {
+        setIsCheckingUsage(true);
+        try {
+            const { data, error } = await supabase.rpc('rpc_check_partner_usage', { p_partner_id: partner.id });
+            if (error) {
+                console.error('Error checking partner usage:', error);
+                // Fallback check on accounting_journal_entries
+                const { count } = await supabase
+                    .from('accounting_journal_entries')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('partner_id', partner.id);
+                
+                const hasUsage = (count || 0) > 0;
+                setDeleteModalState({
+                    partner,
+                    can_delete: !hasUsage,
+                    total_usage: count || 0,
+                    details: hasUsage ? [`${count} Journal Entries / Invoices`] : []
+                });
+            } else {
+                setDeleteModalState({
+                    partner,
+                    can_delete: data?.can_delete ?? false,
+                    total_usage: data?.total_usage ?? 0,
+                    details: data?.details ?? []
+                });
+            }
+        } catch (e: any) {
+            console.error('Usage check error:', e);
+            alert('Failed to check customer usage: ' + (e.message || 'Unknown error'));
+        } finally {
+            setIsCheckingUsage(false);
+        }
+    };
+
+    const handleConfirmDelete = async () => {
+        if (!deleteModalState) return;
+        setIsDeleting(true);
+        try {
+            const { data, error } = await supabase.rpc('rpc_delete_partner_safe', { p_partner_id: deleteModalState.partner.id });
+            if (error) throw error;
+            if (data && data.success === false) {
+                alert(data.message || 'Cannot delete this partner.');
+            } else {
+                alert(`Successfully deleted "${deleteModalState.partner.name}".`);
+                setDeleteModalState(null);
+                if (isModalOpen && editingPartner?.id === deleteModalState.partner.id) {
+                    setIsModalOpen(false);
+                    setEditingPartner(null);
+                }
+                fetchPartners();
+            }
+        } catch (e: any) {
+            console.error('Delete error:', e);
+            alert('Failed to delete partner: ' + (e.message || 'Unknown error'));
+        } finally {
+            setIsDeleting(false);
+        }
+    };
+
+    const handleDeactivatePartner = async (partnerId: string) => {
+        try {
+            const { error } = await supabase
+                .from('accounting_partners')
+                .update({ is_active: false })
+                .eq('id', partnerId);
+            if (error) throw error;
+            alert('Customer deactivated successfully. They will no longer appear in new transactions.');
+            setDeleteModalState(null);
+            if (isModalOpen && editingPartner?.id === partnerId) {
+                setIsModalOpen(false);
+                setEditingPartner(null);
+            }
+            fetchPartners();
+        } catch (e: any) {
+            alert('Failed to deactivate customer: ' + e.message);
+        }
     };
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -302,31 +387,49 @@ export const Partners: React.FC<{ type?: 'Customer' | 'Vendor' }> = ({ type }) =
                 ) : (
                     filteredPartners.map(partner => (
                         <div key={partner.id} className="group relative bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-5 hover:shadow-md transition-all">
-                            <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button onClick={() => { setEditingPartner(partner); setIsModalOpen(true); }} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition-colors">
-                                    <Edit3 className="w-4 h-4" />
-                                </button>
-                                <button onClick={() => handleDelete(partner.id)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg transition-colors">
-                                    <Trash2 className="w-4 h-4" />
-                                </button>
-                            </div>
-
                             <div className="flex items-start justify-between mb-4">
-                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg shadow-sm">
-                                    {partner.name.charAt(0)}
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                    {(partner.reference_code || partner.code) && (
-                                        <span className="font-mono text-[11px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-0.5 rounded border border-indigo-100 dark:border-indigo-900/40">
-                                            {partner.reference_code || partner.code}
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg shadow-sm">
+                                        {partner.name.charAt(0)}
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                        {(partner.reference_code || partner.code) && (
+                                            <span className="font-mono text-[11px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-0.5 rounded border border-indigo-100 dark:border-indigo-900/40">
+                                                {partner.reference_code || partner.code}
+                                            </span>
+                                        )}
+                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${partner.partner_type === 'Customer' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                                                partner.partner_type === 'Vendor' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+                                                    'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                                            }`}>
+                                            {partner.partner_type}
                                         </span>
-                                    )}
-                                    <span className={`px-2 py-1 rounded text-xs font-bold uppercase tracking-wide ${partner.partner_type === 'Customer' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
-                                            partner.partner_type === 'Vendor' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
-                                                'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                                        }`}>
-                                        {partner.partner_type}
-                                    </span>
+                                        {(partner as any).is_active === false && (
+                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
+                                                INACTIVE
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-1">
+                                    <button 
+                                        type="button"
+                                        onClick={(e) => { e.stopPropagation(); setEditingPartner(partner); setIsModalOpen(true); }} 
+                                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition-colors"
+                                        title={`Edit ${partner.name}`}
+                                    >
+                                        <Edit3 className="w-4 h-4" />
+                                    </button>
+                                    <button 
+                                        type="button"
+                                        onClick={(e) => { e.stopPropagation(); handleDeleteClick(partner); }} 
+                                        disabled={isCheckingUsage}
+                                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg transition-colors"
+                                        title={`Delete ${partner.name}`}
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
                                 </div>
                             </div>
 
@@ -455,16 +558,146 @@ export const Partners: React.FC<{ type?: 'Customer' | 'Vendor' }> = ({ type }) =
                             </div>
                         </div>
 
-                        <div className="pt-4 flex gap-3 justify-end border-t border-slate-100 dark:border-zinc-800">
-                            <button type="button" onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-slate-300 rounded-xl font-bold hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors">
-                                Cancel
-                            </button>
-                            <button type="submit" className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-500/20 transition-all">
-                                {editingPartner ? 'Update Partner' : 'Save Partner'}
-                            </button>
+                        <div className="pt-4 flex flex-wrap gap-3 justify-between items-center border-t border-slate-100 dark:border-zinc-800">
+                            {editingPartner ? (
+                                <button
+                                    type="button"
+                                    onClick={() => handleDeleteClick(editingPartner)}
+                                    disabled={isCheckingUsage}
+                                    className="px-4 py-2.5 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 border border-rose-200 dark:border-rose-800/40 rounded-xl font-bold text-sm flex items-center gap-1.5 transition-colors"
+                                >
+                                    {isCheckingUsage ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                                    Delete {editingPartner.partner_type || 'Partner'}
+                                </button>
+                            ) : <div />}
+                            <div className="flex gap-2">
+                                <button type="button" onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-slate-300 rounded-xl font-bold hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors">
+                                    Cancel
+                                </button>
+                                <button type="submit" className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-500/20 transition-all">
+                                    {editingPartner ? 'Update Partner' : 'Save Partner'}
+                                </button>
+                            </div>
                         </div>
                     </form>
                 </Modal>
+            )}
+
+            {/* Delete Validation & Confirmation Modal */}
+            {deleteModalState && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+                    <div className="bg-white dark:bg-zinc-900 rounded-2xl w-full max-w-lg shadow-2xl border border-slate-200 dark:border-zinc-800 overflow-hidden">
+                        {deleteModalState.can_delete ? (
+                            // CASE 1: UNUSED PARTNER -> SAFE TO DELETE
+                            <div className="p-6 space-y-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-11 h-11 rounded-full bg-rose-100 dark:bg-rose-950/50 flex items-center justify-center text-rose-600 dark:text-rose-400">
+                                        <Trash2 className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                                            Delete Unused {deleteModalState.partner.partner_type || 'Partner'}?
+                                        </h3>
+                                        <p className="text-xs text-slate-500">
+                                            Permanent deletion validation passed
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="p-3.5 bg-slate-50 dark:bg-zinc-800/60 rounded-xl border border-slate-200 dark:border-zinc-700 space-y-2">
+                                    <div className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                                        {deleteModalState.partner.name}
+                                    </div>
+                                    {deleteModalState.partner.reference_code && (
+                                        <div className="text-xs font-mono text-slate-500">
+                                            Ref Code: {deleteModalState.partner.reference_code}
+                                        </div>
+                                    )}
+                                    <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-semibold pt-1 border-t border-slate-200 dark:border-zinc-700">
+                                        <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                                        <span>Verified: 0 transactions, invoices, payments, or orders linked.</span>
+                                    </div>
+                                </div>
+
+                                <p className="text-xs text-slate-500 leading-relaxed">
+                                    Are you sure you want to delete this customer? This action will permanently remove the record from your database and cannot be undone.
+                                </p>
+
+                                <div className="pt-2 flex justify-end gap-2.5">
+                                    <button
+                                        type="button"
+                                        disabled={isDeleting}
+                                        onClick={() => setDeleteModalState(null)}
+                                        className="px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-xl transition-colors"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="button"
+                                        disabled={isDeleting}
+                                        onClick={handleConfirmDelete}
+                                        className="px-5 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-md shadow-rose-500/20 transition-all flex items-center gap-1.5"
+                                    >
+                                        {isDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                                        {isDeleting ? 'Deleting...' : 'Confirm Delete'}
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            // CASE 2: USED PARTNER -> BLOCKED FROM DELETION
+                            <div className="p-6 space-y-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-11 h-11 rounded-full bg-amber-100 dark:bg-amber-950/50 flex items-center justify-center text-amber-600 dark:text-amber-400">
+                                        <ShieldAlert className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                                            Cannot Delete Customer
+                                        </h3>
+                                        <p className="text-xs text-amber-600 dark:text-amber-400 font-semibold">
+                                            Active financial or business history found
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="p-3.5 bg-amber-50/60 dark:bg-amber-950/20 rounded-xl border border-amber-200 dark:border-amber-900/40 space-y-2">
+                                    <div className="text-sm font-bold text-slate-900 dark:text-white">
+                                        {deleteModalState.partner.name}
+                                    </div>
+                                    <p className="text-xs text-slate-600 dark:text-slate-300">
+                                        This customer is actively linked to <strong>{deleteModalState.total_usage}</strong> historical record(s):
+                                    </p>
+                                    <ul className="text-xs text-slate-700 dark:text-slate-200 space-y-1 list-disc list-inside font-medium bg-white/70 dark:bg-zinc-800/70 p-2.5 rounded-lg border border-amber-100 dark:border-amber-900/30">
+                                        {deleteModalState.details.map((detail, idx) => (
+                                            <li key={idx}>{detail}</li>
+                                        ))}
+                                    </ul>
+                                </div>
+
+                                <div className="p-3 bg-slate-50 dark:bg-zinc-800/50 rounded-xl text-xs text-slate-500 leading-relaxed border border-slate-200 dark:border-zinc-700">
+                                    <strong>Why is this restricted?</strong> To safeguard your financial audit trail, tax records, and double-entry general ledger, partners with transactional history cannot be deleted.
+                                </div>
+
+                                <div className="pt-2 flex flex-col sm:flex-row justify-between items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => handleDeactivatePartner(deleteModalState.partner.id)}
+                                        className="w-full sm:w-auto px-4 py-2 text-xs font-bold text-amber-700 dark:text-amber-300 hover:bg-amber-100/70 dark:hover:bg-amber-950/40 border border-amber-300 dark:border-amber-800 rounded-xl transition-all"
+                                    >
+                                        Deactivate Customer Instead
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setDeleteModalState(null)}
+                                        className="w-full sm:w-auto px-5 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 rounded-xl transition-colors"
+                                    >
+                                        Understood / Close
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
             )}
 
             {/* Import Modal */}
