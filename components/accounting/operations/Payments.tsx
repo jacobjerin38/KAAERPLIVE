@@ -4,7 +4,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import {
     Plus, Search, Filter, ArrowUpRight, ArrowDownLeft, CheckCircle, Clock,
     BookOpen, Users, Trash2, Split, Building2, CreditCard, AlertCircle,
-    CheckCircle2, ChevronDown, ChevronRight, Layers, FileSpreadsheet, ArrowRight
+    CheckCircle2, ChevronDown, ChevronRight, Layers, FileSpreadsheet, ArrowRight, Tag
 } from 'lucide-react';
 import { Modal } from '../../ui/Modal';
 import { PrintButton } from '../../ui/PrintButton';
@@ -13,6 +13,7 @@ import { SearchableSelect, SearchableOption } from '../../ui/SearchableSelect';
 interface ExpenseLine {
     id: string;
     account_id: string;
+    cost_center_id?: string;
     partner_id?: string;
     notes?: string;
     entry_type?: 'debit' | 'credit';
@@ -48,18 +49,28 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
     const [journals, setJournals] = useState<any[]>([]); // Bank/Cash Journals
     const [accounts, setAccounts] = useState<any[]>([]); // Chart of accounts ledgers
     const [bankConfigs, setBankConfigs] = useState<any[]>([]); // Org Bank Configurations
+    const [costCenters, setCostCenters] = useState<any[]>([]); // Cost Centers (Projects, Drivers, Staff, etc.)
 
     // Form Header State
     const [paymentNumber, setPaymentNumber] = useState(''); // Custom voucher / reference number
     const [paymentCategory, setPaymentCategory] = useState<'partner' | 'direct_account'>('direct_account');
     const [paymentType, setPaymentType] = useState('outbound'); // inbound (Money In), outbound (Money Out)
     const [selectedPartner, setSelectedPartner] = useState('');
+    const [headerCostCenterId, setHeaderCostCenterId] = useState('');
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [notes, setNotes] = useState('');
 
+    // Quick Add Cost Center State
+    const [isCostCenterModalOpen, setIsCostCenterModalOpen] = useState(false);
+    const [newCostCenterName, setNewCostCenterName] = useState('');
+    const [newCostCenterCode, setNewCostCenterCode] = useState('');
+    const [newCostCenterType, setNewCostCenterType] = useState<'PROJECT' | 'CONTRACT' | 'GENERIC'>('GENERIC');
+    const [newCostCenterTargetIndex, setNewCostCenterTargetIndex] = useState<number | null>(null);
+    const [creatingCostCenter, setCreatingCostCenter] = useState(false);
+
     // Multi-line Dynamic Form States
     const [expenseLines, setExpenseLines] = useState<ExpenseLine[]>([
-        { id: 'exp-1', account_id: '', partner_id: '', notes: '', entry_type: 'debit', amount: '' }
+        { id: 'exp-1', account_id: '', cost_center_id: '', partner_id: '', notes: '', entry_type: 'debit', amount: '' }
     ]);
     const [bankLines, setBankLines] = useState<BankLine[]>([
         { id: 'bnk-1', journal_id: '', bank_name: '', bank_account: '', reference: '', instrument_date: '', amount: '' }
@@ -87,7 +98,8 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                 *,
                 partner:accounting_partners(name),
                 account:accounting_chart_of_accounts!account_id(code, name, type),
-                journal:accounting_journals!accounting_journal_id(code, name, type)
+                journal:accounting_journals!accounting_journal_id(code, name, type),
+                cost_center:accounting_cost_centers!cost_center_id(code, name, type)
             `)
             .eq('company_id', currentCompanyId)
             .order('date', { ascending: false });
@@ -100,11 +112,12 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
     const fetchMasters = async () => {
         if (!currentCompanyId) return;
         try {
-            const [pRes, jRes, aRes, bRes] = await Promise.all([
+            const [pRes, jRes, aRes, bRes, ccRes] = await Promise.all([
                 supabase.from('accounting_partners').select('id, name, partner_type, property_account_receivable_id, property_account_payable_id').eq('company_id', currentCompanyId).order('name'),
                 supabase.from('accounting_journals').select('id, name, type, code').eq('company_id', currentCompanyId).in('type', ['Bank', 'Cash']).order('name'),
                 supabase.from('accounting_chart_of_accounts').select('id, code, name, type, subtype, is_group, is_active').eq('company_id', currentCompanyId).eq('is_active', true).eq('is_group', false).order('code'),
-                supabase.from('org_bank_configs').select('id, name, bank_name, code').eq('company_id', currentCompanyId).order('name')
+                supabase.from('org_bank_configs').select('id, name, bank_name, code').eq('company_id', currentCompanyId).order('name'),
+                supabase.from('accounting_cost_centers').select('id, code, name, type, is_active').eq('company_id', currentCompanyId).eq('is_active', true).order('name')
             ]);
 
             setPartners(pRes.data || []);
@@ -112,6 +125,7 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
             setJournals(fetchedJournals);
             setAccounts((aRes.data || []).filter((a: any) => !a.is_group && a.is_active !== false));
             setBankConfigs(bRes.data || []);
+            setCostCenters(ccRes.data || []);
         } catch (e) {
             console.error('Error fetching masters:', e);
         }
@@ -159,6 +173,25 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
             type: p.partner_type
         }));
     }, [partners]);
+
+    const costCenterOptions = useMemo<SearchableOption[]>(() => {
+        return costCenters.map(cc => {
+            let category = 'General';
+            if (cc.type === 'PROJECT') category = 'Project';
+            else if (cc.type === 'CONTRACT') category = 'Contract';
+            else if (cc.code?.toUpperCase().includes('DRIVER') || cc.name?.toLowerCase().includes('driver')) category = 'Driver';
+            else if (cc.code?.toUpperCase().includes('VEHICLE') || cc.name?.toLowerCase().includes('corolla') || cc.name?.toLowerCase().includes('toyota') || cc.name?.toLowerCase().includes('vehicle')) category = 'Vehicle';
+            else if (cc.code?.toUpperCase().includes('SALES') || cc.name?.toLowerCase().includes('sales') || cc.name?.toLowerCase().includes('developer')) category = 'Sales / Staff';
+
+            return {
+                value: cc.id,
+                code: cc.code,
+                label: cc.name,
+                type: category,
+                sublabel: cc.code ? `[${category}] ${cc.code}` : `[${category}]`
+            };
+        });
+    }, [costCenters]);
 
     const bankAccountOptions = useMemo<SearchableOption[]>(() => {
         const list: SearchableOption[] = [];
@@ -228,6 +261,7 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
             {
                 id: `exp-${Date.now()}-${Math.random()}`,
                 account_id: '',
+                cost_center_id: headerCostCenterId || '',
                 partner_id: selectedPartner || '',
                 notes: '',
                 entry_type: paymentType === 'inbound' ? 'credit' : 'debit',
@@ -345,6 +379,7 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
             setPaymentCategory(pay.payment_category === 'direct_account' || pay.account_id ? 'direct_account' : 'partner');
             setPaymentType(pay.payment_type || 'outbound');
             setSelectedPartner(pay.partner_id || '');
+            setHeaderCostCenterId(pay.cost_center_id || '');
             setDate(pay.date || new Date().toISOString().split('T')[0]);
             setNotes(pay.notes || '');
 
@@ -360,6 +395,7 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                     return {
                         id: l.id || `exp-${idx}`,
                         account_id: l.account_id || '',
+                        cost_center_id: l.cost_center_id || pay.cost_center_id || '',
                         partner_id: l.partner_id || '',
                         notes: l.notes || '',
                         entry_type: isCredit ? 'credit' : 'debit',
@@ -370,6 +406,7 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                 setExpenseLines([{
                     id: 'exp-1',
                     account_id: pay.account_id || '',
+                    cost_center_id: pay.cost_center_id || '',
                     partner_id: pay.partner_id || '',
                     notes: '',
                     entry_type: isPayInbound ? 'credit' : 'debit',
@@ -410,12 +447,14 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
             setPaymentCategory('direct_account');
             setPaymentType('outbound');
             setSelectedPartner('');
+            setHeaderCostCenterId('');
             setDate(new Date().toISOString().split('T')[0]);
             setNotes('');
 
             setExpenseLines([{
                 id: `exp-${Date.now()}`,
                 account_id: '',
+                cost_center_id: '',
                 partner_id: '',
                 notes: '',
                 entry_type: 'debit',
@@ -468,7 +507,8 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                             *,
                             partner:accounting_partners(name),
                             account:accounting_chart_of_accounts!account_id(code, name, type),
-                            journal:accounting_journals!accounting_journal_id(code, name, type)
+                            journal:accounting_journals!accounting_journal_id(code, name, type),
+                            cost_center:accounting_cost_centers!cost_center_id(code, name, type)
                         `);
                     if (initialId) {
                         q = q.or(`id.eq.${initialId},accounting_entry_id.eq.${initialId}`);
@@ -576,6 +616,7 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                     return {
                         id: el.id,
                         account_id: resolvedAccId,
+                        cost_center_id: el.cost_center_id ? String(el.cost_center_id).trim() : null,
                         partner_id: el.partner_id || selectedPartner || null,
                         notes: el.notes || null,
                         entry_type: isCredit ? 'credit' : 'debit',
@@ -597,6 +638,10 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                 ? (partnerDefaultAccId ? String(partnerDefaultAccId).trim() : null)
                 : (primaryExpense?.account_id ? String(primaryExpense.account_id).trim() : null);
 
+            const primaryCostCenterId = paymentCategory === 'partner'
+                ? (headerCostCenterId ? String(headerCostCenterId).trim() : null)
+                : (primaryExpense?.cost_center_id ? String(primaryExpense.cost_center_id).trim() : (headerCostCenterId ? String(headerCostCenterId).trim() : null));
+
             const payload: any = {
                 company_id: currentCompanyId,
                 name: trimmedVoucher || null,
@@ -605,6 +650,7 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                 partner_type: paymentType === 'inbound' ? 'customer' : 'vendor',
                 partner_id: selectedPartner ? String(selectedPartner).trim() : null,
                 account_id: resolvedPrimaryAccId,
+                cost_center_id: primaryCostCenterId,
                 amount: totalVoucherAmount,
                 date: date,
                 accounting_journal_id: primaryBank?.journal_id ? String(primaryBank.journal_id).trim() : null,
@@ -641,6 +687,62 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
             } else {
                 alert('Error saving payment: ' + (err.message || 'Failed to save payment'));
             }
+        }
+    };
+
+    const handleCreateQuickCostCenter = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!currentCompanyId) return;
+        const trimmedName = newCostCenterName.trim();
+        if (!trimmedName) {
+            alert('Please enter a cost center name.');
+            return;
+        }
+
+        try {
+            setCreatingCostCenter(true);
+            let generatedCode = newCostCenterCode.trim().toUpperCase();
+            if (!generatedCode) {
+                const prefix = newCostCenterType === 'PROJECT' ? 'PRJ' : newCostCenterType === 'CONTRACT' ? 'CNT' : 'CC';
+                generatedCode = `${prefix}-${Date.now().toString().slice(-6)}`;
+            }
+
+            const { data, error } = await supabase
+                .from('accounting_cost_centers')
+                .insert([{
+                    company_id: currentCompanyId,
+                    name: trimmedName,
+                    code: generatedCode,
+                    type: newCostCenterType,
+                    is_active: true
+                }])
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            // Add to cost centers state
+            setCostCenters(prev => [...prev, data]);
+
+            // If target index was set, assign to that expense line
+            if (newCostCenterTargetIndex !== null && newCostCenterTargetIndex >= 0 && newCostCenterTargetIndex < expenseLines.length) {
+                handleUpdateExpenseLine(newCostCenterTargetIndex, 'cost_center_id', data.id);
+            } else if (paymentCategory === 'partner') {
+                setHeaderCostCenterId(data.id);
+            }
+
+            // Reset and close
+            setNewCostCenterName('');
+            setNewCostCenterCode('');
+            setNewCostCenterType('GENERIC');
+            setNewCostCenterTargetIndex(null);
+            setIsCostCenterModalOpen(false);
+            alert(`Cost Center "${trimmedName}" created and selected!`);
+        } catch (err: any) {
+            console.error('Error creating cost center:', err);
+            alert('Failed to create cost center: ' + (err.message || 'Unknown error'));
+        } finally {
+            setCreatingCostCenter(false);
         }
     };
 
@@ -815,6 +917,13 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                                                 <span>{displayName}</span>
                                             </div>
                                             {partnerSubtext && <div className="text-[11px] text-slate-400 font-normal">{partnerSubtext}</div>}
+                                            {pay.cost_center?.name && (
+                                                <div className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold mt-0.5 flex items-center gap-1">
+                                                    <span className="px-1.5 py-0.5 bg-purple-50 dark:bg-purple-950/50 border border-purple-200 dark:border-purple-800 rounded">
+                                                        🎯 {pay.cost_center.name}
+                                                    </span>
+                                                </div>
+                                            )}
                                             {pay.notes && <div className="text-[10px] text-slate-400 italic truncate max-w-xs">{pay.notes}</div>}
                                         </td>
                                         <td className="px-5 py-4">
@@ -887,7 +996,7 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                 <Modal
                     title={viewMode ? "Payment Voucher Summary" : (editMode ? "Edit Payment Voucher" : "Register Payment Voucher")}
                     onClose={() => setIsModalOpen(false)}
-                    size="3xl"
+                    size="5xl"
                 >
                     <form onSubmit={handleSavePayment} className="space-y-6">
                         
@@ -946,11 +1055,11 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                                         disabled={viewMode}
                                         className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
                                             paymentCategory === 'direct_account'
-                                                ? 'bg-indigo-600 text-white shadow-sm'
+                                                ? 'bg-purple-600 text-white shadow-sm'
                                                 : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'
                                         }`}
                                     >
-                                        Expense / Account Ledgers
+                                        Direct Account / Split Ledgers
                                     </button>
                                     <button
                                         type="button"
@@ -969,7 +1078,7 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                         </div>
 
                         {/* Voucher Metadata Bar */}
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div className={`grid grid-cols-1 ${paymentCategory === 'partner' ? 'sm:grid-cols-4' : 'sm:grid-cols-3'} gap-4`}>
                             <div>
                                 <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
                                     Voucher / Ref No. <span className="text-slate-400 font-normal">(e.g. PBV.3937.7)</span>
@@ -1012,6 +1121,22 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                                     buttonClassName="p-2.5 rounded-xl"
                                 />
                             </div>
+
+                            {paymentCategory === 'partner' && (
+                                <div>
+                                    <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
+                                        Cost Center <span className="text-slate-400 font-normal">(Optional)</span>
+                                    </label>
+                                    <SearchableSelect
+                                        options={costCenterOptions}
+                                        value={headerCostCenterId}
+                                        onChange={setHeaderCostCenterId}
+                                        placeholder="Select Project or Dept..."
+                                        disabled={viewMode}
+                                        buttonClassName="p-2.5 rounded-xl"
+                                    />
+                                </div>
+                            )}
                         </div>
 
                         {/* SECTION 1: EXPENSE / ACCOUNT LEDGERS (MULTI-LINE) */}
@@ -1038,13 +1163,26 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                                             </span>
                                         </div>
                                         {!viewMode && (
-                                            <button
-                                                type="button"
-                                                onClick={handleAddExpenseLine}
-                                                className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all"
-                                            >
-                                                <Plus className="w-3.5 h-3.5" /> Add Ledger Line
-                                            </button>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setNewCostCenterTargetIndex(expenseLines.length - 1);
+                                                        setIsCostCenterModalOpen(true);
+                                                    }}
+                                                    className="px-2.5 py-1.5 bg-white dark:bg-zinc-800 hover:bg-purple-50 dark:hover:bg-zinc-700 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all"
+                                                    title="Create a new Cost Center for Project, Driver, Salesperson or Vehicle"
+                                                >
+                                                    <Plus className="w-3.5 h-3.5" /> New Cost Center
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleAddExpenseLine}
+                                                    className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all"
+                                                >
+                                                    <Plus className="w-3.5 h-3.5" /> Add Ledger Line
+                                                </button>
+                                            </div>
                                         )}
                                     </div>
                                 </div>
@@ -1063,7 +1201,8 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                                                         : 'border-purple-100 dark:border-purple-900/20'
                                                 }`}
                                             >
-                                                <div className="sm:col-span-4">
+                                                {/* 1. Account Ledger (3 cols) */}
+                                                <div className="sm:col-span-3">
                                                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">
                                                         Account Ledger #{idx + 1} <span className="text-rose-500">*</span>
                                                     </label>
@@ -1071,13 +1210,30 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                                                         options={accountOptions}
                                                         value={line.account_id}
                                                         onChange={val => handleUpdateExpenseLine(idx, 'account_id', val)}
-                                                        placeholder="Type code or account name (e.g. 5510, Rent)..."
+                                                        placeholder="Search account (5510, Fuel...)..."
                                                         disabled={viewMode}
                                                         required
                                                     />
                                                 </div>
 
-                                                <div className="sm:col-span-2">
+                                                {/* 2. Cost Center (3 cols) */}
+                                                <div className="sm:col-span-3">
+                                                    <div className="flex justify-between items-center mb-0.5">
+                                                        <label className="block text-[10px] font-bold text-purple-700 dark:text-purple-300 uppercase">
+                                                            Cost Center <span className="text-slate-400 font-normal">(Driver/Project)</span>
+                                                        </label>
+                                                    </div>
+                                                    <SearchableSelect
+                                                        options={costCenterOptions}
+                                                        value={line.cost_center_id || ''}
+                                                        onChange={val => handleUpdateExpenseLine(idx, 'cost_center_id', val)}
+                                                        placeholder="Select Cost Center (Driver, Project...)"
+                                                        disabled={viewMode}
+                                                    />
+                                                </div>
+
+                                                {/* 3. DR / CR (1 col) */}
+                                                <div className="sm:col-span-1">
                                                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">
                                                         DR / CR <span className="text-rose-500">*</span>
                                                     </label>
@@ -1095,38 +1251,40 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                                                     >
                                                         {paymentType === 'inbound' ? (
                                                             <>
-                                                                <option value="credit">CR (Receipt / Credit)</option>
-                                                                <option value="debit">DR (Deduction / Charge)</option>
+                                                                <option value="credit">CR</option>
+                                                                <option value="debit">DR</option>
                                                             </>
                                                         ) : (
                                                             <>
-                                                                <option value="debit">DR (Expense / Debit)</option>
-                                                                <option value="credit">CR (Deduction / Recovery)</option>
+                                                                <option value="debit">DR</option>
+                                                                <option value="credit">CR</option>
                                                             </>
                                                         )}
                                                     </select>
                                                 </div>
 
-                                                <div className="sm:col-span-3">
+                                                {/* 4. Notes / Memo (2 cols) */}
+                                                <div className="sm:col-span-2">
                                                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Line Memo / Notes</label>
                                                     <input
                                                         type="text"
                                                         value={line.notes || ''}
                                                         onChange={e => handleUpdateExpenseLine(idx, 'notes', e.target.value)}
                                                         disabled={viewMode}
-                                                        placeholder="e.g. Rental deduction, advance recovery"
+                                                        placeholder="e.g. Fuel, car 587593"
                                                         className="w-full p-2 bg-slate-50 dark:bg-zinc-700/60 border border-slate-200 dark:border-zinc-600 rounded-lg text-xs font-medium"
                                                     />
                                                 </div>
 
+                                                {/* 5. Amount (2 cols) */}
                                                 <div className="sm:col-span-2">
                                                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5 flex justify-between items-center">
                                                         <span>Amount (QAR) <span className="text-rose-500">*</span></span>
                                                         {paymentType === 'inbound' ? (
                                                             isCredit ? (
-                                                                <span className="text-[9px] bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 px-1 py-0.2 rounded font-extrabold uppercase">CR (Receipt)</span>
+                                                                <span className="text-[9px] bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 px-1 py-0.2 rounded font-extrabold uppercase">CR</span>
                                                             ) : (
-                                                                <span className="text-[9px] bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300 px-1 py-0.2 rounded font-extrabold uppercase">DR (Deduction)</span>
+                                                                <span className="text-[9px] bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300 px-1 py-0.2 rounded font-extrabold uppercase">DR</span>
                                                             )
                                                         ) : (
                                                             isCredit ? (
@@ -1152,6 +1310,7 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                                                     />
                                                 </div>
 
+                                                {/* 6. Delete Line (1 col) */}
                                                 <div className="sm:col-span-1 flex justify-center pt-3 sm:pt-0">
                                                     {!viewMode && expenseLines.length > 1 && (
                                                         <button
@@ -1423,6 +1582,87 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                                 }`}
                             >
                                 {viewMode ? "Close" : (editMode ? "Save Voucher Changes" : "Confirm & Save Payment Voucher")}
+                            </button>
+                        </div>
+                    </form>
+                </Modal>
+            )}
+
+            {/* Quick Add Cost Center Modal */}
+            {isCostCenterModalOpen && (
+                <Modal
+                    title="Add New Cost Center / Project / Driver"
+                    onClose={() => {
+                        setIsCostCenterModalOpen(false);
+                        setNewCostCenterTargetIndex(null);
+                    }}
+                    size="md"
+                >
+                    <form onSubmit={handleCreateQuickCostCenter} className="space-y-4">
+                        <div>
+                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                                Cost Center Name <span className="text-rose-500">*</span>
+                            </label>
+                            <input
+                                type="text"
+                                required
+                                value={newCostCenterName}
+                                onChange={e => setNewCostCenterName(e.target.value)}
+                                placeholder="e.g. Toyota Corolla 587593, Driver Hafeez, Project Dolphin"
+                                className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-semibold"
+                            />
+                            <p className="text-[11px] text-slate-400 mt-1">
+                                Name of the project, vehicle, driver, department, or salesperson to allocate expenses against.
+                            </p>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                                    Allocation Type <span className="text-rose-500">*</span>
+                                </label>
+                                <select
+                                    value={newCostCenterType}
+                                    onChange={e => setNewCostCenterType(e.target.value as any)}
+                                    className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-semibold"
+                                >
+                                    <option value="GENERIC">Driver / Vehicle / Sales / Staff</option>
+                                    <option value="PROJECT">Project</option>
+                                    <option value="CONTRACT">Contract / Manpower</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                                    Code <span className="text-slate-400 font-normal">(Optional)</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    value={newCostCenterCode}
+                                    onChange={e => setNewCostCenterCode(e.target.value)}
+                                    placeholder="e.g. DRIVER-056 or PRJ-01"
+                                    className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-mono font-bold"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end gap-2 pt-3 border-t border-slate-200 dark:border-zinc-700">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setIsCostCenterModalOpen(false);
+                                    setNewCostCenterTargetIndex(null);
+                                }}
+                                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-zinc-800 rounded-xl transition-all"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={creatingCostCenter || !newCostCenterName.trim()}
+                                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-md shadow-purple-500/20 transition-all flex items-center gap-1.5"
+                            >
+                                {creatingCostCenter ? 'Creating...' : 'Create & Select Cost Center'}
                             </button>
                         </div>
                     </form>
