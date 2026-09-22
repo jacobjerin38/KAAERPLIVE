@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
+import { checkIsAdmin } from '../../crm/services';
 import {
     Plus, FileText, Download, Trash2, Search, Play, Clock,
-    BarChart3, Loader2, ChevronRight, Columns, DollarSign, Calendar, AlertTriangle
+    BarChart3, Loader2, ChevronRight, Columns, DollarSign, Calendar, AlertTriangle, Lock
 } from 'lucide-react';
 import { ReportBuilder } from './ReportBuilder';
 import { LeaveAnalyticsReport } from '../hrms/reports/LeaveAnalyticsReport';
@@ -19,7 +20,8 @@ interface ReportsListViewProps {
 }
 
 export const ReportsListView: React.FC<ReportsListViewProps> = ({ moduleFilter, companyId: propCompanyId }) => {
-    const { user, currentCompanyId } = useAuth();
+    const { user, userRole, currentCompanyId } = useAuth();
+    const isAdmin = checkIsAdmin(userRole);
     const companyId = propCompanyId || currentCompanyId;
 
     const [view, setView] = useState<'LIST' | 'BUILDER' | 'RUN' | 'STANDARD_RUN'>('LIST');
@@ -58,10 +60,13 @@ export const ReportsListView: React.FC<ReportsListViewProps> = ({ moduleFilter, 
         let query = supabase
             .from('report_definitions')
             .select('*')
-            .eq('company_id', companyId)
-            .order('created_at', { ascending: false });
+            .eq('company_id', companyId);
 
-        const { data } = await query;
+        if (!isAdmin && user?.id) {
+            query = query.or(`created_by.eq.${user.id},created_by.is.null`);
+        }
+
+        const { data } = await query.order('created_at', { ascending: false });
         setReports(data || []);
         setLoading(false);
     };
@@ -134,9 +139,16 @@ export const ReportsListView: React.FC<ReportsListViewProps> = ({ moduleFilter, 
             {/* Header */}
             <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8 shrink-0">
                 <div>
-                    <h2 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Reports & Analytics</h2>
+                    <div className="flex items-center gap-2.5">
+                        <h2 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Reports & Analytics</h2>
+                        {!isAdmin && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 rounded-full">
+                                <Lock size={11} /> Private View
+                            </span>
+                        )}
+                    </div>
                     <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mt-1">
-                        Build custom reports from any data source
+                        {isAdmin ? 'Build custom reports from any data source' : 'Custom reports and analytics for your account'}
                     </p>
                 </div>
                 <button onClick={handleNew}

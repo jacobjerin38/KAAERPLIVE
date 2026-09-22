@@ -1,13 +1,14 @@
 import React, { useState, useMemo } from 'react';
 import {
     TrendingUp, Briefcase, Users, PieChart as PieChartIcon,
-    CheckSquare, Plus, ArrowUpRight, X, Calendar as CalendarIcon, Loader2
+    CheckSquare, Plus, ArrowUpRight, X, Calendar as CalendarIcon, Loader2, Lock
 } from 'lucide-react';
 import {
     AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
 import { CRMStats, CRMActivity, Deal, Task } from './types';
 import { useAuth } from '../../contexts/AuthContext';
+import { checkIsAdmin } from './services';
 import { supabase } from '../../lib/supabase';
 
 interface SummaryViewProps {
@@ -42,7 +43,8 @@ const StatCard = ({ title, value, icon: Icon, color }: any) => {
 };
 
 export default function SummaryView({ stats, activities, deals, tasks, companyId, onRefresh }: SummaryViewProps) {
-    const { user } = useAuth();
+    const { user, userRole } = useAuth();
+    const isAdmin = checkIsAdmin(userRole);
     const [showTaskModal, setShowTaskModal] = useState(false);
     const [savingTask, setSavingTask] = useState(false);
     const [taskTitle, setTaskTitle] = useState('');
@@ -96,8 +98,17 @@ export default function SummaryView({ stats, activities, deals, tasks, companyId
         <div className="p-6 lg:p-8 h-full flex flex-col overflow-y-auto">
             {/* Header */}
             <div className="mb-8">
-                <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Dashboard</h1>
-                <p className="text-slate-500 text-sm mt-1">Welcome back, {user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User'} 👋</p>
+                <div className="flex items-center gap-2.5">
+                    <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Dashboard</h1>
+                    {!isAdmin && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 rounded-full">
+                            <Lock size={11} /> Private View
+                        </span>
+                    )}
+                </div>
+                <p className="text-slate-500 text-sm mt-1">
+                    {isAdmin ? `Welcome back, ${user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User'} 👋` : 'Your private pipeline and performance summary'}
+                </p>
             </div>
 
             {/* Stats Grid */}
@@ -176,7 +187,14 @@ export default function SummaryView({ stats, activities, deals, tasks, companyId
 
                 {/* Recent Activity */}
                 <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-slate-100 dark:border-zinc-800 shadow-sm overflow-y-auto max-h-[400px]">
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-5">Recent Activity</h3>
+                    <div className="flex items-center justify-between mb-5">
+                        <h3 className="text-lg font-bold text-slate-900 dark:text-white">Recent Activity</h3>
+                        {!isAdmin && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 rounded-full">
+                                <Lock size={9} /> Private
+                            </span>
+                        )}
+                    </div>
                     {activities.length === 0 ? (
                         <div className="h-40 flex flex-col items-center justify-center text-slate-400">
                             <p className="text-sm">No activity yet</p>

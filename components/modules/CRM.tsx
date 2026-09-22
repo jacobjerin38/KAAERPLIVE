@@ -6,7 +6,7 @@ import { TableSkeleton, DashboardSkeleton } from '../ui/LoadingSkeletons';
 import {
     LayoutDashboard, Users, FileText, CheckSquare, Calendar, Folder, Briefcase, Plus, Search,
     X, ChevronRight, ChevronDown, Sparkles, Workflow, Mic, Play, KanbanSquare, Bell, Loader2, BarChart3,
-    Package, Menu, UploadCloud, Trash2, ExternalLink, Paperclip, CheckCircle2, Download, Copy, Eye
+    Package, Menu, UploadCloud, Trash2, ExternalLink, Paperclip, CheckCircle2, Download, Copy, Eye, Lock
 } from 'lucide-react';
 import { ReportsListView } from './reports/ReportsListView';
 import { LiveView } from '../crm/LiveView';
@@ -21,7 +21,7 @@ import {
     Deal, Contact, Task, CRMActivity, CRMViewMode, CRMStats,
     CRMDeal, CRMContact, CRMTask, CRMDocument
 } from '../crm/types';
-import { checkIsAdmin, getLeads, getPersonResolver } from '../crm/services';
+import { checkIsAdmin, getLeads, getPersonResolver, getLinkedEmployeeId } from '../crm/services';
 import { MASTER_CONFIG } from './Organisation';
 
 // --- Placeholder Components for Missing Views ---
@@ -168,11 +168,72 @@ export const CRM: React.FC = () => {
                 .limit(20);
 
             if (!isAdmin && user?.id) {
-                const ownerFilter = empId
-                    ? `created_by.eq.${user.id},owner_id.eq.${user.id}`
-                    : `created_by.eq.${user.id},owner_id.eq.${user.id}`;
-                oppsQuery = oppsQuery.or(ownerFilter);
-                customersQuery = customersQuery.or(ownerFilter);
+                let effectiveEmpId = empId;
+                if (!effectiveEmpId) {
+                    effectiveEmpId = await getLinkedEmployeeId(user.id);
+                }
+
+                // 1. Opportunities / Deals
+                const oppConditions = [
+                    `created_by.eq.${user.id}`,
+                    `owner_id.eq.${user.id}`
+                ];
+                if (effectiveEmpId) {
+                    oppConditions.push(`owner_id.eq.${effectiveEmpId}`);
+                    oppConditions.push(`created_by.eq.${effectiveEmpId}`);
+                }
+                oppsQuery = oppsQuery.or(oppConditions.join(','));
+
+                // 2. Customers
+                const custConditions = [
+                    `created_by.eq.${user.id}`,
+                    `owner_id.eq.${user.id}`
+                ];
+                if (effectiveEmpId) {
+                    custConditions.push(`owner_id.eq.${effectiveEmpId}`);
+                    custConditions.push(`created_by.eq.${effectiveEmpId}`);
+                }
+                customersQuery = customersQuery.or(custConditions.join(','));
+
+                // 3. Leads
+                const leadConditions = [
+                    `created_by.eq.${user.id}`,
+                    `lead_owner_id.eq.${user.id}`
+                ];
+                if (effectiveEmpId) {
+                    leadConditions.push(`lead_owner_id.eq.${effectiveEmpId}`);
+                    leadConditions.push(`created_by.eq.${effectiveEmpId}`);
+                }
+                leadsQuery = leadsQuery.or(leadConditions.join(','));
+
+                // 4. Tasks
+                const taskConditions = [
+                    `created_by.eq.${user.id}`,
+                    `owner_id.eq.${user.id}`
+                ];
+                if (effectiveEmpId) {
+                    taskConditions.push(`owner_id.eq.${effectiveEmpId}`);
+                    taskConditions.push(`created_by.eq.${effectiveEmpId}`);
+                }
+                tasksQuery = tasksQuery.or(taskConditions.join(','));
+
+                // 5. Documents
+                const docConditions = [
+                    `created_by.eq.${user.id}`
+                ];
+                if (effectiveEmpId) {
+                    docConditions.push(`created_by.eq.${effectiveEmpId}`);
+                }
+                docsQuery = docsQuery.or(docConditions.join(','));
+
+                // 6. Recent Activity Log Updates
+                const actConditions = [
+                    `performed_by.eq.${user.id}`
+                ];
+                if (effectiveEmpId) {
+                    actConditions.push(`performed_by.eq.${effectiveEmpId}`);
+                }
+                activityQuery = activityQuery.or(actConditions.join(','));
             }
 
             // Parallel Fetch
@@ -1244,40 +1305,60 @@ export const CRM: React.FC = () => {
         </div>
     );
 
-    const UpdatesView = () => (
-        <div className="p-8 h-full flex flex-col animate-page-enter">
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-8">Recent Updates</h1>
-            <div className="flex-1 overflow-y-auto">
-                <div className="max-w-3xl flex flex-col gap-6">
-                    {activities.map((act) => (
-                        <div key={act.id} className="flex gap-4 group">
-                            <div className="flex flex-col items-center">
-                                <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-zinc-800 border-2 border-white dark:border-zinc-700 flex items-center justify-center font-bold text-slate-500 text-xs">
-                                    {(act.performer?.name || 'Sys').substring(0, 2).toUpperCase()}
+    const UpdatesView = () => {
+        const isAdmin = checkIsAdmin(userRole);
+        return (
+            <div className="p-8 h-full flex flex-col animate-page-enter">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+                    <div>
+                        <div className="flex items-center gap-2.5">
+                            <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Recent Updates</h1>
+                            {!isAdmin && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 rounded-full">
+                                    <Lock size={11} /> Private View
+                                </span>
+                            )}
+                        </div>
+                        <p className="text-slate-500 text-sm mt-1">
+                            {isAdmin ? 'Real-time activity feed across all sales representatives' : 'Your personal activity log and recent CRM updates'}
+                        </p>
+                    </div>
+                </div>
+                <div className="flex-1 overflow-y-auto">
+                    <div className="max-w-3xl flex flex-col gap-6">
+                        {activities.map((act) => (
+                            <div key={act.id} className="flex gap-4 group">
+                                <div className="flex flex-col items-center">
+                                    <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-zinc-800 border-2 border-white dark:border-zinc-700 flex items-center justify-center font-bold text-slate-500 text-xs">
+                                        {(act.performer?.name || user?.user_metadata?.full_name || 'Me').substring(0, 2).toUpperCase()}
+                                    </div>
+                                    <div className="w-0.5 flex-1 bg-slate-100 dark:bg-zinc-800 my-2 group-last:hidden"></div>
                                 </div>
-                                <div className="w-0.5 flex-1 bg-slate-100 dark:bg-zinc-800 my-2 group-last:hidden"></div>
-                            </div>
-                            <div className="flex-1 pb-8">
-                                <div className="bg-white dark:bg-zinc-900 p-5 rounded-[1.5rem] border border-slate-100 dark:border-zinc-800 shadow-sm">
-                                    <p className="font-bold text-slate-800 dark:text-white text-sm mb-1">
-                                        {act.description}
-                                    </p>
-                                    <div className="flex items-center gap-3 text-xs text-slate-400 font-bold">
-                                        <span className="uppercase tracking-wider">{act.action}</span>
-                                        <span>•</span>
-                                        <span>{new Date(act.created_at).toLocaleString()}</span>
+                                <div className="flex-1 pb-8">
+                                    <div className="bg-white dark:bg-zinc-900 p-5 rounded-[1.5rem] border border-slate-100 dark:border-zinc-800 shadow-sm">
+                                        <p className="font-bold text-slate-800 dark:text-white text-sm mb-1">
+                                            {act.description}
+                                        </p>
+                                        <div className="flex items-center gap-3 text-xs text-slate-400 font-bold">
+                                            <span className="uppercase tracking-wider">{act.action}</span>
+                                            <span>•</span>
+                                            <span>{new Date(act.created_at).toLocaleString()}</span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    ))}
-                    {activities.length === 0 && (
-                        <div className="p-8 text-center text-slate-400">No recent activities found.</div>
-                    )}
+                        ))}
+                        {activities.length === 0 && (
+                            <div className="p-8 text-center text-slate-400">
+                                <p className="font-medium">No recent updates found for your account.</p>
+                                <p className="text-xs text-slate-400 mt-1">Activities will appear here as you create or update your leads, opportunities, and customers.</p>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
-        </div>
-    );
+        );
+    };
 
     return (
         <div className="flex h-full relative z-10 overflow-hidden">

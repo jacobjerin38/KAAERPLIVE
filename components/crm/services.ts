@@ -1105,8 +1105,13 @@ export const getActivities = async (): Promise<CRMActivity[]> => {
   let query = (supabase as any).from('crm_activity_log')
     .select(`*, performer:employees(*)`);
 
-  if (filter.isSalesRep && filter.employeeId) {
-    query = query.eq('performed_by', filter.employeeId);
+  if (filter.isSalesRep && (filter.userId || filter.employeeId)) {
+    const actConds = [];
+    if (filter.userId) actConds.push(`performed_by.eq.${filter.userId}`);
+    if (filter.employeeId) actConds.push(`performed_by.eq.${filter.employeeId}`);
+    if (actConds.length > 0) {
+      query = query.or(actConds.join(','));
+    }
   }
 
   const { data, error } = await query

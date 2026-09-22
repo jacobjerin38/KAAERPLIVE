@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../../lib/supabase';
+import { useAuth } from '../../../contexts/AuthContext';
+import { checkIsAdmin, getLinkedEmployeeId } from '../../crm/services';
 import {
     Save, Play, Download, FileText, X, Plus, ArrowLeft,
     ChevronDown, ChevronUp, BarChart3, Table2, Printer,
     Loader2, GripVertical, Filter, Columns, SortAsc, SortDesc,
-    TrendingUp, Hash, Calculator
+    TrendingUp, Hash, Calculator, Lock
 } from 'lucide-react';
 import {
     BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
@@ -84,6 +86,8 @@ const TABLE_LABELS: Record<string, string> = {
 };
 
 export const ReportBuilder: React.FC<ReportBuilderProps> = ({ onBack, companyId, initialModule, editReport, moduleFilter }) => {
+    const { user, userRole } = useAuth();
+    const isAdmin = checkIsAdmin(userRole);
     const activeModuleConstraint = editReport?.module || initialModule || moduleFilter;
 
     const [modules, setModules] = useState<string[]>([]);
@@ -240,6 +244,40 @@ export const ReportBuilder: React.FC<ReportBuilderProps> = ({ onBack, companyId,
             // @ts-ignore
             let query: any = (supabase as any).from(sourceTable).select(selectStr, { count: 'exact' });
             if (companyId) query = query.eq('company_id', companyId);
+
+            // Row-level private view filter when !isAdmin
+            if (!isAdmin && user?.id) {
+                const empId = await getLinkedEmployeeId(user.id);
+                if (sourceTable === 'crm_leads') {
+                    const conds = [`created_by.eq.${user.id}`, `lead_owner_id.eq.${user.id}`];
+                    if (empId) conds.push(`lead_owner_id.eq.${empId}`, `created_by.eq.${empId}`);
+                    query = query.or(conds.join(','));
+                } else if (sourceTable === 'crm_deals' || sourceTable === 'crm_opportunities') {
+                    const conds = [`created_by.eq.${user.id}`, `owner_id.eq.${user.id}`];
+                    if (empId) conds.push(`owner_id.eq.${empId}`, `created_by.eq.${empId}`);
+                    query = query.or(conds.join(','));
+                } else if (sourceTable === 'customers' || sourceTable === 'crm_customers') {
+                    const conds = [`created_by.eq.${user.id}`, `owner_id.eq.${user.id}`];
+                    if (empId) conds.push(`owner_id.eq.${empId}`, `created_by.eq.${empId}`);
+                    query = query.or(conds.join(','));
+                } else if (sourceTable === 'crm_activity_log') {
+                    const conds = [`performed_by.eq.${user.id}`];
+                    if (empId) conds.push(`performed_by.eq.${empId}`);
+                    query = query.or(conds.join(','));
+                } else if (sourceTable === 'sales_orders') {
+                    const conds = [`created_by.eq.${user.id}`];
+                    if (empId) conds.push(`created_by.eq.${empId}`);
+                    query = query.or(conds.join(','));
+                } else if (sourceTable === 'tickets') {
+                    const conds = [`created_by.eq.${user.id}`, `assigned_to.eq.${user.id}`];
+                    if (empId) conds.push(`assigned_to.eq.${empId}`, `created_by.eq.${empId}`);
+                    query = query.or(conds.join(','));
+                } else if (['attendance', 'leaves', 'employee_leave_balances', 'payroll_loans', 'missed_punch_requests'].includes(sourceTable)) {
+                    if (empId) {
+                        query = query.eq('employee_id', empId);
+                    }
+                }
+            }
 
             for (const f of filters) {
                 if (!f.value) continue;
@@ -401,9 +439,16 @@ export const ReportBuilder: React.FC<ReportBuilderProps> = ({ onBack, companyId,
                     <ArrowLeft className="w-5 h-5 text-slate-500" />
                 </button>
                 <div className="flex-1">
-                    <input value={reportName} onChange={e => setReportName(e.target.value)} placeholder="Untitled Report\u2026"
-                        className="text-xl font-bold bg-transparent border-none outline-none text-slate-800 dark:text-white placeholder:text-slate-300 dark:placeholder:text-zinc-600 w-full" />
-                    <p className="text-xs text-slate-400 font-medium mt-0.5">{moduleLabel(selectedModule)} \u00B7 {selectedColumns.length} columns</p>
+                    <div className="flex items-center gap-2">
+                        <input value={reportName} onChange={e => setReportName(e.target.value)} placeholder="Untitled Report…"
+                            className="text-xl font-bold bg-transparent border-none outline-none text-slate-800 dark:text-white placeholder:text-slate-300 dark:placeholder:text-zinc-600 w-full" />
+                        {!isAdmin && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 rounded-full shrink-0">
+                                <Lock size={11} /> Private View
+                            </span>
+                        )}
+                    </div>
+                    <p className="text-xs text-slate-400 font-medium mt-0.5">{moduleLabel(selectedModule)} · {selectedColumns.length} columns {!isAdmin ? '· Filtered to your records only' : ''}</p>
                 </div>
                 <div className="flex items-center gap-2">
                     <button onClick={handlePreview} disabled={selectedColumns.length === 0 || loading}
