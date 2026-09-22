@@ -21,15 +21,83 @@ import { GeneralLedger } from './reporting/GeneralLedger';
 import { DailySalesReport } from './reporting/DailySalesReport';
 import { ExpenseReport } from './reporting/ExpenseReport';
 import { BudgetAnalysis } from './reporting/BudgetAnalysis';
-import { DayBook } from './reporting/DayBook';
+import { DayBook, DayBookVoucher } from './reporting/DayBook';
 import { FinanceDashboard } from './FinanceDashboard';
 import { FixedAssets } from './operations/FixedAssets';
 import { AccountingMasters } from '../modules/organisation/AccountingMasters';
 import OpeningBalances from './operations/OpeningBalances';
 
+interface DayBookNavigationTarget {
+    tab: 'customers' | 'vendors' | 'payments' | 'journal';
+    subTab?: string;
+    reference: string;
+    id: string;
+    voucherType: string;
+    originTab: 'daybook' | 'reporting';
+}
+
 export const AccountingDashboard: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'overview' | 'customers' | 'vendors' | 'payments' | 'daybook' | 'journal' | 'banking' | 'assets' | 'reporting' | 'masters' | 'opening_balances' | 'settings'>('overview');
     const [subTab, setSubTab] = useState('invoices');
+    const [targetNav, setTargetNav] = useState<DayBookNavigationTarget | null>(null);
+
+    const handleNavigateFromDayBook = (voucher: DayBookVoucher) => {
+        const originTab = activeTab === 'reporting' ? 'reporting' : 'daybook';
+        const ref = voucher.reference || '';
+        const upperRef = ref.toUpperCase();
+        const type = voucher.voucherType;
+
+        let targetTab: DayBookNavigationTarget['tab'] = 'journal';
+        let targetSubTab: string | undefined = undefined;
+
+        if (type === 'Purchase' || upperRef.startsWith('PI.') || upperRef.startsWith('BILL')) {
+            targetTab = 'vendors';
+            targetSubTab = 'bills';
+        } else if (type === 'Sales' || upperRef.startsWith('SI.') || upperRef.startsWith('INV')) {
+            targetTab = 'customers';
+            targetSubTab = 'invoices';
+        } else if (
+            type === 'Payment' ||
+            type === 'Receipt' ||
+            type === 'Contra' ||
+            upperRef.startsWith('PBV') ||
+            upperRef.startsWith('PCV') ||
+            upperRef.startsWith('PRV') ||
+            upperRef.startsWith('BRV') ||
+            upperRef.startsWith('CRV')
+        ) {
+            targetTab = 'payments';
+            targetSubTab = '';
+        } else {
+            targetTab = 'journal';
+            targetSubTab = '';
+        }
+
+        setTargetNav({
+            tab: targetTab,
+            subTab: targetSubTab,
+            reference: ref,
+            id: voucher.id,
+            voucherType: type,
+            originTab
+        });
+
+        setActiveTab(targetTab);
+        if (targetSubTab) {
+            setSubTab(targetSubTab);
+        }
+    };
+
+    const handleReturnToDayBook = () => {
+        const origin = targetNav?.originTab || 'daybook';
+        setTargetNav(null);
+        if (origin === 'reporting') {
+            setActiveTab('reporting');
+            setSubTab('daybook');
+        } else {
+            setActiveTab('daybook');
+        }
+    };
 
     return (
         <div className="h-full flex flex-col bg-slate-50 dark:bg-zinc-950">
@@ -113,28 +181,76 @@ export const AccountingDashboard: React.FC = () => {
                 </div>
             )}
 
+            {/* Target Navigation Banner (Return to Day Book) */}
+            {targetNav && (
+                <div className="mx-4 mt-3 md:mx-6 p-3 bg-violet-50 dark:bg-violet-950/40 border border-violet-200 dark:border-violet-800 rounded-xl flex flex-wrap items-center justify-between gap-3 shadow-xs no-print">
+                    <div className="flex items-center gap-2.5">
+                        <span className="flex h-2.5 w-2.5 rounded-full bg-violet-600 animate-pulse" />
+                        <span className="text-xs font-medium text-slate-700 dark:text-slate-200">
+                            Opened voucher <strong className="font-mono font-bold text-violet-700 dark:text-violet-300">{targetNav.reference}</strong> ({targetNav.voucherType}) from Day Book
+                        </span>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={handleReturnToDayBook}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-zinc-800 text-violet-700 dark:text-violet-300 border border-violet-300 dark:border-violet-700 hover:bg-violet-100 dark:hover:bg-zinc-700 text-xs font-bold rounded-lg transition-all shadow-xs cursor-pointer"
+                        title="Return to the Day Book register"
+                    >
+                        <span>← Return to Day Book</span>
+                    </button>
+                </div>
+            )}
+
             {/* Content Area */}
             <div className="flex-1 overflow-y-auto p-4 md:p-6">
                 {activeTab === 'overview' && <FinanceDashboard />}
 
-                {activeTab === 'customers' && subTab === 'invoices' && <Invoices />}
+                {activeTab === 'customers' && subTab === 'invoices' && (
+                    <Invoices
+                        initialSearch={targetNav?.tab === 'customers' && targetNav?.subTab === 'invoices' ? targetNav.reference : undefined}
+                        initialId={targetNav?.tab === 'customers' && targetNav?.subTab === 'invoices' ? targetNav.id : undefined}
+                        onClearInitial={() => setTargetNav(null)}
+                    />
+                )}
                 {activeTab === 'customers' && subTab === 'reminders' && <PaymentReminders />}
                 {activeTab === 'customers' && subTab === 'partners' && <Partners type="Customer" />}
 
-                {activeTab === 'vendors' && subTab === 'bills' && <Bills />}
+                {activeTab === 'vendors' && subTab === 'bills' && (
+                    <Bills
+                        initialSearch={targetNav?.tab === 'vendors' && targetNav?.subTab === 'bills' ? targetNav.reference : undefined}
+                        initialId={targetNav?.tab === 'vendors' && targetNav?.subTab === 'bills' ? targetNav.id : undefined}
+                        onClearInitial={() => setTargetNav(null)}
+                    />
+                )}
                 {activeTab === 'vendors' && subTab === 'partners' && <Partners type="Vendor" />}
 
-                {activeTab === 'payments' && <Payments />}
+                {activeTab === 'payments' && (
+                    <Payments
+                        initialSearch={targetNav?.tab === 'payments' ? targetNav.reference : undefined}
+                        initialId={targetNav?.tab === 'payments' ? targetNav.id : undefined}
+                        onClearInitial={() => setTargetNav(null)}
+                    />
+                )}
 
-                {activeTab === 'daybook' && <DayBook />}
+                {activeTab === 'daybook' && (
+                    <DayBook onNavigateToEntry={handleNavigateFromDayBook} />
+                )}
 
-                {activeTab === 'journal' && <JournalEntries />}
+                {activeTab === 'journal' && (
+                    <JournalEntries
+                        initialSearch={targetNav?.tab === 'journal' ? targetNav.reference : undefined}
+                        initialId={targetNav?.tab === 'journal' ? targetNav.id : undefined}
+                        onClearInitial={() => setTargetNav(null)}
+                    />
+                )}
                 
                 {activeTab === 'banking' && subTab === 'statements' && <BankStatements />}
                 {activeTab === 'banking' && subTab === 'cashbook' && <CashBook />}
 
                 {activeTab === 'reporting' && subTab === 'financial' && <FinancialReports />}
-                {activeTab === 'reporting' && subTab === 'daybook' && <DayBook />}
+                {activeTab === 'reporting' && subTab === 'daybook' && (
+                    <DayBook onNavigateToEntry={handleNavigateFromDayBook} />
+                )}
                 {activeTab === 'reporting' && subTab === 'ledger' && <GeneralLedger />}
                 {activeTab === 'reporting' && subTab === 'daily_sales' && <DailySalesReport />}
                 {activeTab === 'reporting' && subTab === 'expenses' && <ExpenseReport />}

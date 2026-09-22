@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
 import { Plus, Search, Filter, FileText, CheckCircle, Clock, ShoppingCart, Zap, Building2, Trash2, Scale, Copy, PlusCircle, AlertCircle, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
@@ -73,7 +73,13 @@ export interface BillLine {
     unit_price: number;
 }
 
-export const Bills: React.FC = () => {
+export interface BillsProps {
+    initialSearch?: string;
+    initialId?: string;
+    onClearInitial?: () => void;
+}
+
+export const Bills: React.FC<BillsProps> = ({ initialSearch, initialId, onClearInitial }) => {
     const { currentCompanyId } = useAuth();
     const [bills, setBills] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -398,6 +404,60 @@ export const Bills: React.FC = () => {
             setIsModalOpen(true);
         }
     };
+
+    const autoOpenedRef = useRef<string | null>(null);
+
+    // Auto-open requested bill from Day Book or external navigation
+    useEffect(() => {
+        const targetKey = initialId || initialSearch;
+        if (!targetKey || loading || bills.length === 0) return;
+        if (autoOpenedRef.current === targetKey) return;
+
+        const cleanSearch = (initialSearch || '').trim().toLowerCase();
+
+        // 1. Search in loaded bills list
+        const found = bills.find(b =>
+            (initialId && b.id === initialId) ||
+            (cleanSearch && (
+                (b.reference && b.reference.trim().toLowerCase() === cleanSearch) ||
+                (b.supplier_invoice_number && b.supplier_invoice_number.trim().toLowerCase() === cleanSearch)
+            ))
+        );
+
+        if (found) {
+            autoOpenedRef.current = targetKey;
+            setSearchTerm(found.reference || initialSearch || '');
+            handleOpenModal(found, false);
+        } else {
+            // 2. Fallback: direct query from accounting_journal_entries
+            const fetchTarget = async () => {
+                try {
+                    let q = supabase
+                        .from('accounting_journal_entries')
+                        .select(`
+                            *,
+                            partner:accounting_partners(name, property_account_payable_id, payment_term_days),
+                            journal:accounting_journals(name)
+                        `)
+                        .eq('company_id', currentCompanyId);
+                    if (initialId) {
+                        q = q.eq('id', initialId);
+                    } else if (cleanSearch) {
+                        q = q.ilike('reference', initialSearch!.trim());
+                    }
+                    const { data } = await q.maybeSingle();
+                    if (data) {
+                        autoOpenedRef.current = targetKey;
+                        setSearchTerm(data.reference || initialSearch || '');
+                        handleOpenModal(data, false);
+                    }
+                } catch (e) {
+                    console.error('Error auto-opening bill:', e);
+                }
+            };
+            fetchTarget();
+        }
+    }, [bills, loading, initialSearch, initialId, currentCompanyId]);
 
     const handleAddLine = (type: 'item' | 'expense' | 'asset' | 'liability' = 'expense') => {
         setLines([...lines, { 

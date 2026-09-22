@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
 import { Plus, Search, Filter, FileText, CheckCircle, Clock, Package, Building2, Scale, TrendingUp, Copy, Trash2, Layers, AlertCircle, RotateCcw, Sparkles, X, Undo2 } from 'lucide-react';
@@ -43,7 +43,13 @@ export interface InvoiceLineItem {
     account_category?: 'all' | 'asset' | 'liability' | 'income' | 'expense';
 }
 
-export const Invoices: React.FC = () => {
+export interface InvoicesProps {
+    initialSearch?: string;
+    initialId?: string;
+    onClearInitial?: () => void;
+}
+
+export const Invoices: React.FC<InvoicesProps> = ({ initialSearch, initialId, onClearInitial }) => {
     const { currentCompanyId } = useAuth();
     const [invoices, setInvoices] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -436,6 +442,57 @@ export const Invoices: React.FC = () => {
             setIsModalOpen(true);
         }
     };
+
+    const autoOpenedRef = useRef<string | null>(null);
+
+    // Auto-open requested invoice from Day Book or external navigation
+    useEffect(() => {
+        const targetKey = initialId || initialSearch;
+        if (!targetKey || loading || invoices.length === 0) return;
+        if (autoOpenedRef.current === targetKey) return;
+
+        const cleanSearch = (initialSearch || '').trim().toLowerCase();
+
+        // 1. Search in loaded invoices list
+        const found = invoices.find(inv =>
+            (initialId && inv.id === initialId) ||
+            (cleanSearch && inv.reference && inv.reference.trim().toLowerCase() === cleanSearch)
+        );
+
+        if (found) {
+            autoOpenedRef.current = targetKey;
+            setSearchTerm(found.reference || initialSearch || '');
+            handleOpenModal(found, false);
+        } else {
+            // 2. Fallback: direct query from accounting_journal_entries
+            const fetchTarget = async () => {
+                try {
+                    let q = supabase
+                        .from('accounting_journal_entries')
+                        .select(`
+                            *,
+                            partner:accounting_partners(name, property_account_receivable_id, payment_term_days),
+                            journal:accounting_journals(name)
+                        `)
+                        .eq('company_id', currentCompanyId);
+                    if (initialId) {
+                        q = q.eq('id', initialId);
+                    } else if (cleanSearch) {
+                        q = q.ilike('reference', initialSearch!.trim());
+                    }
+                    const { data } = await q.maybeSingle();
+                    if (data) {
+                        autoOpenedRef.current = targetKey;
+                        setSearchTerm(data.reference || initialSearch || '');
+                        handleOpenModal(data, false);
+                    }
+                } catch (e) {
+                    console.error('Error auto-opening invoice:', e);
+                }
+            };
+            fetchTarget();
+        }
+    }, [invoices, loading, initialSearch, initialId, currentCompanyId]);
 
     const handleAddLine = (cat: 'all' | 'asset' | 'liability' | 'income' | 'expense' = 'all') => {
         setLines([...lines, { 

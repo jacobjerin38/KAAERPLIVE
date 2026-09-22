@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
 import { Plus, Search, Filter, ArrowRight, Save, Trash2, Edit, Eye, BookOpen, FileSpreadsheet, X } from 'lucide-react';
@@ -31,7 +31,13 @@ interface JournalEntryLine {
     contract_cost_center_id?: string;
 }
 
-export const JournalEntries: React.FC = () => {
+export interface JournalEntriesProps {
+    initialSearch?: string;
+    initialId?: string;
+    onClearInitial?: () => void;
+}
+
+export const JournalEntries: React.FC<JournalEntriesProps> = ({ initialSearch, initialId, onClearInitial }) => {
     const { currentCompanyId } = useAuth();
     const [entries, setEntries] = useState<JournalEntry[]>([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -164,6 +170,69 @@ export const JournalEntries: React.FC = () => {
             setLoading(false);
         }
     };
+
+    const [searchTerm, setSearchTerm] = useState('');
+    const autoOpenedRef = useRef<string | null>(null);
+
+    // Auto-open requested journal entry from Day Book or external navigation
+    useEffect(() => {
+        const targetKey = initialId || initialSearch;
+        if (!targetKey || entries.length === 0) return;
+        if (autoOpenedRef.current === targetKey) return;
+
+        const cleanSearch = (initialSearch || '').trim().toLowerCase();
+
+        // 1. Search in loaded entries
+        const found = entries.find(e =>
+            (initialId && e.id === initialId) ||
+            (cleanSearch && e.reference && e.reference.trim().toLowerCase() === cleanSearch)
+        );
+
+        if (found) {
+            autoOpenedRef.current = targetKey;
+            setSearchTerm(found.reference || initialSearch || '');
+            handleOpenEdit(found);
+        } else {
+            // 2. Fallback: direct query from accounting_journal_entries
+            const fetchTarget = async () => {
+                try {
+                    let q = supabase
+                        .from('accounting_journal_entries')
+                        .select(`
+                            *,
+                            journal:accounting_journals(name)
+                        `)
+                        .eq('company_id', currentCompanyId);
+                    if (initialId) {
+                        q = q.eq('id', initialId);
+                    } else if (cleanSearch) {
+                        q = q.ilike('reference', initialSearch!.trim());
+                    }
+                    const { data } = await q.maybeSingle();
+                    if (data) {
+                        autoOpenedRef.current = targetKey;
+                        setSearchTerm(data.reference || initialSearch || '');
+                        handleOpenEdit(data as any);
+                    }
+                } catch (e) {
+                    console.error('Error auto-opening journal entry:', e);
+                }
+            };
+            fetchTarget();
+        }
+    }, [entries, initialSearch, initialId, currentCompanyId]);
+
+    const filteredEntries = useMemo(() => {
+        if (!searchTerm.trim()) return entries;
+        const term = searchTerm.toLowerCase().trim();
+        return entries.filter(e =>
+            (e.reference && e.reference.toLowerCase().includes(term)) ||
+            (e.notes && e.notes.toLowerCase().includes(term)) ||
+            ((e as any).journal?.name && (e as any).journal.name.toLowerCase().includes(term)) ||
+            (e.date && e.date.includes(term)) ||
+            (e.id && e.id.toLowerCase().includes(term))
+        );
+    }, [entries, searchTerm]);
 
     const updateLine = (index: number, field: keyof JournalEntryLine, value: any) => {
         const newLines = [...(currentEntry.lines || [])];
@@ -415,6 +484,18 @@ export const JournalEntries: React.FC = () => {
                 </div>
             </div>
 
+            {/* Search Input Bar */}
+            <div className="relative no-print">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                    placeholder="Search journal entries by reference (e.g. JV.2026.01), narration, journal, date..."
+                    className="w-full pl-10 pr-4 py-2 text-xs md:text-sm bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs"
+                />
+            </div>
+
             {/* List View */}
             <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl overflow-hidden">
                 <table className="w-full text-left text-sm">
@@ -430,7 +511,14 @@ export const JournalEntries: React.FC = () => {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
-                        {entries.map(entry => (
+                        {filteredEntries.length === 0 ? (
+                            <tr>
+                                <td colSpan={7} className="p-8 text-center text-slate-400">
+                                    No journal entries found matching your search.
+                                </td>
+                            </tr>
+                        ) : (
+                            filteredEntries.map(entry => (
                             <tr key={entry.id} className="hover:bg-slate-50 dark:hover:bg-zinc-800/50">
                                 <td className="p-4 text-slate-800 dark:text-white">{entry.date}</td>
                                 <td className="p-4 text-slate-500 font-mono text-xs">{entry.id.slice(0, 8)}...</td>
@@ -482,7 +570,8 @@ export const JournalEntries: React.FC = () => {
                                     </div>
                                 </td>
                             </tr>
-                        ))}
+                        ))
+                    )}
                     </tbody>
                 </table>
             </div>

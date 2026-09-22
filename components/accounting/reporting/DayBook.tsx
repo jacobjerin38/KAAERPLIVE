@@ -21,7 +21,9 @@ import {
     Eye,
     Maximize2,
     Minimize2,
-    Printer
+    Printer,
+    ExternalLink,
+    Edit
 } from 'lucide-react';
 import { PrintButton } from '../../ui/PrintButton';
 
@@ -60,7 +62,28 @@ type StatusFilter = 'ALL' | 'Posted' | 'Draft' | 'Cancelled';
 type SortField = 'date' | 'reference' | 'amount' | 'particulars';
 type SortOrder = 'asc' | 'desc';
 
-export const DayBook: React.FC = () => {
+export interface DayBookProps {
+    onNavigateToEntry?: (voucher: DayBookVoucher) => void;
+}
+
+export const getVoucherDestination = (voucher: DayBookVoucher) => {
+    const ref = voucher.reference || '';
+    const upperRef = ref.toUpperCase();
+    const type = voucher.voucherType;
+
+    if (type === 'Purchase' || upperRef.startsWith('PI.') || upperRef.startsWith('BILL')) {
+        return { label: 'Bills', fullLabel: 'Vendor Bills', tab: 'vendors', subTab: 'bills' };
+    }
+    if (type === 'Sales' || upperRef.startsWith('SI.') || upperRef.startsWith('INV')) {
+        return { label: 'Invoices', fullLabel: 'Customer Invoices', tab: 'customers', subTab: 'invoices' };
+    }
+    if (type === 'Payment' || type === 'Receipt' || type === 'Contra' || upperRef.startsWith('PBV') || upperRef.startsWith('PCV') || upperRef.startsWith('PRV') || upperRef.startsWith('BRV') || upperRef.startsWith('CRV')) {
+        return { label: 'Payments', fullLabel: 'Payments & Receipts', tab: 'payments', subTab: '' };
+    }
+    return { label: 'Journal', fullLabel: 'Journal Entries', tab: 'journal', subTab: '' };
+};
+
+export const DayBook: React.FC<DayBookProps> = ({ onNavigateToEntry }) => {
     const { currentCompanyId } = useAuth();
 
     // Company profile
@@ -1041,13 +1064,14 @@ export const DayBook: React.FC = () => {
                                 <th className="py-2.5 px-3 w-36 text-right whitespace-nowrap">Debit Amount</th>
                                 <th className="py-2.5 px-3 w-36 text-right whitespace-nowrap">Credit Amount</th>
                                 <th className="py-2.5 px-3 w-20 text-center no-print">Status</th>
+                                <th className="py-2.5 px-3 w-24 text-center no-print whitespace-nowrap">Action</th>
                             </tr>
                         </thead>
 
                         <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
                             {loading ? (
                                 <tr>
-                                    <td colSpan={8} className="py-12 text-center text-slate-400">
+                                    <td colSpan={9} className="py-12 text-center text-slate-400">
                                         <div className="flex flex-col items-center justify-center gap-2">
                                             <RefreshCw className="w-6 h-6 animate-spin text-violet-600" />
                                             <span className="font-medium">Loading Day Book transactions...</span>
@@ -1056,7 +1080,7 @@ export const DayBook: React.FC = () => {
                                 </tr>
                             ) : filteredAndSortedVouchers.length === 0 ? (
                                 <tr>
-                                    <td colSpan={8} className="py-12 text-center text-slate-400">
+                                    <td colSpan={9} className="py-12 text-center text-slate-400">
                                         <BookOpen className="w-8 h-8 mx-auto mb-2 text-slate-300 dark:text-zinc-700" />
                                         <p className="font-semibold text-slate-600 dark:text-slate-400">No vouchers found in this period</p>
                                         <p className="text-[11px] text-slate-400 mt-1">
@@ -1067,12 +1091,15 @@ export const DayBook: React.FC = () => {
                             ) : (
                                 filteredAndSortedVouchers.map((v, index) => {
                                     const isExpanded = expandedVoucherIds.has(v.id);
+                                    const dest = getVoucherDestination(v);
 
                                     return (
                                         <React.Fragment key={v.id}>
                                             {/* Primary Condensed Row */}
                                             <tr
                                                 onClick={() => toggleVoucherExpansion(v.id)}
+                                                onDoubleClick={() => onNavigateToEntry?.(v)}
+                                                title={`Click to expand breakdown | Double-click to open in ${dest.fullLabel}`}
                                                 className={`cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-zinc-800/60 ${
                                                     index % 2 === 1 ? 'bg-slate-50/40 dark:bg-zinc-900/40' : ''
                                                 } ${isExpanded ? 'bg-violet-50/40 dark:bg-violet-950/20' : ''}`}
@@ -1113,9 +1140,20 @@ export const DayBook: React.FC = () => {
                                                     </span>
                                                 </td>
 
-                                                {/* Voucher No. (Ref) */}
-                                                <td className="py-2.5 px-3 font-mono font-bold text-slate-800 dark:text-slate-200 whitespace-nowrap">
-                                                    {v.reference}
+                                                {/* Voucher No. (Ref) - Clickable Link */}
+                                                <td className="py-2.5 px-3 font-mono font-bold whitespace-nowrap">
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            onNavigateToEntry?.(v);
+                                                        }}
+                                                        className="inline-flex items-center gap-1 text-violet-700 dark:text-violet-300 hover:text-violet-900 dark:hover:text-white hover:underline group cursor-pointer"
+                                                        title={`Click to open ${v.reference} in ${dest.fullLabel}`}
+                                                    >
+                                                        <span>{v.reference}</span>
+                                                        <ExternalLink className="w-3 h-3 text-violet-500 opacity-60 group-hover:opacity-100 transition-opacity" />
+                                                    </button>
                                                 </td>
 
                                                 {/* Debit Amount */}
@@ -1147,16 +1185,47 @@ export const DayBook: React.FC = () => {
                                                         </span>
                                                     )}
                                                 </td>
+
+                                                {/* Action Button */}
+                                                <td className="py-2.5 px-3 text-center no-print whitespace-nowrap">
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            onNavigateToEntry?.(v);
+                                                        }}
+                                                        className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold rounded-lg bg-violet-100 hover:bg-violet-200 dark:bg-violet-950/50 dark:hover:bg-violet-900/60 text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-800 transition shadow-2xs cursor-pointer"
+                                                        title={`Open voucher in ${dest.fullLabel} to view or edit`}
+                                                    >
+                                                        <span>{dest.label}</span>
+                                                        <ExternalLink className="w-3 h-3" />
+                                                    </button>
+                                                </td>
                                             </tr>
 
                                             {/* Detailed Breakdown Row (Tally Alt+F1 expansion) */}
                                             {isExpanded && (
                                                 <tr className="bg-slate-50/80 dark:bg-zinc-950/50 border-y border-dashed border-slate-200 dark:border-zinc-800">
-                                                    <td colSpan={8} className="py-2 px-6">
-                                                        <div className="pl-6 border-l-2 border-violet-400 dark:border-violet-600 space-y-2 py-1">
+                                                    <td colSpan={9} className="py-3 px-6">
+                                                        <div className="pl-6 border-l-2 border-violet-400 dark:border-violet-600 space-y-3 py-1">
+                                                            {/* Breakdown Header with Quick Action */}
+                                                            <div className="flex flex-wrap items-center justify-between gap-2 pb-1 border-b border-slate-200/80 dark:border-zinc-800">
+                                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                                                    Accounting Entries (Double Entry Breakdown):
+                                                                </p>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => onNavigateToEntry?.(v)}
+                                                                    className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-lg bg-violet-600 hover:bg-violet-700 text-white transition shadow-xs cursor-pointer"
+                                                                >
+                                                                    <Edit className="w-3 h-3" />
+                                                                    <span>Open in {dest.fullLabel} to Modify</span>
+                                                                    <ExternalLink className="w-3 h-3 ml-0.5" />
+                                                                </button>
+                                                            </div>
+
                                                             {/* All Journal Legs */}
                                                             <div className="space-y-1">
-                                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Accounting Entries (Double Entry Breakdown):</p>
                                                                 <table className="w-full text-xs font-mono">
                                                                     <tbody>
                                                                         {v.lines.map((line, lIdx) => (
@@ -1224,6 +1293,7 @@ export const DayBook: React.FC = () => {
                                     <td className="py-3 px-3 text-right font-mono text-sm text-amber-600 dark:text-amber-400">
                                         {formatNumber(totals.totalCredit)}
                                     </td>
+                                    <td className="py-3 px-3 no-print"></td>
                                     <td className="py-3 px-3 no-print"></td>
                                 </tr>
                             </tfoot>

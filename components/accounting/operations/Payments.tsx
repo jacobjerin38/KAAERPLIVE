@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
 import {
@@ -29,7 +29,13 @@ interface BankLine {
     amount: string | number;
 }
 
-export const Payments: React.FC = () => {
+export interface PaymentsProps {
+    initialSearch?: string;
+    initialId?: string;
+    onClearInitial?: () => void;
+}
+
+export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, onClearInitial }) => {
     const { currentCompanyId } = useAuth();
     const [payments, setPayments] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -431,6 +437,57 @@ export const Payments: React.FC = () => {
             setIsModalOpen(true);
         }
     };
+
+    const autoOpenedRef = useRef<string | null>(null);
+
+    // Auto-open requested payment from Day Book or external navigation
+    useEffect(() => {
+        const targetKey = initialId || initialSearch;
+        if (!targetKey || loading || payments.length === 0) return;
+        if (autoOpenedRef.current === targetKey) return;
+
+        const cleanSearch = (initialSearch || '').trim().toLowerCase();
+
+        // 1. Search in loaded payments list
+        const found = payments.find(p =>
+            (initialId && (p.id === initialId || p.accounting_entry_id === initialId)) ||
+            (cleanSearch && p.name && p.name.trim().toLowerCase() === cleanSearch)
+        );
+
+        if (found) {
+            autoOpenedRef.current = targetKey;
+            setSearchQuery(found.name || initialSearch || '');
+            handleOpenModal(found, false);
+        } else {
+            // 2. Fallback: fetch single record from database
+            const fetchTarget = async () => {
+                try {
+                    let q = supabase
+                        .from('accounting_payments')
+                        .select(`
+                            *,
+                            partner:accounting_partners(name),
+                            account:accounting_chart_of_accounts!account_id(code, name, type),
+                            journal:accounting_journals!accounting_journal_id(code, name, type)
+                        `);
+                    if (initialId) {
+                        q = q.or(`id.eq.${initialId},accounting_entry_id.eq.${initialId}`);
+                    } else if (cleanSearch) {
+                        q = q.ilike('name', initialSearch!.trim());
+                    }
+                    const { data } = await q.maybeSingle();
+                    if (data) {
+                        autoOpenedRef.current = targetKey;
+                        setSearchQuery(data.name || initialSearch || '');
+                        handleOpenModal(data, false);
+                    }
+                } catch (e) {
+                    console.error('Error auto-opening payment:', e);
+                }
+            };
+            fetchTarget();
+        }
+    }, [payments, loading, initialSearch, initialId]);
 
     const handleSavePayment = async (e: React.FormEvent) => {
         e.preventDefault();
