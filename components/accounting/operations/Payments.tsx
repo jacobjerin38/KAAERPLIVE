@@ -235,8 +235,13 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
     }, [expenseLines]);
 
     const totalExpenseAmount = useMemo(() => {
+        if (paymentType === 'inbound') {
+            // Inbound Receipt: Credit lines are revenue/receipts; Debit lines are deductions/charges
+            return Math.round((totalExpenseCredits - totalExpenseDebits) * 100) / 100;
+        }
+        // Outbound Payment: Debit lines are expenses; Credit lines are deductions
         return Math.round((totalExpenseDebits - totalExpenseCredits) * 100) / 100;
-    }, [totalExpenseDebits, totalExpenseCredits]);
+    }, [paymentType, totalExpenseDebits, totalExpenseCredits]);
 
     const totalBankAmount = useMemo(() => {
         return bankLines.reduce((sum, l) => sum + (Number(l.amount) || 0), 0);
@@ -278,12 +283,18 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
             if (field === 'entry_type') {
                 const curAmt = Number(updated.amount);
                 if (!isNaN(curAmt) && curAmt !== 0) {
-                    updated.amount = value === 'credit' ? -Math.abs(curAmt) : Math.abs(curAmt);
+                    if (paymentType === 'inbound') {
+                        // For inbound receipt: credit is normal (+), debit is deduction (-)
+                        updated.amount = value === 'debit' ? -Math.abs(curAmt) : Math.abs(curAmt);
+                    } else {
+                        // For outbound payment: debit is normal (+), credit is deduction (-)
+                        updated.amount = value === 'credit' ? -Math.abs(curAmt) : Math.abs(curAmt);
+                    }
                 }
             } else if (field === 'amount') {
                 const curAmt = Number(value);
                 if (!isNaN(curAmt) && curAmt < 0) {
-                    updated.entry_type = 'credit';
+                    updated.entry_type = paymentType === 'inbound' ? 'debit' : 'credit';
                 }
             }
 
@@ -349,7 +360,7 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
     // Auto-balance helper
     const handleAutoBalance = () => {
         if (balanceDifference > 0) {
-            // Expenses > Bank: add difference to the last bank line
+            // Net Allocation > Bank: add difference to the last bank line
             setBankLines(prev => {
                 const copy = [...prev];
                 const lastIdx = copy.length - 1;
@@ -358,7 +369,7 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                 return copy;
             });
         } else if (balanceDifference < 0) {
-            // Bank > Expenses: add difference to the last expense line
+            // Bank > Net Allocation: add difference to the last allocation line
             setExpenseLines(prev => {
                 const copy = [...prev];
                 const lastIdx = copy.length - 1;
@@ -607,11 +618,15 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
             const formattedExpenseLines = paymentCategory === 'partner'
                 ? []
                 : expenseLines.map(el => {
-                    const rawAmt = Number(el.amount) || 0;
+                    const rawAmt = Math.abs(Number(el.amount) || 0);
                     const isCredit = paymentType === 'inbound'
-                        ? (el.entry_type === 'debit' || rawAmt < 0 ? false : true)
-                        : (el.entry_type === 'credit' || rawAmt < 0);
-                    const signedAmt = isCredit ? -Math.abs(rawAmt) : Math.abs(rawAmt);
+                        ? el.entry_type !== 'debit'
+                        : (el.entry_type === 'credit' || Number(el.amount) < 0);
+                    // Inbound: credit revenue is positive, debit deduction is negative
+                    // Outbound: debit expense is positive, credit deduction is negative
+                    const signedAmt = paymentType === 'inbound'
+                        ? (isCredit ? rawAmt : -rawAmt)
+                        : (isCredit ? -rawAmt : rawAmt);
                     const resolvedAccId = el.account_id || null;
                     return {
                         id: el.id,
@@ -704,7 +719,7 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
             let generatedCode = newCostCenterCode.trim().toUpperCase();
             if (!generatedCode) {
                 const prefix = newCostCenterType === 'PROJECT' ? 'PRJ' : newCostCenterType === 'CONTRACT' ? 'CNT' : 'CC';
-                generatedCode = `${prefix}-${Date.now().toString().slice(-6)}`;
+                generatedCode = `${prefix}-${Date.now().toString(36).toUpperCase()}`;
             }
 
             const { data, error } = await supabase
@@ -740,7 +755,11 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
             alert(`Cost Center "${trimmedName}" created and selected!`);
         } catch (err: any) {
             console.error('Error creating cost center:', err);
-            alert('Failed to create cost center: ' + (err.message || 'Unknown error'));
+            if (err.code === '23505' || err.message?.includes('duplicate key') || err.message?.includes('unique constraint')) {
+                alert(`A cost center with code "${newCostCenterCode.trim().toUpperCase()}" already exists. Please choose a unique code or leave blank to auto-generate.`);
+            } else {
+                alert('Failed to create cost center: ' + (err.message || 'Unknown error'));
+            }
         } finally {
             setCreatingCostCenter(false);
         }
@@ -879,7 +898,12 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                                 const isDirect = pay.payment_category === 'direct_account' || !!pay.account_id;
                                 const multiExp = pay.expense_lines && Array.isArray(pay.expense_lines) && pay.expense_lines.length > 1;
                                 const multiBnk = pay.bank_lines && Array.isArray(pay.bank_lines) && pay.bank_lines.length > 1;
-                                const hasDeductions = pay.expense_lines && Array.isArray(pay.expense_lines) && pay.expense_lines.some((l: any) => Number(l.amount) < 0 || l.entry_type === 'credit');
+                                const hasDeductions = pay.expense_lines && Array.isArray(pay.expense_lines) && pay.expense_lines.some((l: any) => {
+                                    if (pay.payment_type === 'inbound') {
+                                        return Number(l.amount) < 0 || l.entry_type === 'debit';
+                                    }
+                                    return Number(l.amount) < 0 || l.entry_type === 'credit';
+                                });
 
                                 const displayName = isDirect
                                     ? (multiExp 
@@ -913,16 +937,29 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                                         <td className="px-5 py-4">
                                             <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
                                                 {multiExp && <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 rounded text-[10px] font-extrabold">MULTI</span>}
-                                                {hasDeductions && <span className="px-1.5 py-0.5 bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 rounded text-[10px] font-extrabold">DED / CR</span>}
+                                                {hasDeductions && <span className="px-1.5 py-0.5 bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 rounded text-[10px] font-extrabold">DED</span>}
                                                 <span>{displayName}</span>
                                             </div>
                                             {partnerSubtext && <div className="text-[11px] text-slate-400 font-normal">{partnerSubtext}</div>}
-                                            {pay.cost_center?.name && (
+                                            {pay.cost_center?.name ? (
                                                 <div className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold mt-0.5 flex items-center gap-1">
                                                     <span className="px-1.5 py-0.5 bg-purple-50 dark:bg-purple-950/50 border border-purple-200 dark:border-purple-800 rounded">
                                                         🎯 {pay.cost_center.name}
                                                     </span>
                                                 </div>
+                                            ) : (
+                                                pay.expense_lines && Array.isArray(pay.expense_lines) && pay.expense_lines.some((l: any) => !!l.cost_center_id) ? (
+                                                    <div className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold mt-0.5 flex items-center gap-1 flex-wrap">
+                                                        {Array.from(new Set(pay.expense_lines.map((l: any) => l.cost_center_id).filter(Boolean))).map((ccId: any) => {
+                                                            const ccObj = costCenters.find(c => c.id === ccId);
+                                                            return ccObj ? (
+                                                                <span key={ccId} className="px-1.5 py-0.5 bg-purple-50 dark:bg-purple-950/50 border border-purple-200 dark:border-purple-800 rounded">
+                                                                    🎯 {ccObj.name}
+                                                                </span>
+                                                            ) : null;
+                                                        })}
+                                                    </div>
+                                                ) : null
                                             )}
                                             {pay.notes && <div className="text-[10px] text-slate-400 italic truncate max-w-xs">{pay.notes}</div>}
                                         </td>
@@ -1151,12 +1188,22 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                                     </div>
                                     <div className="flex flex-wrap items-center gap-2.5">
                                         <div className="text-xs font-semibold flex items-center gap-2">
-                                            {totalExpenseCredits > 0 && (
-                                                <>
-                                                    <span className="text-slate-500">Gross DR: <strong className="text-purple-700 dark:text-purple-300">QAR {totalExpenseDebits.toFixed(2)}</strong></span>
-                                                    <span className="text-rose-600 dark:text-rose-400">CR / Ded: <strong className="text-rose-600 dark:text-rose-400">-QAR {totalExpenseCredits.toFixed(2)}</strong></span>
-                                                    <span className="text-slate-400">|</span>
-                                                </>
+                                            {paymentType === 'inbound' ? (
+                                                totalExpenseDebits > 0 ? (
+                                                    <>
+                                                        <span className="text-emerald-700 dark:text-emerald-300">Gross CR: <strong>QAR {totalExpenseCredits.toFixed(2)}</strong></span>
+                                                        <span className="text-rose-600 dark:text-rose-400">DR / Ded: <strong>-QAR {totalExpenseDebits.toFixed(2)}</strong></span>
+                                                        <span className="text-slate-400">|</span>
+                                                    </>
+                                                ) : null
+                                            ) : (
+                                                totalExpenseCredits > 0 ? (
+                                                    <>
+                                                        <span className="text-slate-500">Gross DR: <strong className="text-purple-700 dark:text-purple-300">QAR {totalExpenseDebits.toFixed(2)}</strong></span>
+                                                        <span className="text-rose-600 dark:text-rose-400">CR / Ded: <strong>-QAR {totalExpenseCredits.toFixed(2)}</strong></span>
+                                                        <span className="text-slate-400">|</span>
+                                                    </>
+                                                ) : null
                                             )}
                                             <span className="text-purple-700 dark:text-purple-300 font-bold">
                                                 Net Allocation: <strong>QAR {totalExpenseAmount.toFixed(2)}</strong>
@@ -1190,13 +1237,16 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                                 <div className="space-y-2">
                                     {expenseLines.map((line, idx) => {
                                         const rawAmt = Number(line.amount);
+                                        const isDeduction = paymentType === 'inbound'
+                                            ? (line.entry_type === 'debit' || (!isNaN(rawAmt) && rawAmt < 0))
+                                            : (line.entry_type === 'credit' || (!isNaN(rawAmt) && rawAmt < 0));
                                         const isCredit = line.entry_type === 'credit' || (!isNaN(rawAmt) && rawAmt < 0);
 
                                         return (
                                             <div
                                                 key={line.id}
                                                 className={`grid grid-cols-1 sm:grid-cols-12 gap-2.5 p-3 bg-white dark:bg-zinc-800/90 rounded-xl border items-center shadow-xs transition-colors ${
-                                                    isCredit 
+                                                    isDeduction 
                                                         ? 'border-rose-200 dark:border-rose-900/40 bg-rose-50/20 dark:bg-rose-950/10' 
                                                         : 'border-purple-100 dark:border-purple-900/20'
                                                 }`}
@@ -1301,9 +1351,9 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                                                         value={line.amount}
                                                         onChange={e => handleUpdateExpenseLine(idx, 'amount', e.target.value)}
                                                         disabled={viewMode}
-                                                        placeholder={isCredit ? "-0.00" : "0.00"}
+                                                        placeholder={isDeduction ? "-0.00" : "0.00"}
                                                         className={`w-full p-2 border rounded-lg text-xs font-bold text-right transition-colors ${
-                                                            isCredit
+                                                            isDeduction
                                                                 ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800 text-rose-600 dark:text-rose-400'
                                                                 : 'bg-slate-50 dark:bg-zinc-700/60 border-slate-200 dark:border-zinc-600 text-purple-700 dark:text-purple-300'
                                                         }`}
@@ -1530,14 +1580,26 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                                                     </>
                                                 )
                                             ) : (
-                                                totalExpenseCredits > 0 ? (
-                                                    <>
-                                                        Gross DR: <strong>QAR {totalExpenseDebits.toFixed(2)}</strong> | Deductions / CR: <strong>-QAR {totalExpenseCredits.toFixed(2)}</strong> | Net Payout: <strong>QAR {totalExpenseAmount.toFixed(2)}</strong> | Bank Payment: <strong>QAR {totalBankAmount.toFixed(2)}</strong>
-                                                    </>
+                                                paymentType === 'inbound' ? (
+                                                    totalExpenseDebits > 0 ? (
+                                                        <>
+                                                            Gross Receipts (CR): <strong>QAR {totalExpenseCredits.toFixed(2)}</strong> | Deductions / Fees (DR): <strong>-QAR {totalExpenseDebits.toFixed(2)}</strong> | Net Received: <strong>QAR {totalExpenseAmount.toFixed(2)}</strong> | Bank Deposit: <strong>QAR {totalBankAmount.toFixed(2)}</strong>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            Receipts (CR): <strong>QAR {totalExpenseAmount.toFixed(2)}</strong> | Bank Deposit: <strong>QAR {totalBankAmount.toFixed(2)}</strong>
+                                                        </>
+                                                    )
                                                 ) : (
-                                                    <>
-                                                        Expenses: <strong>QAR {totalExpenseAmount.toFixed(2)}</strong> | Payment Sources: <strong>QAR {totalBankAmount.toFixed(2)}</strong>
-                                                    </>
+                                                    totalExpenseCredits > 0 ? (
+                                                        <>
+                                                            Gross Expenses (DR): <strong>QAR {totalExpenseDebits.toFixed(2)}</strong> | Deductions / CR: <strong>-QAR {totalExpenseCredits.toFixed(2)}</strong> | Net Payout: <strong>QAR {totalExpenseAmount.toFixed(2)}</strong> | Bank Payment: <strong>QAR {totalBankAmount.toFixed(2)}</strong>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            Expenses: <strong>QAR {totalExpenseAmount.toFixed(2)}</strong> | Payment Sources: <strong>QAR {totalBankAmount.toFixed(2)}</strong>
+                                                        </>
+                                                    )
                                                 )
                                             )}
                                         </p>

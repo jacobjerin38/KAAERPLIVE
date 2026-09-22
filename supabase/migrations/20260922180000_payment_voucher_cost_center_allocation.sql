@@ -1,12 +1,31 @@
--- Migration: Payment Voucher Cost Center Allocation Support
+-- Migration: Payment Voucher Cost Center Allocation Support & UUID Hardening
 -- Date: 2026-09-22
--- Description: Adds cost_center_id support to payments and ensures rpc_post_accounting_payment passes cost_center_id, project_cost_center_id, and contract_cost_center_id to journal lines.
+-- Description: Adds cost_center_id support to payments, adds safe_cast_uuid, and ensures rpc_post_accounting_payment passes cost_center_id, project_cost_center_id, and contract_cost_center_id to journal lines with proper inbound/outbound DR/CR balancing.
 
 -- 1. Ensure optional header-level cost_center_id column on accounting_payments
 ALTER TABLE public.accounting_payments 
 ADD COLUMN IF NOT EXISTS cost_center_id UUID REFERENCES public.accounting_cost_centers(id) ON DELETE SET NULL;
 
--- 2. Update rpc_post_accounting_payment to extract cost_center_id from expense_lines and header
+-- 2. Helper function: safe_cast_uuid (prevents unhandled exceptions on invalid/null/empty UUID strings)
+CREATE OR REPLACE FUNCTION public.safe_cast_uuid(p_val TEXT)
+RETURNS UUID
+LANGUAGE plpgsql
+IMMUTABLE
+AS $$
+BEGIN
+    IF p_val IS NULL OR p_val = '' OR p_val = 'null' OR p_val = 'undefined' THEN
+        RETURN NULL;
+    END IF;
+    IF p_val ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+        RETURN p_val::uuid;
+    END IF;
+    RETURN NULL;
+EXCEPTION WHEN OTHERS THEN
+    RETURN NULL;
+END;
+$$;
+
+-- 3. Update rpc_post_accounting_payment to safely extract cost_center_id from expense_lines and header
 CREATE OR REPLACE FUNCTION public.rpc_post_accounting_payment(p_payment_id UUID)
 RETURNS UUID
 LANGUAGE plpgsql
@@ -64,7 +83,7 @@ BEGIN
     IF v_journal.id IS NULL AND v_has_multi_bank THEN
         SELECT * INTO v_journal 
         FROM public.accounting_journals 
-        WHERE id = (v_payment.bank_lines->0->>'journal_id')::uuid;
+        WHERE id = public.safe_cast_uuid(v_payment.bank_lines->0->>'journal_id');
     END IF;
 
     IF v_journal.id IS NULL THEN
@@ -159,11 +178,11 @@ BEGIN
         IF v_has_multi_expense THEN
             FOR v_elem IN SELECT * FROM jsonb_array_elements(v_payment.expense_lines)
             LOOP
-                v_line_acc_id := NULLIF(v_elem->>'account_id', '')::uuid;
-                v_line_partner_id := COALESCE(NULLIF(v_elem->>'partner_id', '')::uuid, v_payment.partner_id);
+                v_line_acc_id := public.safe_cast_uuid(v_elem->>'account_id');
+                v_line_partner_id := COALESCE(public.safe_cast_uuid(v_elem->>'partner_id'), v_payment.partner_id);
                 v_line_amount := COALESCE((v_elem->>'amount')::numeric, 0);
                 v_line_entry_type := LOWER(COALESCE(v_elem->>'entry_type', ''));
-                v_line_cc_id := NULLIF(v_elem->>'cost_center_id', '')::uuid;
+                v_line_cc_id := public.safe_cast_uuid(v_elem->>'cost_center_id');
                 v_line_proj_cc_id := NULL;
                 v_line_cont_cc_id := NULL;
 
@@ -202,8 +221,10 @@ BEGIN
                 v_line_memo := COALESCE(NULLIF(v_elem->>'notes', ''), (SELECT name FROM public.accounting_chart_of_accounts WHERE id = v_line_acc_id), v_line_name);
 
                 IF v_line_acc_id IS NOT NULL AND v_line_amount <> 0 THEN
-                    -- If signed negative OR explicitly marked as credit entry:
-                    IF v_line_amount < 0 OR v_line_entry_type = 'credit' THEN
+                    -- For Outbound Payment:
+                    -- If signed negative OR explicitly marked as credit: deduction / credit entry (CREDIT)
+                    -- Else: normal expense / asset / payable entry (DEBIT)
+                    IF v_line_entry_type = 'credit' OR v_line_amount < 0 THEN
                         INSERT INTO public.accounting_journal_lines (
                             company_id, entry_id, account_id, partner_id, name, debit, credit, cost_center_id, project_cost_center_id, contract_cost_center_id
                         ) VALUES (
@@ -247,7 +268,7 @@ BEGIN
         IF v_has_multi_bank THEN
             FOR v_elem IN SELECT * FROM jsonb_array_elements(v_payment.bank_lines)
             LOOP
-                v_line_journal_id := NULLIF(v_elem->>'journal_id', '')::uuid;
+                v_line_journal_id := public.safe_cast_uuid(v_elem->>'journal_id');
                 v_line_amount := COALESCE((v_elem->>'amount')::numeric, 0);
                 v_line_memo := COALESCE(
                     NULLIF(
@@ -291,7 +312,7 @@ BEGIN
         IF v_has_multi_bank THEN
             FOR v_elem IN SELECT * FROM jsonb_array_elements(v_payment.bank_lines)
             LOOP
-                v_line_journal_id := NULLIF(v_elem->>'journal_id', '')::uuid;
+                v_line_journal_id := public.safe_cast_uuid(v_elem->>'journal_id');
                 v_line_amount := COALESCE((v_elem->>'amount')::numeric, 0);
                 v_line_memo := COALESCE(
                     NULLIF(
@@ -333,11 +354,11 @@ BEGIN
         IF v_has_multi_expense THEN
             FOR v_elem IN SELECT * FROM jsonb_array_elements(v_payment.expense_lines)
             LOOP
-                v_line_acc_id := NULLIF(v_elem->>'account_id', '')::uuid;
-                v_line_partner_id := COALESCE(NULLIF(v_elem->>'partner_id', '')::uuid, v_payment.partner_id);
+                v_line_acc_id := public.safe_cast_uuid(v_elem->>'account_id');
+                v_line_partner_id := COALESCE(public.safe_cast_uuid(v_elem->>'partner_id'), v_payment.partner_id);
                 v_line_amount := COALESCE((v_elem->>'amount')::numeric, 0);
                 v_line_entry_type := LOWER(COALESCE(v_elem->>'entry_type', ''));
-                v_line_cc_id := NULLIF(v_elem->>'cost_center_id', '')::uuid;
+                v_line_cc_id := public.safe_cast_uuid(v_elem->>'cost_center_id');
                 v_line_proj_cc_id := NULL;
                 v_line_cont_cc_id := NULL;
 
@@ -377,9 +398,9 @@ BEGIN
 
                 IF v_line_acc_id IS NOT NULL AND v_line_amount <> 0 THEN
                     -- On Receipt:
-                    -- If signed negative: it is a deduction/charge (DEBIT)
-                    -- If positive: it is counterpart allocation (CREDIT)
-                    IF v_line_amount < 0 THEN
+                    -- If explicitly marked debit OR signed negative: it is a deduction/fee (DEBIT)
+                    -- Else: normal counterpart / revenue allocation (CREDIT)
+                    IF v_line_entry_type = 'debit' OR v_line_amount < 0 THEN
                         INSERT INTO public.accounting_journal_lines (
                             company_id, entry_id, account_id, partner_id, name, debit, credit, cost_center_id, project_cost_center_id, contract_cost_center_id
                         ) VALUES (

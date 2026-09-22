@@ -319,12 +319,13 @@ export const DayBook: React.FC<DayBookProps> = ({ onNavigateToEntry }) => {
             }
             paymentQuery = paymentQuery.order('date', { ascending: true });
 
-            // Fetch masters for resolving ledger accounts and partner names inside multi-line vouchers
-            const [jRes, pRes, coaRes, partRes] = await Promise.all([
+            // Fetch masters for resolving ledger accounts, partner names, and cost centers inside vouchers
+            const [jRes, pRes, coaRes, partRes, ccRes] = await Promise.all([
                 jEntryQuery,
                 paymentQuery,
                 supabase.from('accounting_chart_of_accounts').select('id, code, name, type').eq('company_id', currentCompanyId),
-                supabase.from('accounting_partners').select('id, name').eq('company_id', currentCompanyId)
+                supabase.from('accounting_partners').select('id, name').eq('company_id', currentCompanyId),
+                supabase.from('accounting_cost_centers').select('id, code, name').eq('company_id', currentCompanyId)
             ]);
 
             if (jRes.error) throw jRes.error;
@@ -332,6 +333,7 @@ export const DayBook: React.FC<DayBookProps> = ({ onNavigateToEntry }) => {
 
             const coaMap = new Map((coaRes.data || []).map((a: any) => [a.id, a]));
             const partMap = new Map((partRes.data || []).map((p: any) => [p.id, p.name]));
+            const ccMap = new Map((ccRes.data || []).map((c: any) => [c.id, c.name]));
 
             const postedEntryIds = new Set<string>();
             const existingReferences = new Set<string>();
@@ -360,7 +362,7 @@ export const DayBook: React.FC<DayBookProps> = ({ onNavigateToEntry }) => {
                     debit: Number(l.debit) || 0,
                     credit: Number(l.credit) || 0,
                     partnerName: l.partner?.name || entryPartner || '',
-                    costCenterName: l.cost_center_id ? 'CC' : undefined
+                    costCenterName: l.cost_center_id ? (ccMap.get(l.cost_center_id) || undefined) : undefined
                 }));
 
                 const debitLines = formattedLines.filter(l => l.debit > 0);
@@ -534,7 +536,7 @@ export const DayBook: React.FC<DayBookProps> = ({ onNavigateToEntry }) => {
                         let credit = 0;
 
                         if (isReceipt) {
-                            if (rawAmt < 0) {
+                            if (e.entry_type === 'debit' || rawAmt < 0) {
                                 debit = Math.abs(rawAmt);
                             } else {
                                 credit = Math.abs(rawAmt);
@@ -548,6 +550,9 @@ export const DayBook: React.FC<DayBookProps> = ({ onNavigateToEntry }) => {
                             }
                         }
 
+                        const lineCcId = e.cost_center_id || pay.cost_center_id;
+                        const lineCcName = lineCcId ? ccMap.get(lineCcId) : undefined;
+
                         return {
                             id: e.id || `exp-${pay.id}-${eIdx}`,
                             accountId: e.account_id || undefined,
@@ -557,12 +562,14 @@ export const DayBook: React.FC<DayBookProps> = ({ onNavigateToEntry }) => {
                             name: e.notes || accName,
                             debit,
                             credit,
-                            partnerName: linePartner
+                            partnerName: linePartner,
+                            costCenterName: lineCcName
                         };
                     });
                 } else {
                     const accName = pay.account?.name || entryPartner || (isReceipt ? 'Customer / Income' : 'Expense Account');
                     const amt = Number(pay.amount) || 0;
+                    const singleCcName = pay.cost_center_id ? ccMap.get(pay.cost_center_id) : undefined;
                     counterpartLines = [{
                         id: `cp-${pay.id}`,
                         accountId: pay.account_id || undefined,
@@ -572,7 +579,8 @@ export const DayBook: React.FC<DayBookProps> = ({ onNavigateToEntry }) => {
                         name: pay.notes || accName,
                         debit: isReceipt ? 0 : amt,
                         credit: isReceipt ? amt : 0,
-                        partnerName: entryPartner
+                        partnerName: entryPartner,
+                        costCenterName: singleCcName
                     }];
                 }
 
@@ -1251,6 +1259,11 @@ export const DayBook: React.FC<DayBookProps> = ({ onNavigateToEntry }) => {
                                                                                     {line.partnerName && (
                                                                                         <span className="ml-2 text-[10px] text-slate-400 font-normal">
                                                                                             (Party: {line.partnerName})
+                                                                                        </span>
+                                                                                    )}
+                                                                                    {line.costCenterName && (
+                                                                                        <span className="ml-2 text-[10px] text-purple-700 dark:text-purple-300 font-semibold bg-purple-50 dark:bg-purple-950/50 border border-purple-200 dark:border-purple-800 rounded px-1.5 py-0.5 font-mono">
+                                                                                            🎯 {line.costCenterName}
                                                                                         </span>
                                                                                     )}
                                                                                     {line.name && line.name !== line.accountName && (
