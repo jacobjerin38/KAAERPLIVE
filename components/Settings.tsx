@@ -3,7 +3,7 @@ import { Moon, Sun, Download, Upload, LogOut, Database, Shield, Monitor, Server,
 import { useAuth } from '../contexts/AuthContext';
 import { DeviceIntegrationHub } from './settings/DeviceIntegrationHub';
 import { ActivityLogs } from './settings/ActivityLogs';
-import { createFullBackup, restoreFullBackup } from '../lib/backupRestore';
+import { createFullBackup, restoreFullBackup, validateBackupIntegrity } from '../lib/backupRestore';
 
 interface SettingsProps {
   isDarkMode: boolean;
@@ -50,7 +50,7 @@ export const Settings: React.FC<SettingsProps> = ({ isDarkMode, toggleTheme, onL
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (!confirm('WARNING: Restoring from a backup will OVERWRITE all your existing ERP data for this company. Are you absolutely sure you want to proceed?')) {
+    if (!confirm('Confirm Safe Restore: This will safely merge and restore data from your backup file into the system without deleting existing tenant records. Are you sure you want to proceed?')) {
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
@@ -59,14 +59,23 @@ export const Settings: React.FC<SettingsProps> = ({ isDarkMode, toggleTheme, onL
     reader.onload = async (e) => {
       try {
         const result = e.target?.result as string;
-        setProgressStatus('Parsing backup file...');
+        setProgressStatus('Parsing and validating backup file...');
         const backupData = JSON.parse(result);
 
-        await restoreFullBackup(backupData, (status) => {
+        const validation = validateBackupIntegrity(backupData);
+        if (!validation.valid) {
+          throw new Error(validation.error || 'Backup file integrity validation failed.');
+        }
+
+        const report = await restoreFullBackup(backupData, (status) => {
           setProgressStatus(status);
         });
 
-        alert('Data restored successfully! The application will now reload to apply the restored state.');
+        if (report.success) {
+          alert(`Data restored successfully!\n\n${report.summary}\n\nThe application will now reload.`);
+        } else {
+          alert(`Restore completed with notices:\n\n${report.summary}\n\n${report.errors.length} table notices recorded. Check console for details.`);
+        }
         window.location.reload();
       } catch (err) {
         console.error('Restore failed:', err);
@@ -81,6 +90,7 @@ export const Settings: React.FC<SettingsProps> = ({ isDarkMode, toggleTheme, onL
     };
     reader.readAsText(file);
   };
+
 
   if (showActivityLogs) {
     return (

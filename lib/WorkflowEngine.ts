@@ -575,14 +575,30 @@ export class WorkflowEngine {
                             updatePayload.check_out = reqTime;
                         }
 
-                        const cin = mpReq.punch_type === 'check_in' ? new Date(reqTime) : (existingAtt.check_in ? new Date(existingAtt.check_in) : null);
-                        const cout = mpReq.punch_type === 'check_out' ? new Date(reqTime) : (existingAtt.check_out ? new Date(existingAtt.check_out) : null);
+                        let cin = mpReq.punch_type === 'check_in' ? new Date(reqTime) : (existingAtt.check_in ? new Date(existingAtt.check_in) : null);
+                        let cout = mpReq.punch_type === 'check_out' ? new Date(reqTime) : (existingAtt.check_out ? new Date(existingAtt.check_out) : null);
                         if (cin && cout && !isNaN(cin.getTime()) && !isNaN(cout.getTime())) {
-                            const diffMs = cout.getTime() - cin.getTime();
-                            updatePayload.total_hours = Math.max(0, parseFloat((diffMs / (1000 * 60 * 60)).toFixed(2)));
+                            let diffMs = cout.getTime() - cin.getTime();
+                            // Handle cross-midnight overnight shift safely
+                            if (diffMs < 0 && Math.abs(diffMs) < 24 * 60 * 60 * 1000) {
+                                const coutNextDay = new Date(cout.getTime() + 24 * 60 * 60 * 1000);
+                                const adjustedDiffMs = coutNextDay.getTime() - cin.getTime();
+                                if (adjustedDiffMs > 0 && adjustedDiffMs <= 16 * 60 * 60 * 1000) {
+                                    diffMs = adjustedDiffMs;
+                                    updatePayload.check_out = coutNextDay.toISOString();
+                                }
+                            }
+                            if (diffMs < 0) {
+                                console.warn(`Punch chronology warning for employee ${mpReq.employee_id} on ${mpReq.request_date}: checkout is earlier than checkin.`);
+                                updatePayload.total_hours = 0;
+                                updatePayload.status = 'Missing Punch';
+                            } else {
+                                updatePayload.total_hours = Math.min(16, parseFloat((diffMs / (1000 * 60 * 60)).toFixed(2)));
+                            }
                         }
 
-                        await (supabase as any).from('attendance').update(updatePayload).eq('id', existingAtt.id);
+                        const { error: updErr } = await (supabase as any).from('attendance').update(updatePayload).eq('id', existingAtt.id);
+                        if (updErr) console.error('Failed to update attendance on missed punch approval:', updErr);
                     } else {
                         const insertPayload: any = {
                             company_id: mpReq.company_id,
@@ -598,7 +614,8 @@ export class WorkflowEngine {
                         } else {
                             insertPayload.check_out = reqTime;
                         }
-                        await (supabase as any).from('attendance').upsert([insertPayload], { onConflict: 'employee_id,date' });
+                        const { error: insErr } = await (supabase as any).from('attendance').upsert([insertPayload], { onConflict: 'employee_id,date' });
+                        if (insErr) console.error('Failed to insert attendance on missed punch approval:', insErr);
                     }
 
                     // Recalculate shift rules for this day

@@ -1274,7 +1274,18 @@ export const updateQuotation = async (id: string, updates: Partial<CRMQuotation>
 };
 
 export const saveQuotationLines = async (quotationId: string, lines: CRMQuotationLine[]): Promise<boolean> => {
-  // Delete existing lines, then insert new
+  try {
+    const { data: rpcRes, error: rpcErr } = await (supabase.rpc as any)('rpc_save_crm_quotation_lines', {
+      p_quotation_id: quotationId,
+      p_lines: lines
+    });
+    if (!rpcErr && rpcRes?.success) return true;
+    if (rpcErr) console.warn('rpc_save_crm_quotation_lines notice, falling back:', rpcErr.message);
+  } catch (e) {
+    console.warn('rpc_save_crm_quotation_lines exception, falling back:', e);
+  }
+
+  // Fallback: Delete existing lines, then insert new
   await (supabase as any).from('crm_quotation_lines').delete().eq('quotation_id', quotationId);
   if (lines.length === 0) return true;
   const toInsert = lines.map((l, i) => ({ ...l, quotation_id: quotationId, sort_order: i, id: undefined, amount: undefined }));
@@ -1311,6 +1322,17 @@ export const getSalesInvoiceLines = async (invoiceId: string): Promise<CRMSalesI
 };
 
 export const saveSalesInvoiceLines = async (invoiceId: string, lines: CRMSalesInvoiceLine[]): Promise<boolean> => {
+  try {
+    const { data: rpcRes, error: rpcErr } = await (supabase.rpc as any)('rpc_save_crm_sales_invoice_lines', {
+      p_invoice_id: invoiceId,
+      p_lines: lines
+    });
+    if (!rpcErr && rpcRes?.success) return true;
+    if (rpcErr) console.warn('rpc_save_crm_sales_invoice_lines notice, falling back:', rpcErr.message);
+  } catch (e) {
+    console.warn('rpc_save_crm_sales_invoice_lines exception, falling back:', e);
+  }
+
   await (supabase as any).from('crm_sales_invoice_lines').delete().eq('invoice_id', invoiceId);
   if (lines.length === 0) return true;
   const toInsert = lines.map((l, i) => ({ ...l, invoice_id: invoiceId, sort_order: i, id: undefined, amount: undefined }));
@@ -1347,6 +1369,17 @@ export const getDeliveryNoteLines = async (dnId: string): Promise<CRMDeliveryNot
 };
 
 export const saveDeliveryNoteLines = async (dnId: string, lines: CRMDeliveryNoteLine[]): Promise<boolean> => {
+  try {
+    const { data: rpcRes, error: rpcErr } = await (supabase.rpc as any)('rpc_save_crm_delivery_note_lines', {
+      p_delivery_note_id: dnId,
+      p_lines: lines
+    });
+    if (!rpcErr && rpcRes?.success) return true;
+    if (rpcErr) console.warn('rpc_save_crm_delivery_note_lines notice, falling back:', rpcErr.message);
+  } catch (e) {
+    console.warn('rpc_save_crm_delivery_note_lines exception, falling back:', e);
+  }
+
   await (supabase as any).from('crm_delivery_note_lines').delete().eq('delivery_note_id', dnId);
   if (lines.length === 0) return true;
   const toInsert = lines.map((l, i) => ({ ...l, delivery_note_id: dnId, sort_order: i, id: undefined }));
@@ -1372,10 +1405,13 @@ export const uploadAttachment = async (
   recordId: string,
   file: File,
   userId?: string
-): Promise<CRMAttachment | null> => {
+): Promise<CRMAttachment> => {
   const path = `crm/${companyId}/${module}/${recordId}/${Date.now()}_${file.name}`;
   const { error: uploadErr } = await supabase.storage.from('attachments').upload(path, file);
-  if (uploadErr) { console.error('Upload error:', uploadErr); return null; }
+  if (uploadErr) {
+    console.error('Upload error:', uploadErr);
+    throw new Error(`Failed to upload attachment "${file.name}": ${uploadErr.message}`);
+  }
   const { data: urlData } = supabase.storage.from('attachments').getPublicUrl(path);
   const { data, error } = await (supabase as any).from('crm_attachments').insert([{
     company_id: companyId,
@@ -1387,7 +1423,10 @@ export const uploadAttachment = async (
     file_type: file.type,
     uploaded_by: userId
   }]).select().maybeSingle();
-  if (error) { console.error('Error saving attachment:', error); return null; }
+  if (error) {
+    console.error('Error saving attachment:', error);
+    throw new Error(`Failed to save attachment metadata: ${error.message}`);
+  }
   return data;
 };
 
@@ -1401,6 +1440,37 @@ export const deleteAttachment = async (id: string, fileUrl: string): Promise<boo
 
 // --- CONVERSION: Quotation → Invoice ---
 export const convertQuotationToInvoice = async (quotation: CRMQuotation, companyId: string, ownerId?: string): Promise<CRMSalesInvoice | null> => {
+  // 1. Guard against duplicate conversion
+  const { data: existingInv } = await (supabase as any)
+    .from('crm_sales_invoices')
+    .select('id, invoice_number')
+    .eq('quotation_id', quotation.id)
+    .maybeSingle();
+
+  if (existingInv) {
+    throw new Error(`This quotation has already been converted to Invoice #${existingInv.invoice_number || existingInv.id}.`);
+  }
+
+  // 2. Try atomic conversion RPC
+  try {
+    const { data: rpcRes, error: rpcErr } = await (supabase.rpc as any)('rpc_convert_quotation_to_invoice', {
+      p_quotation_id: quotation.id,
+      p_owner_id: ownerId || null
+    });
+    if (!rpcErr && rpcRes?.success && rpcRes?.invoice_id) {
+      const { data: createdInv } = await (supabase as any)
+        .from('crm_sales_invoices')
+        .select('*, customer:crm_customers(*)')
+        .eq('id', rpcRes.invoice_id)
+        .maybeSingle();
+      return createdInv || null;
+    }
+    if (rpcErr) console.warn('rpc_convert_quotation_to_invoice notice, falling back:', rpcErr.message);
+  } catch (e) {
+    console.warn('rpc_convert_quotation_to_invoice exception, falling back:', e);
+  }
+
+  // 3. Client fallback
   const lines = await getQuotationLines(quotation.id);
   const inv = await createSalesInvoice({
     company_id: companyId,
@@ -1433,6 +1503,17 @@ export const convertQuotationToInvoice = async (quotation: CRMQuotation, company
 
 // --- CONVERSION: Invoice → Delivery Note ---
 export const convertInvoiceToDeliveryNote = async (invoice: CRMSalesInvoice, companyId: string, ownerId?: string): Promise<CRMDeliveryNote | null> => {
+  // Guard against duplicate conversion
+  const { data: existingDn } = await (supabase as any)
+    .from('crm_delivery_notes')
+    .select('id, delivery_note_number')
+    .eq('invoice_id', invoice.id)
+    .maybeSingle();
+
+  if (existingDn) {
+    throw new Error(`This invoice has already been converted to Delivery Note #${existingDn.delivery_note_number || existingDn.id}.`);
+  }
+
   const lines = await getSalesInvoiceLines(invoice.id);
   const dn = await createDeliveryNote({
     company_id: companyId,
@@ -1454,3 +1535,4 @@ export const convertInvoiceToDeliveryNote = async (invoice: CRMSalesInvoice, com
   await saveDeliveryNoteLines(dn.id, dnLines);
   return dn;
 };
+

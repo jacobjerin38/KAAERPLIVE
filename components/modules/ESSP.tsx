@@ -2063,7 +2063,11 @@ export const ESSP: React.FC = () => {
                 ? Number(selectedLeaveType.default_balance)
                 : (selectedLeaveType?.name?.toLowerCase().includes('annual') ? 21 : 14));
 
+        const currentYear = new Date().getFullYear();
         const leavesForSelectedType = leaves.filter((l: any) => {
+            const leaveYear = l.start_date ? new Date(l.start_date).getFullYear() : (l.created_at ? new Date(l.created_at).getFullYear() : currentYear);
+            if (leaveYear !== currentYear) return false;
+
             if (selectedLeaveType && selectedLeaveType.id && l.leave_type_id) {
                 if (l.leave_type_id.toString() === selectedLeaveType.id.toString()) return true;
             }
@@ -2142,12 +2146,25 @@ export const ESSP: React.FC = () => {
                     return;
                 }
 
+                // 2. Overlap check against existing active leaves
+                const hasOverlap = leaves.some((l: any) => {
+                    if (l.status === 'Rejected') return false;
+                    if (!l.start_date || !l.end_date) return false;
+                    return formData.from <= l.end_date && formData.to >= l.start_date;
+                });
+                if (hasOverlap) {
+                    alert("You already have an active (Pending or Approved) leave request overlapping with this date range.");
+                    setSubmitting(false);
+                    return;
+                }
+
                 const reqDays = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
 
-                if (reqDays > remainingBalance && remainingBalance > 0) {
-                    const proceed = confirm(
-                        `Note: You are requesting ${reqDays} days, which exceeds your current balance of ${remainingBalance} days.\n\nDo you want to submit this application for Special/Unpaid Leave approval by HR Management?`
-                    );
+                if (remainingBalance <= 0 || reqDays > remainingBalance) {
+                    const message = remainingBalance <= 0
+                        ? `Note: You currently have 0 days remaining for this leave type.\n\nDo you want to submit this application for Special/Unpaid Leave approval by HR Management?`
+                        : `Note: You are requesting ${reqDays} days, which exceeds your current balance of ${remainingBalance} days.\n\nDo you want to submit this application for Special/Unpaid Leave approval by HR Management?`;
+                    const proceed = confirm(message);
                     if (!proceed) {
                         setSubmitting(false);
                         return;

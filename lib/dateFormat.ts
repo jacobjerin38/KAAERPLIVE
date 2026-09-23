@@ -89,3 +89,18 @@ export function formatWeekdayDate(dateStr?: string | Date | null): string {
   if (isNaN(d.getTime())) return '-';
   return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
 }
+
+/**
+ * Formats a Date object or date string to YYYY-MM-DD in local timezone (safe for SQL filtering and form controls).
+ * Avoids UTC date rollback issues caused by new Date().toISOString().split('T')[0].
+ */
+export function formatLocalDate(date?: Date | string | null): string {
+  if (!date) return '';
+  const d = typeof date === 'string' ? new Date(date) : date;
+  if (isNaN(d.getTime())) return '';
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+

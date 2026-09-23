@@ -26,6 +26,7 @@ import {
     Edit
 } from 'lucide-react';
 import { PrintButton } from '../../ui/PrintButton';
+import { formatLocalDate } from '../../../lib/dateFormat';
 
 export interface DayBookLine {
     id: string;
@@ -98,11 +99,11 @@ export const DayBook: React.FC<DayBookProps> = ({ onNavigateToEntry }) => {
     const [preset, setPreset] = useState<PeriodPreset>('this_month');
     const [startDate, setStartDate] = useState<string>(() => {
         const today = new Date();
-        return new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+        return formatLocalDate(new Date(today.getFullYear(), today.getMonth(), 1));
     });
     const [endDate, setEndDate] = useState<string>(() => {
         const today = new Date();
-        return new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
+        return formatLocalDate(new Date(today.getFullYear(), today.getMonth() + 1, 0));
     });
 
     // Filters & Sorting
@@ -150,7 +151,7 @@ export const DayBook: React.FC<DayBookProps> = ({ onNavigateToEntry }) => {
 
         switch (newPreset) {
             case 'today': {
-                const todayStr = today.toISOString().split('T')[0];
+                const todayStr = formatLocalDate(today);
                 setStartDate(todayStr);
                 setEndDate(todayStr);
                 break;
@@ -158,7 +159,7 @@ export const DayBook: React.FC<DayBookProps> = ({ onNavigateToEntry }) => {
             case 'yesterday': {
                 const y = new Date(today);
                 y.setDate(y.getDate() - 1);
-                const yStr = y.toISOString().split('T')[0];
+                const yStr = formatLocalDate(y);
                 setStartDate(yStr);
                 setEndDate(yStr);
                 break;
@@ -170,20 +171,20 @@ export const DayBook: React.FC<DayBookProps> = ({ onNavigateToEntry }) => {
                 const firstDay = new Date(d.setDate(diff));
                 const lastDay = new Date(firstDay);
                 lastDay.setDate(firstDay.getDate() + 6);
-                setStartDate(firstDay.toISOString().split('T')[0]);
-                setEndDate(lastDay.toISOString().split('T')[0]);
+                setStartDate(formatLocalDate(firstDay));
+                setEndDate(formatLocalDate(lastDay));
                 break;
             }
             case 'this_month': {
-                const start = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
-                const end = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
+                const start = formatLocalDate(new Date(today.getFullYear(), today.getMonth(), 1));
+                const end = formatLocalDate(new Date(today.getFullYear(), today.getMonth() + 1, 0));
                 setStartDate(start);
                 setEndDate(end);
                 break;
             }
             case 'last_month': {
-                const start = new Date(today.getFullYear(), today.getMonth() - 1, 1).toISOString().split('T')[0];
-                const end = new Date(today.getFullYear(), today.getMonth(), 0).toISOString().split('T')[0];
+                const start = formatLocalDate(new Date(today.getFullYear(), today.getMonth() - 1, 1));
+                const end = formatLocalDate(new Date(today.getFullYear(), today.getMonth(), 0));
                 setStartDate(start);
                 setEndDate(end);
                 break;

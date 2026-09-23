@@ -590,17 +590,20 @@ export const Bills: React.FC<BillsProps> = ({ initialSearch, initialId, onClearI
             }
 
             // 2. Strict Duplicate Check on PEC Purchase Reference Number (Live Database)
+            const escapeSqlLike = (str: string) => str.replace(/[%_\\]/g, '\\$&');
             let refQuery = supabase
                 .from('accounting_journal_entries')
                 .select('id, reference, date, partner:accounting_partners(name)')
                 .eq('company_id', currentCompanyId)
                 .eq('move_type', 'in_invoice')
-                .ilike('reference', trimmedRef);
+                .ilike('reference', escapeSqlLike(trimmedRef));
             if (editingBillId) {
                 refQuery = refQuery.neq('id', editingBillId);
             }
             const { data: dbDupRefs, error: dbRefErr } = await refQuery;
-            if (dbDupRefs && dbDupRefs.length > 0) {
+            if (dbRefErr) {
+                console.error('Error checking duplicate reference:', dbRefErr);
+            } else if (dbDupRefs && dbDupRefs.length > 0) {
                 const existing = dbDupRefs[0];
                 alert(`Duplicate Reference Number!\n\nPurchase Reference "${trimmedRef}" already exists on a bill dated ${existing.date} (${(existing.partner as any)?.name || 'vendor'}).\n\nPlease provide a unique PEC Purchase Reference Number.`);
                 return;
@@ -624,12 +627,14 @@ export const Bills: React.FC<BillsProps> = ({ initialSearch, initialId, onClearI
                     .eq('company_id', currentCompanyId)
                     .eq('move_type', 'in_invoice')
                     .eq('partner_id', selectedPartner)
-                    .ilike('supplier_invoice_number', trimmedSupplierInvNo);
+                    .ilike('supplier_invoice_number', escapeSqlLike(trimmedSupplierInvNo));
                 if (editingBillId) {
                     invQuery = invQuery.neq('id', editingBillId);
                 }
-                const { data: dbDupInvs } = await invQuery;
-                if (dbDupInvs && dbDupInvs.length > 0) {
+                const { data: dbDupInvs, error: dbInvErr } = await invQuery;
+                if (dbInvErr) {
+                    console.error('Error checking duplicate supplier invoice:', dbInvErr);
+                } else if (dbDupInvs && dbDupInvs.length > 0) {
                     const existing = dbDupInvs[0];
                     alert(`Duplicate Supplier Invoice Number!\n\nSupplier Invoice #${trimmedSupplierInvNo} already exists for this vendor on voucher ${existing.reference || existing.id} dated ${existing.date}.\n\nYou cannot record duplicate invoices for the same vendor.`);
                     return;
@@ -651,13 +656,14 @@ export const Bills: React.FC<BillsProps> = ({ initialSearch, initialId, onClearI
                 };
                 const { error } = await (supabase.rpc as any)('rpc_update_accounting_invoice', updatePayload);
                 if (error) throw error;
-                await supabase.from('accounting_journal_entries').update({ 
+                const { error: metaErr } = await supabase.from('accounting_journal_entries').update({ 
                     date: voucherDate,
                     invoice_date: billDate,
                     due_date: dueDate,
                     reference: trimmedRef,
                     supplier_invoice_number: trimmedSupplierInvNo
                 }).eq('id', editingBillId);
+                if (metaErr) throw metaErr;
                 alert('Vendor Bill updated successfully!');
             } else {
                 const payload = {
@@ -676,13 +682,14 @@ export const Bills: React.FC<BillsProps> = ({ initialSearch, initialId, onClearI
                 const { data: newId, error } = await (supabase.rpc as any)('rpc_create_accounting_invoice', payload);
                 if (error) throw error;
                 if (newId) {
-                    await supabase.from('accounting_journal_entries').update({ 
+                    const { error: metaErr } = await supabase.from('accounting_journal_entries').update({ 
                         date: voucherDate,
                         invoice_date: billDate,
                         due_date: dueDate,
                         reference: trimmedRef,
                         supplier_invoice_number: trimmedSupplierInvNo
                     }).eq('id', newId);
+                    if (metaErr) throw metaErr;
                 }
                 alert('Vendor Bill created successfully!');
             }

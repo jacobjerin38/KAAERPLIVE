@@ -8,6 +8,8 @@ interface Item {
     code: string;
     name: string;
     uom: string;
+    standard_cost?: number;
+    purchase_price?: number;
 }
 
 interface WarehouseBin {
@@ -45,7 +47,7 @@ export const OutboundProcess: React.FC = () => {
     const fetchItems = async (query: string) => {
         const { data } = await supabase
             .from('item_master')
-            .select('id, code, name, uom')
+            .select('id, code, name, uom, standard_cost, purchase_price')
             .eq('company_id', currentCompanyId)
             .ilike('name', `%${query}%`)
             .limit(10);
@@ -82,6 +84,7 @@ export const OutboundProcess: React.FC = () => {
 
         setLoading(true);
         try {
+            const itemCost = Number(selectedItem.standard_cost || selectedItem.purchase_price || 0);
             const { data, error } = await supabase.rpc('rpc_process_stock_movement', {
                 p_company_id: currentCompanyId,
                 p_item_id: selectedItem.id,
@@ -91,7 +94,7 @@ export const OutboundProcess: React.FC = () => {
                 p_qty: qty,
                 p_ref_type: refType,
                 p_ref_id: null,
-                p_unit_cost: 0
+                p_unit_cost: itemCost
             });
 
             if (error) throw error;

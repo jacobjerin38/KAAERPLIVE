@@ -188,70 +188,123 @@ export async function createFullBackup(onProgress: (status: string) => void): Pr
   return backup;
 }
 
-export async function restoreFullBackup(data: BackupData, onProgress: (status: string) => void): Promise<void> {
-  if (!data.version || !data.supabaseData) {
-    throw new Error('Invalid backup file format.');
+export interface RestoreReport {
+  success: boolean;
+  totalTables: number;
+  restoredTables: string[];
+  skippedTables: string[];
+  errors: { table: string; message: string; rowCount?: number }[];
+  summary: string;
+}
+
+export function validateBackupIntegrity(data: any): { valid: boolean; error?: string } {
+  if (!data || typeof data !== 'object') {
+    return { valid: false, error: 'Backup data must be a valid JSON object.' };
   }
+  if (!data.version) {
+    return { valid: false, error: 'Backup is missing required "version" identifier.' };
+  }
+  if (!data.supabaseData || typeof data.supabaseData !== 'object') {
+    return { valid: false, error: 'Backup is missing "supabaseData" table payload.' };
+  }
+  const tables = Object.keys(data.supabaseData);
+  if (tables.length === 0) {
+    return { valid: false, error: 'Backup contains no table records to restore.' };
+  }
+  for (const table of tables) {
+    if (!Array.isArray(data.supabaseData[table])) {
+      return { valid: false, error: `Invalid data structure for table "${table}": expected array of records.` };
+    }
+  }
+  return { valid: true };
+}
+
+export async function restoreFullBackup(data: BackupData, onProgress: (status: string) => void): Promise<RestoreReport> {
+  const validation = validateBackupIntegrity(data);
+  if (!validation.valid) {
+    throw new Error(validation.error || 'Invalid backup file format.');
+  }
+
+  const report: RestoreReport = {
+    success: true,
+    totalTables: 0,
+    restoredTables: [],
+    skippedTables: [],
+    errors: [],
+    summary: ''
+  };
 
   onProgress('Analyzing target database schema topology...');
   const targetTablesOrder = await getOrderedTables();
 
-  // 1. Restore Local Storage
+  // 1. Restore Local Storage (additive/merge mode)
   onProgress('Restoring local settings...');
-  localStorage.clear();
-  Object.keys(data.localStorageData || {}).forEach((key) => {
-    localStorage.setItem(key, data.localStorageData[key]);
-  });
-
-  // 2. Delete Supabase data in REVERSE topological order
-  const reversedTables = [...targetTablesOrder].reverse();
-  for (const table of reversedTables) {
-    if (table === 'employees') continue; // Employees might be deeply tied to users; upsert is safer
-    
-    // Only attempt to clear tables that exist in the target schema AND we have backup data for
-    if (!data.supabaseData[table]) continue;
-
-    onProgress(`Clearing existing ${table}...`);
-    try {
-      const { error } = await (supabase.from as any)(table)
-        .delete()
-        .neq('id', '00000000-0000-0000-0000-000000000000'); // Always true condition
-      
-      if (error) {
-        console.warn(`Error clearing table ${table}:`, error.message);
-      }
-    } catch (err: any) {
-      console.warn(`Exception clearing table ${table}:`, err?.message);
-    }
+  try {
+    Object.keys(data.localStorageData || {}).forEach((key) => {
+      localStorage.setItem(key, data.localStorageData[key]);
+    });
+  } catch (err: any) {
+    console.warn('Notice restoring local settings:', err?.message);
   }
 
-  // 3. Insert Supabase data in forward topological order
-  for (const table of targetTablesOrder) {
-    const rows = data.supabaseData[table];
-    if (!rows || rows.length === 0) continue;
+  // 2. Safe, Non-Destructive Insert/Upsert in forward topological order
+  // NOTE: Strict Production Safety - No tables are deleted or truncated!
+  const tablesToProcess = targetTablesOrder.filter(t => Array.isArray(data.supabaseData[t]) && data.supabaseData[t].length > 0);
+  report.totalTables = tablesToProcess.length;
 
-    onProgress(`Restoring ${table} (${rows.length} records)...`);
-    
-    const chunkSize = 500;
+  for (let idx = 0; idx < tablesToProcess.length; idx++) {
+    const table = tablesToProcess[idx];
+    const rows = data.supabaseData[table];
+    if (!rows || rows.length === 0) {
+      report.skippedTables.push(table);
+      continue;
+    }
+
+    onProgress(`Restoring ${table} (${idx + 1}/${tablesToProcess.length}, ${rows.length} records)...`);
+
+    const chunkSize = 200;
+    let tableErrorOccurred = false;
+
     for (let i = 0; i < rows.length; i += chunkSize) {
       const chunk = rows.slice(i, i + chunkSize);
-      
+
       try {
-        const { error } = await (supabase.from as any)(table)
-          .upsert(chunk, { onConflict: 'id' });
-          
-        if (error) {
-          // Fallback to standard insert if onConflict fails on non-id table
+        // Safe upsert on 'id' without deleting existing rows
+        const { error: upsertErr } = await (supabase.from as any)(table)
+          .upsert(chunk, { onConflict: 'id', ignoreDuplicates: true });
+
+        if (upsertErr) {
+          // Fallback to standard insert (ignoring duplicates if table lacks id PK)
           const { error: insertErr } = await (supabase.from as any)(table).insert(chunk);
           if (insertErr) {
-            console.warn(`Notice restoring ${table}:`, insertErr.message);
+            console.warn(`Notice restoring ${table} chunk [${i}-${i + chunk.length}]:`, insertErr.message);
+            report.errors.push({
+              table,
+              message: insertErr.message,
+              rowCount: chunk.length
+            });
+            tableErrorOccurred = true;
           }
         }
       } catch (err: any) {
         console.warn(`Exception restoring ${table}:`, err?.message);
+        report.errors.push({
+          table,
+          message: err?.message || 'Unknown restore exception',
+          rowCount: chunk.length
+        });
+        tableErrorOccurred = true;
       }
+    }
+
+    if (!tableErrorOccurred) {
+      report.restoredTables.push(table);
     }
   }
 
-  onProgress('Restore complete!');
+  report.success = report.errors.length === 0;
+  report.summary = `Restore finished: ${report.restoredTables.length} tables restored safely, ${report.errors.length} table errors encountered.`;
+  onProgress(report.summary);
+  return report;
 }
+

@@ -4,6 +4,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { Plus, Search, Filter, FileText, CheckCircle, Clock, Package, Building2, Scale, TrendingUp, Copy, Trash2, Layers, AlertCircle, RotateCcw, Sparkles, X, Undo2 } from 'lucide-react';
 import { Modal } from '../../ui/Modal';
 import { PrintButton } from '../../ui/PrintButton';
+import { formatLocalDate } from '../../../lib/dateFormat';
 
 
 // Helper to add days to ISO date string YYYY-MM-DD safely
@@ -558,18 +559,25 @@ export const Invoices: React.FC<InvoicesProps> = ({ initialSearch, initialId, on
             const partner = partners.find(p => p.id === selectedPartner);
             if (partner && partner.credit_limit > 0 && arAccount) {
                 // Get current balance in new tables
-                const { data: balanceData } = await supabase.rpc('rpc_get_accounting_account_balance', {
+                const { data: balanceData, error: balanceErr } = await supabase.rpc('rpc_get_accounting_account_balance', {
                     p_account_id: arAccount.id,
-                    p_date: new Date().toISOString().split('T')[0],
+                    p_date: formatLocalDate(new Date()),
                     p_partner_id: partner.id
                 });
-                
-                const currentBalance = Number(balanceData || 0);
-                const invoiceTotal = lines.reduce((acc, l) => acc + (Number(l.quantity) * Number(l.unit_price)), 0);
-                
-                if (currentBalance + invoiceTotal > partner.credit_limit) {
-                    if (!confirm(`Warning: This invoice will put the customer over their credit limit of QAR ${partner.credit_limit}. Current Balance: QAR ${currentBalance}. Proceed?`)) {
+
+                if (balanceErr) {
+                    console.error('Error fetching account balance for credit check:', balanceErr);
+                    if (!confirm(`Warning: Could not verify customer's current balance due to a system check error. Do you want to proceed with creating this invoice?`)) {
                         return;
+                    }
+                } else {
+                    const currentBalance = Number(balanceData || 0);
+                    const invoiceTotal = lines.reduce((acc, l) => acc + (Number(l.quantity) * Number(l.unit_price)), 0);
+                    
+                    if (currentBalance + invoiceTotal > partner.credit_limit) {
+                        if (!confirm(`Warning: This invoice will put the customer over their credit limit of QAR ${partner.credit_limit}. Current Balance: QAR ${currentBalance}. Proceed?`)) {
+                            return;
+                        }
                     }
                 }
             }
@@ -626,11 +634,12 @@ export const Invoices: React.FC<InvoicesProps> = ({ initialSearch, initialId, on
                 };
                 const { error } = await (supabase.rpc as any)('rpc_update_accounting_invoice', updatePayload);
                 if (error) throw error;
-                await supabase.from('accounting_journal_entries').update({ 
+                const { error: metaErr } = await supabase.from('accounting_journal_entries').update({ 
                     reference: trimmedRef,
                     client_po_number: clientPoNumber.trim() || null,
                     client_po_date: clientPoDate || null
                 }).eq('id', editingInvoiceId);
+                if (metaErr) throw metaErr;
                 alert(moveType === 'out_refund' ? 'Sales Return (Credit Note) updated successfully!' : 'Invoice updated successfully!');
             } else {
                 const payload = {
@@ -649,11 +658,12 @@ export const Invoices: React.FC<InvoicesProps> = ({ initialSearch, initialId, on
                 const { data: newId, error } = await (supabase.rpc as any)('rpc_create_accounting_invoice', payload);
                 if (error) throw error;
                 if (newId) {
-                    await supabase.from('accounting_journal_entries').update({ 
+                    const { error: metaErr } = await supabase.from('accounting_journal_entries').update({ 
                         reference: trimmedRef,
                         client_po_number: clientPoNumber.trim() || null,
                         client_po_date: clientPoDate || null
                     }).eq('id', newId);
+                    if (metaErr) throw metaErr;
                 }
                 alert(moveType === 'out_refund' ? 'Sales Return (Credit Note) created successfully!' : 'Invoice created successfully!');
             }

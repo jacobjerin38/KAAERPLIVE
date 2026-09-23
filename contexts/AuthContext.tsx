@@ -174,9 +174,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             // Re-fetch permissions for selected company
             fetchUserRoleAndPermissions(user.id);
 
-            // Update Profile & Log activity asynchronously
-            supabase.from('profiles').update({ company_id: companyId }).eq('id', user.id).then(({ error }) => {
-                if (error) console.error('Profile company_id update error:', error);
+            // Update Profile via secure RPC (with backward-compatible fallback)
+            supabase.rpc('rpc_switch_active_company', { p_company_id: companyId }).then(({ error: rpcErr }) => {
+                if (rpcErr) {
+                    // Fallback to direct update if RPC is not yet deployed
+                    supabase.from('profiles').update({ company_id: companyId }).eq('id', user.id).then(({ error }) => {
+                        if (error) console.error('Profile company_id update error:', error);
+                    });
+                }
             });
             supabase.from('activity_logs' as any).insert({
                 company_id: companyId,

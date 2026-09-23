@@ -4,14 +4,16 @@ import { BarChart3, Calendar, TrendingUp } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAuth } from '../../../contexts/AuthContext';
 import { PrintButton } from '../../ui/PrintButton';
+import { formatLocalDate } from '../../../lib/dateFormat';
 
 
 export const DailySalesReport: React.FC = () => {
     const { currentCompanyId } = useAuth();
-    const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]);
-    const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+    const [startDate, setStartDate] = useState(formatLocalDate(new Date(new Date().getFullYear(), new Date().getMonth(), 1)));
+    const [endDate, setEndDate] = useState(formatLocalDate(new Date()));
     const [data, setData] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+
 
     useEffect(() => { 
         if (currentCompanyId) fetchSales(); 

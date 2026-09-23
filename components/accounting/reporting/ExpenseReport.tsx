@@ -4,16 +4,18 @@ import { Receipt, PieChart as PieIcon } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { useAuth } from '../../../contexts/AuthContext';
 import { PrintButton } from '../../ui/PrintButton';
+import { formatLocalDate } from '../../../lib/dateFormat';
 
 
 const COLORS = ['#8b5cf6','#f43f5e','#06b6d4','#f59e0b','#10b981','#6366f1','#ec4899','#14b8a6'];
 
 export const ExpenseReport: React.FC = () => {
     const { currentCompanyId } = useAuth();
-    const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]);
-    const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+    const [startDate, setStartDate] = useState(formatLocalDate(new Date(new Date().getFullYear(), 0, 1)));
+    const [endDate, setEndDate] = useState(formatLocalDate(new Date()));
     const [data, setData] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+
 
     useEffect(() => { 
         if (currentCompanyId) fetchExpenses(); 

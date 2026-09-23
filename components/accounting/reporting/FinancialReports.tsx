@@ -4,6 +4,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { Calendar, Filter, FileText, TrendingUp, TrendingDown, ChevronDown, ChevronRight } from 'lucide-react';
 import { QatarVATReport } from './QatarVATReport';
 import { PrintButton } from '../../ui/PrintButton';
+import { formatLocalDate } from '../../../lib/dateFormat';
 
 
 export const FinancialReports: React.FC = () => {
@@ -24,8 +25,9 @@ export const FinancialReports: React.FC = () => {
     const [selectedContractCC, setSelectedContractCC] = useState('');
 
     // Filters
-    const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]);
-    const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+    const [startDate, setStartDate] = useState(formatLocalDate(new Date(new Date().getFullYear(), 0, 1)));
+    const [endDate, setEndDate] = useState(formatLocalDate(new Date()));
+
 
     useEffect(() => {
         if (currentCompanyId) {

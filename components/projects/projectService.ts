@@ -21,7 +21,8 @@ export async function uploadProjectFile(
         });
 
     if (error) {
-        console.warn('Storage upload notice:', error.message);
+        console.error('Storage upload error:', error);
+        throw new Error(`Failed to upload file "${file.name}": ${error.message}`);
     }
 
     const { data: { publicUrl } } = supabase.storage.from('documents').getPublicUrl(filePath);
@@ -242,56 +243,94 @@ export async function createProposal(payload: ProposalPayload) {
 
     const createdByActor = payload.createdBy || '00000000-0000-0000-0000-000000000000';
 
-    // 2. Insert Proposal with both first_reviewer_id and final_approver_id
-    const { data: prop, error: propErr } = await supabase.from('project_proposals').insert([{
-        company_id: payload.companyId,
-        proposal_type: payload.proposalType,
-        title: payload.title,
-        client_id: payload.clientId || null,
-        deal_id: payload.dealId || null,
-        rfq_reference: payload.rfqReference || null,
-        submission_deadline: payload.submissionDeadline || null,
-        currency: payload.currency || 'QAR',
-        quotation_reference: payload.quotationReference || null,
-        remarks: payload.remarks || null,
-        status: 'PENDING_FIRST_REVIEW',
-        current_revision: 1,
-        first_reviewer_id: payload.firstReviewerId,
-        final_approver_id: payload.finalApproverId || null,
-        created_by: createdByActor
-    }]).select().single();
+    // 2. Try Atomic RPC Creation first
+    let prop: any = null;
+    let revId: string | null = null;
+    try {
+        const { data: rpcRes, error: rpcErr } = await (supabase.rpc as any)('rpc_create_project_proposal', {
+            p_payload: {
+                company_id: payload.companyId,
+                proposal_type: payload.proposalType,
+                title: payload.title,
+                client_id: payload.clientId || null,
+                deal_id: payload.dealId || null,
+                rfq_reference: payload.rfqReference || null,
+                submission_deadline: payload.submissionDeadline || null,
+                currency: payload.currency || 'QAR',
+                quotation_reference: payload.quotationReference || null,
+                remarks: payload.remarks || null,
+                first_reviewer_id: payload.firstReviewerId,
+                final_approver_id: payload.finalApproverId || null,
+                technical_file_url: techUrl,
+                quotation_file_url: quoteUrl,
+                costing_sheet_file_url: costingUrl
+            }
+        });
+        if (!rpcErr && rpcRes?.success && rpcRes?.proposal_id) {
+            const { data: fetchedProp } = await supabase.from('project_proposals').select('*').eq('id', rpcRes.proposal_id).single();
+            prop = fetchedProp;
+            revId = rpcRes.revision_id;
+        } else if (rpcErr) {
+            console.warn('rpc_create_project_proposal notice, using standard insert fallback:', rpcErr.message);
+        }
+    } catch (err) {
+        console.warn('rpc_create_project_proposal exception, using fallback:', err);
+    }
 
-    if (propErr) throw propErr;
+    if (!prop) {
+        // Fallback: Multi-step insert with both first_reviewer_id and final_approver_id
+        const { data: insertedProp, error: propErr } = await supabase.from('project_proposals').insert([{
+            company_id: payload.companyId,
+            proposal_type: payload.proposalType,
+            title: payload.title,
+            client_id: payload.clientId || null,
+            deal_id: payload.dealId || null,
+            rfq_reference: payload.rfqReference || null,
+            submission_deadline: payload.submissionDeadline || null,
+            currency: payload.currency || 'QAR',
+            quotation_reference: payload.quotationReference || null,
+            remarks: payload.remarks || null,
+            status: 'PENDING_FIRST_REVIEW',
+            current_revision: 1,
+            first_reviewer_id: payload.firstReviewerId,
+            final_approver_id: payload.finalApproverId || null,
+            created_by: createdByActor
+        }]).select().single();
 
-    // 3. Insert Revision 1
-    const { data: rev, error: revErr } = await supabase.from('project_proposal_revisions').insert([{
-        company_id: payload.companyId,
-        proposal_id: prop.id,
-        revision_number: 1,
-        technical_file_url: techUrl,
-        quotation_file_url: quoteUrl,
-        costing_sheet_file_url: costingUrl,
-        submitted_by: createdByActor,
-        submitted_at: new Date().toISOString(),
-        reviewer_id: payload.firstReviewerId,
-        approver_id: payload.finalApproverId || null,
-        status: 'PENDING_FIRST_REVIEW',
-        remarks: payload.remarks
-    }]).select().single();
+        if (propErr) throw propErr;
+        prop = insertedProp;
 
-    if (revErr) throw revErr;
+        // Insert Revision 1
+        const { data: rev, error: revErr } = await supabase.from('project_proposal_revisions').insert([{
+            company_id: payload.companyId,
+            proposal_id: prop.id,
+            revision_number: 1,
+            technical_file_url: techUrl,
+            quotation_file_url: quoteUrl,
+            costing_sheet_file_url: costingUrl,
+            submitted_by: createdByActor,
+            submitted_at: new Date().toISOString(),
+            reviewer_id: payload.firstReviewerId,
+            approver_id: payload.finalApproverId || null,
+            status: 'PENDING_FIRST_REVIEW',
+            remarks: payload.remarks
+        }]).select().single();
 
-    // 4. Audit Log
-    await logProposalAudit({
-        companyId: payload.companyId,
-        proposalId: prop.id,
-        revisionId: rev.id,
-        action: 'CREATED_AND_SUBMITTED',
-        actorId: createdByActor,
-        previousStatus: 'DRAFT',
-        newStatus: 'PENDING_FIRST_REVIEW',
-        remarks: `Initial revision 1 registered and submitted to 1st reviewer`
-    });
+        if (revErr) throw revErr;
+        revId = rev.id;
+
+        // Audit Log
+        await logProposalAudit({
+            companyId: payload.companyId,
+            proposalId: prop.id,
+            revisionId: revId,
+            action: 'CREATED_AND_SUBMITTED',
+            actorId: createdByActor,
+            previousStatus: 'DRAFT',
+            newStatus: 'PENDING_FIRST_REVIEW',
+            remarks: `Initial revision 1 registered and submitted to 1st reviewer`
+        });
+    }
 
     // 5. Dispatch notification to Reviewer
     await sendNotification({
@@ -428,9 +467,59 @@ export async function processProposalReview(payload: {
         throw new Error('Mandatory remarks/reason required for return or rejection.');
     }
 
+    // Try calling atomic server-side review RPC first
+    try {
+        const { data: rpcRes, error: rpcErr } = await (supabase.rpc as any)('rpc_review_project_proposal', {
+            p_proposal_id: payload.proposalId,
+            p_action: payload.action,
+            p_remarks: payload.remarks
+        });
+
+        if (!rpcErr && rpcRes?.success) {
+            const nextStatus = rpcRes.new_status;
+            // Dispatch notifications to Reviewer / Approver
+            if (payload.action === 'APPROVE') {
+                if (nextStatus === 'PENDING_FINAL_APPROVAL' && prop.final_approver_id) {
+                    await sendNotification({
+                        companyId: payload.companyId,
+                        userId: prop.final_approver_id,
+                        title: `Proposal Ready for Final Approval`,
+                        message: `Proposal "${prop.title}" has passed 1st review and is awaiting your final sign-off.`,
+                        type: 'INFO',
+                        link: '/projects'
+                    });
+                } else if (nextStatus === 'APPROVED' && prop.created_by) {
+                    await sendNotification({
+                        companyId: payload.companyId,
+                        userId: prop.created_by,
+                        title: `Proposal Approved!`,
+                        message: `Your proposal "${prop.title}" has received final approval and is now ready for client submission.`,
+                        type: 'SUCCESS',
+                        link: '/projects'
+                    });
+                }
+            } else if (prop.created_by) {
+                await sendNotification({
+                    companyId: payload.companyId,
+                    userId: prop.created_by,
+                    title: `Proposal ${payload.action === 'RETURN' ? 'Returned' : 'Rejected'}`,
+                    message: `Proposal "${prop.title}" was ${payload.action.toLowerCase()}ed. Reason: ${payload.remarks}`,
+                    type: 'WARNING',
+                    link: '/projects'
+                });
+            }
+            return { id: prop.id, status: nextStatus };
+        } else if (rpcErr) {
+            console.warn('rpc_review_project_proposal notice, proceeding with client verification fallback:', rpcErr.message);
+        }
+    } catch (rpcEx) {
+        console.warn('rpc_review_project_proposal exception, using fallback:', rpcEx);
+    }
+
     const actionStage = payload.currentStage || 
         (prop.status === 'PENDING_FIRST_REVIEW' ? 'FIRST_REVIEW' : 
          prop.status === 'PENDING_FINANCE_APPROVAL' ? 'FINANCE_REVIEW' : 'FINAL_APPROVAL');
+
 
     // Dynamic Approver Authorization Verification
     if (payload.actorId) {
