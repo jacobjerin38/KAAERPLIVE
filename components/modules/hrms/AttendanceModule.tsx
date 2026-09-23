@@ -602,6 +602,14 @@ export const DailyTab: React.FC<{ employees: Employee[]; companyId: string }> = 
                                                 </span>
                                             }
                                         </div>
+                                        {emp.attendance?.notes && (
+                                            <div className="flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-400 font-sans mt-0.5" title={`Site / Note: ${emp.attendance.notes}`}>
+                                                <span className="truncate max-w-[140px] font-medium bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 rounded border border-amber-200/60 dark:border-amber-800/40 inline-flex items-center gap-1">
+                                                    <MapPin className="w-3 h-3 text-amber-500 shrink-0" />
+                                                    <span className="truncate">{emp.attendance.notes}</span>
+                                                </span>
+                                            </div>
+                                        )}
                                     </td>
                                     <td className="px-4 py-3 text-sm font-mono text-slate-600 dark:text-slate-400">
                                         <div className="flex items-center gap-1 group relative">
@@ -2902,13 +2910,14 @@ export const OutdoorReportTab: React.FC<{ employees: Employee[]; companyId: stri
     }, [records, employees, search, empLocationsMap]);
 
     const handleExportCSV = () => {
-        const headers = ['Employee', 'Code', 'Date', 'Check In', 'Check Out', 'Latitude', 'Longitude', 'Punch Mode', 'Geofence Status'];
+        const headers = ['Employee', 'Code', 'Date', 'Check In', 'Check Out', 'Site / Project', 'Latitude', 'Longitude', 'Punch Mode', 'Geofence Status'];
         const rows = mergedLogs.map(m => [
             `"${m.employeeName}"`,
             m.employeeCode,
             m.date,
             formatTime(m.check_in),
             formatTime(m.check_out),
+            `"${(m.notes || '').replace(/"/g, '""')}"`,
             m.coords ? m.coords.lat : '',
             m.coords ? m.coords.lng : '',
             m.punchMode,
@@ -2973,6 +2982,7 @@ export const OutdoorReportTab: React.FC<{ employees: Employee[]; companyId: stri
                                 <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Date</th>
                                 <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Punch In</th>
                                 <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Punch Out</th>
+                                <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Site / Project</th>
                                 <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Location (Lat/Lng)</th>
                                 <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Map Link</th>
                                 <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Punch Mode</th>
@@ -2981,10 +2991,10 @@ export const OutdoorReportTab: React.FC<{ employees: Employee[]; companyId: stri
                         </thead>
                         <tbody className="divide-y divide-slate-100/50 dark:divide-zinc-800/50">
                             {loading ? (
-                                <tr><td colSpan={8} className="text-center py-12"><Loader2 className="w-6 h-6 mx-auto animate-spin text-slate-400" /></td></tr>
+                                <tr><td colSpan={9} className="text-center py-12"><Loader2 className="w-6 h-6 mx-auto animate-spin text-slate-400" /></td></tr>
                             ) : mergedLogs.length === 0 ? (
                                 <tr>
-                                    <td colSpan={8} className="text-center py-12 text-slate-400 font-medium">
+                                    <td colSpan={9} className="text-center py-12 text-slate-400 font-medium">
                                         No outdoor/GPS attendance records found for this period.
                                     </td>
                                 </tr>
@@ -3006,6 +3016,16 @@ export const OutdoorReportTab: React.FC<{ employees: Employee[]; companyId: stri
                                     <td className="px-4 py-3 text-sm font-medium text-slate-600 dark:text-slate-400">{log.date}</td>
                                     <td className="px-4 py-3 text-sm font-mono text-slate-600 dark:text-slate-400">{formatTime(log.check_in)}</td>
                                     <td className="px-4 py-3 text-sm font-mono text-slate-600 dark:text-slate-400">{formatTime(log.check_out)}</td>
+                                    <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-400">
+                                        {log.notes ? (
+                                            <span className="inline-flex items-center gap-1 text-slate-700 dark:text-slate-300 font-medium" title={log.notes}>
+                                                <MapPin className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                                                <span className="truncate max-w-[130px]">{log.notes}</span>
+                                            </span>
+                                        ) : (
+                                            <span className="text-slate-400">—</span>
+                                        )}
+                                    </td>
                                     <td className="px-4 py-3 text-xs font-mono text-slate-600 dark:text-slate-400">
                                         {log.coords ? (
                                             <span>{log.coords.lat.toFixed(5)}, {log.coords.lng.toFixed(5)}</span>

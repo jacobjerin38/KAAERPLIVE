@@ -218,6 +218,9 @@ export const ESSP: React.FC = () => {
     const [punchLoading, setPunchLoading] = useState(false);
     const [lastAttendanceId, setLastAttendanceId] = useState<string | null>(null);
     const [activePunchTime, setActivePunchTime] = useState<string | null>(null);
+    const [activePunchNote, setActivePunchNote] = useState<string | null>(null);
+    const [punchSiteOrProject, setPunchSiteOrProject] = useState<string>('');
+    const [availableSitesAndProjects, setAvailableSitesAndProjects] = useState<string[]>([]);
     const [leaveTypes, setLeaveTypes] = useState<any[]>([]);
     const [punchDuration, setPunchDuration] = useState<string>('--:--');
 
@@ -251,10 +254,12 @@ export const ESSP: React.FC = () => {
             setPunchStatus('In');
             setLastAttendanceId(activePunch.id);
             setActivePunchTime(activePunch.check_in);
+            setActivePunchNote(activePunch.notes || null);
         } else {
             setPunchStatus('Out');
             setLastAttendanceId(null);
             setActivePunchTime(null);
+            setActivePunchNote(null);
         }
 
         // 2. Attendance Log (Recent 3)
@@ -329,9 +334,26 @@ export const ESSP: React.FC = () => {
             .limit(5);
 
         if (ann) setAnnouncements(ann);
-        // Fallback or specific table check might be needed if 'ann_announcements' fails, 
-        // but 'announcements' was used before. Let's stick to 'announcements' which is likely correct if it existed.
-        // Reverting to 'announcements' for safety unless I know otherwise.
+
+        // 6. Active Projects & Locations for Site/Project Autocomplete Suggestions
+        if (companyId) {
+            try {
+                const [projRes, locRes] = await Promise.all([
+                    (supabase as any).from('pm_projects').select('name').eq('company_id', companyId).neq('status', 'Completed').limit(50),
+                    (supabase as any).from('locations').select('name').eq('company_id', companyId).limit(50)
+                ]);
+                const siteSet = new Set<string>();
+                if (projRes?.data) {
+                    projRes.data.forEach((p: any) => { if (p.name?.trim()) siteSet.add(p.name.trim()); });
+                }
+                if (locRes?.data) {
+                    locRes.data.forEach((l: any) => { if (l.name?.trim()) siteSet.add(l.name.trim()); });
+                }
+                setAvailableSitesAndProjects(Array.from(siteSet));
+            } catch (e) {
+                console.warn("Could not load project/site suggestions:", e);
+            }
+        }
     };
 
     const getCurrentLocationCoords = (): Promise<{ lat: number; lng: number } | null> => {
@@ -494,9 +516,11 @@ export const ESSP: React.FC = () => {
                 setPunchStatus('Out');
                 setLastAttendanceId(null);
                 setActivePunchTime(null);
+                setActivePunchNote(null);
                 alert("Night shift check-out recorded successfully!");
             } else {
                 // Standard PUNCH IN
+                const siteOrProjectNote = punchSiteOrProject.trim();
                 const insertPayload = {
                     employee_id: currentEmployee.id,
                     company_id: currentEmployee.company_id,
@@ -505,6 +529,7 @@ export const ESSP: React.FC = () => {
                     check_in_lat: coords ? coords.lat : null,
                     check_in_lng: coords ? coords.lng : null,
                     check_in_location: locStr,
+                    notes: siteOrProjectNote || null,
                     punch_method: 'ONLINE',
                     status: 'Present',
                     total_hours: 0,
@@ -520,6 +545,8 @@ export const ESSP: React.FC = () => {
                     setPunchStatus('In');
                     setLastAttendanceId(data.id);
                     setActivePunchTime(isoNow);
+                    setActivePunchNote(siteOrProjectNote || null);
+                    setPunchSiteOrProject('');
                 }
             }
         } else {
@@ -542,6 +569,7 @@ export const ESSP: React.FC = () => {
                 setPunchStatus('Out');
                 setLastAttendanceId(null);
                 setActivePunchTime(null);
+                setActivePunchNote(null);
                 return;
             }
 
@@ -594,6 +622,7 @@ export const ESSP: React.FC = () => {
             setPunchStatus('Out');
             setLastAttendanceId(null);
             setActivePunchTime(null);
+            setActivePunchNote(null);
 
             // Recompute shift rules, OT hours, and metrics in the background
             if (currentEmployee?.company_id && data[0]?.date) {
@@ -644,8 +673,8 @@ export const ESSP: React.FC = () => {
                     <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-[2.5rem] p-10 relative overflow-hidden shadow-2xl shadow-slate-900/20">
                         <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
 
-                        <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-8">
-                            <div>
+                        <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
+                            <div className="flex-1 w-full">
                                 <div className="flex items-center gap-3 mb-4">
                                     <span className={`w-3 h-3 rounded-full ${punchStatus === 'In' ? 'bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.6)]' : 'bg-rose-500'}`}></span>
                                     <span className="text-sm font-bold uppercase tracking-widest text-slate-400">Current Status</span>
@@ -658,13 +687,46 @@ export const ESSP: React.FC = () => {
                                             : 'You are currently active.')
                                         : 'Your session has ended. Ready to punch in.'}
                                 </p>
+
+                                {/* Active Site / Project badge when Checked In */}
+                                {punchStatus === 'In' && activePunchNote && (
+                                    <div className="mt-3.5 inline-flex items-center gap-2 px-3.5 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-xs font-semibold text-emerald-300">
+                                        <MapPin className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                        <span>Site / Project: <strong className="text-white font-bold">{activePunchNote}</strong></span>
+                                    </div>
+                                )}
+
+                                {/* Site / Project input when Checked Out */}
+                                {punchStatus === 'Out' && (
+                                    <div className="mt-5 pt-4 border-t border-white/10 max-w-lg">
+                                        <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                                            <MapPin className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                                            Site / Project Name <span className="text-slate-400 font-normal lowercase">(optional note)</span>
+                                        </label>
+                                        <div className="relative">
+                                            <input
+                                                type="text"
+                                                list="essp-sites-projects-list"
+                                                value={punchSiteOrProject}
+                                                onChange={(e) => setPunchSiteOrProject(e.target.value)}
+                                                placeholder="e.g. Ras Laffan Site, Doha Port, Head Office..."
+                                                className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-all backdrop-blur-sm"
+                                            />
+                                            <datalist id="essp-sites-projects-list">
+                                                {availableSitesAndProjects.map((item, idx) => (
+                                                    <option key={idx} value={item} />
+                                                ))}
+                                            </datalist>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             <button
                                 onClick={handlePunch}
                                 disabled={punchLoading}
-                                className={`w-full md:w-auto px-10 py-5 rounded-2xl font-bold text-lg transition-transform active:scale-95 flex items-center justify-center gap-3 ${punchStatus === 'Out'
-                                    ? 'bg-white text-slate-900 hover:bg-slate-50'
+                                className={`w-full md:w-auto px-10 py-5 rounded-2xl font-bold text-lg transition-transform active:scale-95 flex items-center justify-center gap-3 shrink-0 ${punchStatus === 'Out'
+                                    ? 'bg-white text-slate-900 hover:bg-slate-50 shadow-xl'
                                     : 'bg-rose-500 text-white hover:bg-rose-600 shadow-lg shadow-rose-900/50'
                                     }`}
                             >
@@ -1743,12 +1805,13 @@ export const ESSP: React.FC = () => {
                                 <th className="p-6 text-xs font-bold text-slate-400 uppercase tracking-wider">Check In</th>
                                 <th className="p-6 text-xs font-bold text-slate-400 uppercase tracking-wider">Check Out</th>
                                 <th className="p-6 text-xs font-bold text-slate-400 uppercase tracking-wider">Duration</th>
+                                <th className="p-6 text-xs font-bold text-slate-400 uppercase tracking-wider">Site / Note</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
                             {records.length === 0 ? (
                                 <tr>
-                                    <td colSpan={5} className="p-10 text-center text-slate-400">No records found for this month.</td>
+                                    <td colSpan={6} className="p-10 text-center text-slate-400">No records found for this month.</td>
                                 </tr>
                             ) : (
                                 records.map((record) => (
@@ -1767,6 +1830,16 @@ export const ESSP: React.FC = () => {
                                         <td className="p-6 font-mono text-sm text-slate-600 dark:text-slate-400">{fmtTime(record.check_in)}</td>
                                         <td className="p-6 font-mono text-sm text-slate-600 dark:text-slate-400">{fmtTime(record.check_out)}</td>
                                         <td className="p-6 font-mono text-sm font-bold text-slate-700 dark:text-slate-300">{record.total_hours ? `${record.total_hours}h` : '-'}</td>
+                                        <td className="p-6 text-sm text-slate-600 dark:text-slate-300">
+                                            {record.notes ? (
+                                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-zinc-700 max-w-[200px] truncate" title={record.notes}>
+                                                    <MapPin className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                                                    <span className="truncate">{record.notes}</span>
+                                                </span>
+                                            ) : (
+                                                <span className="text-slate-400 text-xs">—</span>
+                                            )}
+                                        </td>
                                     </tr>
                                 ))
                             )}
@@ -2004,6 +2077,13 @@ export const ESSP: React.FC = () => {
                                         <span className="font-bold text-slate-700 dark:text-slate-300">{rec.attendance.check_out || '--:--'}</span>
                                     </div>
                                 </div>
+
+                                {rec.attendance?.notes && (
+                                    <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-zinc-800 flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300" title={`Site / Project: ${rec.attendance.notes}`}>
+                                        <MapPin className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                                        <span className="truncate font-medium">{rec.attendance.notes}</span>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     ))}
