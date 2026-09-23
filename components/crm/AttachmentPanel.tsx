@@ -42,11 +42,16 @@ export const AttachmentPanel: React.FC<AttachmentPanelProps> = ({ companyId, mod
         const file = e.target.files?.[0];
         if (!file) return;
         setUploading(true);
-        const result = await uploadAttachment(companyId, module, recordId, file, userId);
-        if (result) setAttachments(prev => [result, ...prev]);
-        else alert('Failed to upload file');
-        setUploading(false);
-        if (fileRef.current) fileRef.current.value = '';
+        try {
+            const result = await uploadAttachment(companyId, module, recordId, file, userId);
+            if (result) setAttachments(prev => [result, ...prev]);
+        } catch (err: any) {
+            console.error('Failed to upload file:', err);
+            alert(err?.message || 'Failed to upload file');
+        } finally {
+            setUploading(false);
+            if (fileRef.current) fileRef.current.value = '';
+        }
     };
 
     const handleDelete = async (att: CRMAttachment) => {
