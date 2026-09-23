@@ -208,7 +208,7 @@ BEGIN
                 v_line_cont_cc_id := public.safe_cast_uuid(v_elem->>'contract_cost_center_id');
 
                 IF v_line_cc_id IS NOT NULL AND v_line_proj_cc_id IS NULL AND v_line_cont_cc_id IS NULL THEN
-                    SELECT cost_center_type INTO v_cc_type FROM public.accounting_cost_centers WHERE id = v_line_cc_id;
+                    SELECT type INTO v_cc_type FROM public.accounting_cost_centers WHERE id = v_line_cc_id;
                     IF v_cc_type = 'project' THEN v_line_proj_cc_id := v_line_cc_id;
                     ELSIF v_cc_type = 'contract' THEN v_line_cont_cc_id := v_line_cc_id;
                     END IF;
@@ -832,6 +832,7 @@ GRANT EXECUTE ON FUNCTION public.rpc_ship_sales_order(UUID) TO authenticated;
 -- 7. Bank Statement Reconciliation Validation & Concurrency (2.5)
 -- ------------------------------------------------------------------------------
 
+DROP FUNCTION IF EXISTS public.rpc_reconcile_statement_line(UUID, UUID);
 CREATE OR REPLACE FUNCTION public.rpc_reconcile_statement_line(p_statement_line_id UUID, p_payment_id UUID)
 RETURNS JSONB
 LANGUAGE plpgsql

@@ -29,6 +29,7 @@ CREATE POLICY "leave_accrual_batches_tenant" ON public.leave_accrual_batches
     USING (company_id = get_my_company_id())
     WITH CHECK (company_id = get_my_company_id());
 
+DROP FUNCTION IF EXISTS public.rpc_run_leave_accrual(UUID, INTEGER);
 CREATE OR REPLACE FUNCTION public.rpc_run_leave_accrual(
     p_company_id UUID, 
     p_year INTEGER DEFAULT (EXTRACT(YEAR FROM CURRENT_DATE))::INTEGER
@@ -268,7 +269,7 @@ BEGIN
             -- Check if an overnight shift rule allows it
             IF NOT EXISTS (
                 SELECT 1 FROM public.org_shift_timings s
-                WHERE s.id = NEW.shift_id AND s.is_night_shift = true
+                WHERE s.id = NEW.shift_id AND s.is_overnight = true
             ) THEN
                 RAISE EXCEPTION 'Invalid attendance: Check-out time (%) cannot be earlier than check-in time (%).', NEW.check_out, NEW.check_in;
             END IF;

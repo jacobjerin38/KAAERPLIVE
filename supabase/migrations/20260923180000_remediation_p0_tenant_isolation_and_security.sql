@@ -159,8 +159,7 @@ REVOKE ALL ON
     public.mrp_routing,
     public.mrp_routing_lines,
     public.mrp_production_orders,
-    public.mrp_production_moves,
-    public.mrp_unbuild_orders
+    public.mrp_production_moves
 FROM anon;
 
 -- Revoke anon privileges from CRM operational tables
