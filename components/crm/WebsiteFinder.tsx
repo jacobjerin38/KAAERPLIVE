@@ -21,10 +21,26 @@ export const WebsiteFinderView: React.FC<{ companyId: string | null }> = ({ comp
 
     useEffect(() => {
         fetchJobs();
+        if (companyId) {
+            fetchAiSettings();
+        }
         return () => {
             if (timer) clearInterval(timer);
         };
-    }, []);
+    }, [companyId]);
+
+    const fetchAiSettings = async () => {
+        if (!companyId) return;
+        const { data } = await supabase
+            .from('org_ai_settings')
+            .select('api_key_encrypted')
+            .eq('company_id', companyId)
+            .eq('provider', 'GEMINI')
+            .maybeSingle();
+        if (data?.api_key_encrypted) {
+            setApiKey(data.api_key_encrypted);
+        }
+    };
 
     // Poll for updates if viewing a running job
     useEffect(() => {
@@ -72,7 +88,7 @@ export const WebsiteFinderView: React.FC<{ companyId: string | null }> = ({ comp
             model: 'gemini-pro',
             status: 'ACTIVE',
             updated_at: new Date().toISOString()
-        }, { onConflict: 'company_id' });
+        }, { onConflict: 'company_id,provider' });
 
         if (error) {
             alert("Failed to save Key");

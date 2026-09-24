@@ -8771,25 +8771,46 @@ export type Database = {
       }
       org_attendance_settings: {
         Row: {
+          biometric_api_key: string | null
           company_id: string
           created_at: string
           default_weekly_off_days: string | null
+          enable_biometric: boolean | null
+          enable_mobile_attendance: boolean | null
+          grace_timing_minutes: number | null
           id: string
           notes: string | null
+          overtime_min_minutes: number | null
+          overtime_multiplier: number | null
+          updated_at: string | null
         }
         Insert: {
+          biometric_api_key?: string | null
           company_id?: string
           created_at?: string
           default_weekly_off_days?: string | null
+          enable_biometric?: boolean | null
+          enable_mobile_attendance?: boolean | null
+          grace_timing_minutes?: number | null
           id?: string
           notes?: string | null
+          overtime_min_minutes?: number | null
+          overtime_multiplier?: number | null
+          updated_at?: string | null
         }
         Update: {
+          biometric_api_key?: string | null
           company_id?: string
           created_at?: string
           default_weekly_off_days?: string | null
+          enable_biometric?: boolean | null
+          enable_mobile_attendance?: boolean | null
+          grace_timing_minutes?: number | null
           id?: string
           notes?: string | null
+          overtime_min_minutes?: number | null
+          overtime_multiplier?: number | null
+          updated_at?: string | null
         }
         Relationships: []
       }

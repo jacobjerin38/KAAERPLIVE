@@ -6589,6 +6589,13 @@ CREATE TABLE IF NOT EXISTS public.org_attendance_settings (
     company_id uuid NOT NULL DEFAULT get_my_company_id(),
     default_weekly_off_days text DEFAULT '5,6'::text,
     notes text,
+    grace_timing_minutes integer DEFAULT 15,
+    overtime_min_minutes integer DEFAULT 60,
+    overtime_multiplier numeric DEFAULT 1.5,
+    enable_mobile_attendance boolean DEFAULT true,
+    enable_biometric boolean DEFAULT false,
+    biometric_api_key text,
+    updated_at timestamp with time zone DEFAULT timezone('utc'::text, now()),
     CONSTRAINT org_attendance_settings_company_id_key UNIQUE (company_id),
     CONSTRAINT org_attendance_settings_pkey PRIMARY KEY (id)
 );

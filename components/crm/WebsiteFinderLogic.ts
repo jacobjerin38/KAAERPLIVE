@@ -75,12 +75,12 @@ export class WebsiteFinderService {
                 return;
             }
 
-            const { data: leadData, error: leadError } = await ((supabase as any) as any)
-                .from('crm_leads')
-                .select('website, organization_name, company_id')
-                .single();
-
-            const { data: settings } = await (supabase as any).from('org_ai_settings').select('*').eq('company_id', job.company_id).single();
+            const { data: settings } = await (supabase as any)
+                .from('org_ai_settings')
+                .select('*')
+                .eq('company_id', job.company_id)
+                .eq('provider', 'GEMINI')
+                .maybeSingle();
 
             if (!settings || !settings.api_key_encrypted || settings.status !== 'ACTIVE') {
                 // Fail the job if no settings
