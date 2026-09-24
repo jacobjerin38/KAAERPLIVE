@@ -24,18 +24,84 @@ import {
 import { checkIsAdmin, getLeads, getPersonResolver, getLinkedEmployeeId } from '../crm/services';
 import { MASTER_CONFIG } from './Organisation';
 
-// --- Placeholder Components for Missing Views ---
-// These will be replaced by full implementations later.
+// --- Lightweight CRM Views ---
 
-const TasksView = () => (
-    <div className="flex h-full items-center justify-center text-slate-400">
-        <div className="text-center">
-            <CheckSquare className="w-16 h-16 mx-auto mb-4 opacity-50" />
-            <h2 className="text-xl font-bold">Tasks</h2>
-            <p>Task management coming soon.</p>
-        </div>
-    </div>
-);
+const TasksView: React.FC<{ tasks: Task[]; error?: string | null }> = ({ tasks, error }) => {
+    const [search, setSearch] = useState('');
+    const filteredTasks = tasks.filter(task => {
+        const query = search.trim().toLowerCase();
+        return !query || task.title.toLowerCase().includes(query) || (task.description || '').toLowerCase().includes(query);
+    });
+
+    const statusColor = (status: string) => {
+        const normalized = status.toLowerCase();
+        if (['done', 'completed', 'closed'].includes(normalized)) return 'bg-emerald-100 text-emerald-700';
+        if (['in progress', 'in_progress', 'started'].includes(normalized)) return 'bg-blue-100 text-blue-700';
+        return 'bg-amber-100 text-amber-700';
+    };
+
+    const formatDate = (date?: string) => {
+        if (!date) return 'No due date';
+        const parsed = new Date(`${date.slice(0, 10)}T00:00:00`);
+        return Number.isNaN(parsed.getTime()) ? date : parsed.toLocaleDateString();
+    };
+
+    return (
+        <section className="h-full overflow-y-auto p-6 lg:p-8">
+            <div className="max-w-5xl mx-auto">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                    <div>
+                        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Tasks</h1>
+                        <p className="text-sm text-slate-500 mt-1">{tasks.length} {tasks.length === 1 ? 'task' : 'tasks'}</p>
+                    </div>
+                    <div className="relative w-full sm:w-72">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <input
+                            value={search}
+                            onChange={event => setSearch(event.target.value)}
+                            placeholder="Search tasks..."
+                            aria-label="Search tasks"
+                            className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm text-slate-800 dark:text-white"
+                        />
+                    </div>
+                </div>
+
+                {error ? (
+                    <div role="alert" className="p-4 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 text-sm">
+                        Tasks could not be loaded: {error}
+                    </div>
+                ) : filteredTasks.length === 0 ? (
+                    <div className="p-10 text-center rounded-2xl border border-dashed border-slate-300 dark:border-zinc-700 text-slate-500">
+                        <CheckSquare className="w-10 h-10 mx-auto mb-3 opacity-50" />
+                        <p className="font-medium">{search ? 'No tasks match your search.' : 'No tasks found.'}</p>
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                        {filteredTasks.map(task => {
+                            const status = String((task as any).status || task.status_details?.name || 'Pending');
+                            const priority = String((task as any).priority || task.priority_details?.name || 'Medium');
+                            return (
+                                <article key={task.id} className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 shadow-sm">
+                                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <h2 className="font-semibold text-slate-900 dark:text-white break-words">{task.title}</h2>
+                                            {task.description && <p className="mt-1 text-sm text-slate-500 whitespace-pre-wrap">{task.description}</p>}
+                                            <p className="mt-3 text-xs text-slate-500">Due: {formatDate(task.due_date)}</p>
+                                        </div>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${statusColor(status)}`}>{status}</span>
+                                            <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-300">{priority}</span>
+                                        </div>
+                                    </div>
+                                </article>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+        </section>
+    );
+};
 
 const ScheduleView = () => (
     <div className="flex h-full items-center justify-center text-slate-400">
@@ -55,6 +121,7 @@ export const CRM: React.FC = () => {
     const [deals, setDeals] = useState<Deal[]>([]);
     const [contacts, setContacts] = useState<Contact[]>([]);
     const [tasks, setTasks] = useState<Task[]>([]);
+    const [tasksLoadError, setTasksLoadError] = useState<string | null>(null);
     const [activities, setActivities] = useState<CRMActivity[]>([]);
     const [documents, setDocuments] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -241,7 +308,7 @@ export const CRM: React.FC = () => {
                 { data: oppsData },
                 { data: customersData },
                 { data: leadsData },
-                { data: tasksData },
+                { data: tasksData, error: tasksError },
                 { data: documentsData },
                 { data: activityData }
             ] = await Promise.all([
@@ -252,6 +319,9 @@ export const CRM: React.FC = () => {
                 docsQuery,
                 activityQuery
             ]);
+
+            setTasksLoadError(tasksError?.message || null);
+            if (tasksError) console.error('Error fetching CRM tasks:', tasksError);
 
             const resolver = await getPersonResolver(companyId);
 
@@ -1400,7 +1470,7 @@ export const CRM: React.FC = () => {
                         {activeTab === 'ITEMS' && <ItemsView companyId={companyId} />}
 
                         {activeTab === 'WEBSITE_FINDER' && <WebsiteFinderView companyId={companyId} />}
-                        {activeTab === 'TASKS' && <TasksView />}
+                        {activeTab === 'TASKS' && <TasksView tasks={tasks} error={tasksLoadError} />}
                         {activeTab === 'SCHEDULE' && <ScheduleView />}
                         {activeTab === 'DOCUMENTS' && <DocumentsView />}
                         {activeTab === 'WORKFLOWS' && <ProposalWorkflow companyId={companyId || ''} />}

@@ -122,7 +122,7 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
         if (!selectedLeaveForTicket) return;
         setSavingTicket(true);
         try {
-            let uploadedUrl = selectedLeaveForTicket.ticket_attachment_url || null;
+            let uploadedUrl = selectedLeaveForTicket.ticket_url || null;
 
             if (ticketFile) {
                 const fileExt = ticketFile.name.split('.').pop();
@@ -144,9 +144,8 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
                 .update({
                     ticket_number: ticketNumber.trim() || null,
                     airline: airline.trim() || null,
-                    ticket_attachment_url: uploadedUrl,
+                    ticket_url: uploadedUrl,
                     remarks: leaveRemarks.trim() || null,
-                    updated_at: new Date().toISOString()
                 })
                 .eq('id', selectedLeaveForTicket.id);
 
@@ -157,7 +156,7 @@ export const EmployeeDetailModal: React.FC<EmployeeDetailModalProps> = ({
                 ...l,
                 ticket_number: ticketNumber.trim() || null,
                 airline: airline.trim() || null,
-                ticket_attachment_url: uploadedUrl,
+                ticket_url: uploadedUrl,
                 remarks: leaveRemarks.trim() || null
             } : l));
 

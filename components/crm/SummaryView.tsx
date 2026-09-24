@@ -47,6 +47,7 @@ export default function SummaryView({ stats, activities, deals, tasks, companyId
     const isAdmin = checkIsAdmin(userRole);
     const [showTaskModal, setShowTaskModal] = useState(false);
     const [savingTask, setSavingTask] = useState(false);
+    const [taskSaveError, setTaskSaveError] = useState<string | null>(null);
     const [taskTitle, setTaskTitle] = useState('');
     const [taskPriority, setTaskPriority] = useState('Medium');
     const [taskDueDate, setTaskDueDate] = useState(new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0]);
@@ -75,8 +76,9 @@ export default function SummaryView({ stats, activities, deals, tasks, companyId
     const handleSaveTask = async () => {
         if (!taskTitle.trim() || !companyId) return;
         setSavingTask(true);
+        setTaskSaveError(null);
         try {
-            await (supabase as any).from('crm_tasks').insert([{
+            const { error } = await (supabase as any).from('crm_tasks').insert([{
                 company_id: companyId,
                 title: taskTitle.trim(),
                 priority: taskPriority,
@@ -84,11 +86,13 @@ export default function SummaryView({ stats, activities, deals, tasks, companyId
                 status: 'Pending',
                 owner_id: user?.id || null
             }]);
+            if (error) throw error;
             setShowTaskModal(false);
             setTaskTitle('');
             onRefresh?.();
         } catch (err) {
             console.error('Error creating task:', err);
+            setTaskSaveError(err instanceof Error ? err.message : 'Task could not be saved. Please try again.');
         } finally {
             setSavingTask(false);
         }
@@ -311,11 +315,12 @@ export default function SummaryView({ stats, activities, deals, tasks, companyId
                             <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
                                 <CheckSquare className="w-5 h-5 text-indigo-600" /> New Task
                             </h3>
-                            <button onClick={() => setShowTaskModal(false)} className="text-slate-400 hover:text-slate-600">
+                        <button onClick={() => { setShowTaskModal(false); setTaskSaveError(null); }} className="text-slate-400 hover:text-slate-600">
                                 <X className="w-5 h-5" />
                             </button>
                         </div>
                         <div className="space-y-4">
+                            {taskSaveError && <p role="alert" className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-sm">Task was not saved: {taskSaveError}</p>}
                             <div>
                                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">Task Title *</label>
                                 <input
@@ -323,7 +328,7 @@ export default function SummaryView({ stats, activities, deals, tasks, companyId
                                     placeholder="e.g. Follow up with client regarding quotation"
                                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                                     value={taskTitle}
-                                    onChange={e => setTaskTitle(e.target.value)}
+                                    onChange={e => { setTaskTitle(e.target.value); setTaskSaveError(null); }}
                                 />
                             </div>
                             <div className="grid grid-cols-2 gap-3">
@@ -352,7 +357,7 @@ export default function SummaryView({ stats, activities, deals, tasks, companyId
                             <div className="flex gap-3 pt-2">
                                 <button
                                     type="button"
-                                    onClick={() => setShowTaskModal(false)}
+                                    onClick={() => { setShowTaskModal(false); setTaskSaveError(null); }}
                                     className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-slate-300 text-sm font-semibold hover:bg-slate-50 dark:hover:bg-zinc-800"
                                 >
                                     Cancel

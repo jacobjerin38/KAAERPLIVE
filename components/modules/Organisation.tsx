@@ -2859,10 +2859,15 @@ export const Organisation: React.FC = () => {
                 alert("Error updating user: " + error.message);
             } else {
                 // Ensure role is updated in user_company_access
-                await supabase.from('user_company_access')
+                const { error: accessError } = await supabase.from('user_company_access')
                     .update({ role_id: roleId })
                     .eq('user_id', editingUser.id)
                     .eq('company_id', currentCompanyId);
+
+                if (accessError) {
+                    alert("User profile updated, but the company role assignment could not be saved: " + accessError.message);
+                    return;
+                }
 
                 alert("User updated successfully");
                 setShowAddUser(false);
