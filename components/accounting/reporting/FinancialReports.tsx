@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
-import { Calendar, Filter, FileText, TrendingUp, TrendingDown, ChevronDown, ChevronRight } from 'lucide-react';
+import {
+    Calendar, Filter, FileText, TrendingUp, TrendingDown, ChevronDown, ChevronRight,
+    Search, AlertCircle, Clock, CheckCircle2, Layers, Receipt, ArrowRight, ChevronUp, RefreshCw
+} from 'lucide-react';
 import { QatarVATReport } from './QatarVATReport';
 import { PrintButton } from '../../ui/PrintButton';
 import { formatLocalDate } from '../../../lib/dateFormat';
@@ -18,6 +21,10 @@ export const FinancialReports: React.FC = () => {
 
     // Collapsed sections for ledger reports
     const [expandedLedgers, setExpandedLedgers] = useState<Record<string, boolean>>({});
+
+    // Expanded rows for Aging report invoice drill-down
+    const [expandedAgingPartners, setExpandedAgingPartners] = useState<Record<string, boolean>>({});
+    const [agingSearch, setAgingSearch] = useState('');
 
     // Cost Centers for filtering (only for P&L)
     const [costCenters, setCostCenters] = useState<any[]>([]);
@@ -87,8 +94,104 @@ export const FinancialReports: React.FC = () => {
                 const res = await supabase.rpc('rpc_get_accounting_trial_balance', { p_date: endDate, p_company_id: currentCompanyId || null });
                 data = res.data; error = res.error;
             } else if (activeReport === 'aging') {
-                const res = await supabase.rpc('rpc_get_accounting_partner_aging', { p_partner_type: partnerType, p_date: endDate });
-                data = res.data; error = res.error;
+                const targetMoveType = partnerType === 'Customer' ? 'out_invoice' : 'in_invoice';
+                const [agingRes, invRes] = await Promise.all([
+                    supabase.rpc('rpc_get_accounting_partner_aging', {
+                        p_partner_type: partnerType,
+                        p_date: endDate,
+                        p_company_id: currentCompanyId || null
+                    }),
+                    supabase
+                        .from('accounting_journal_entries')
+                        .select(`
+                            id, reference, supplier_invoice_number, client_po_number,
+                            date, due_date, move_type, state, amount_total, amount_residual,
+                            partner_id, notes,
+                            partner:accounting_partners!partner_id(name)
+                        `)
+                        .eq('company_id', currentCompanyId)
+                        .eq('state', 'Posted')
+                        .gt('amount_residual', 0)
+                        .order('date', { ascending: false })
+                ]);
+
+                if (agingRes.error) throw agingRes.error;
+                const agingRows = agingRes.data || [];
+                const openInvoices = invRes.data || [];
+
+                // Group open invoices by partner_id
+                const invoicesByPartner = new Map<string, any[]>();
+                const targetDate = new Date(endDate);
+
+                openInvoices.forEach((inv: any) => {
+                    const dueDate = inv.due_date ? new Date(inv.due_date) : new Date(inv.date);
+                    const diffTime = targetDate.getTime() - dueDate.getTime();
+                    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                    const overdueDays = diffDays > 0 ? diffDays : 0;
+
+                    let bucket = 'Current';
+                    if (overdueDays > 90) bucket = '90+ Days';
+                    else if (overdueDays > 60) bucket = '61-90 Days';
+                    else if (overdueDays > 30) bucket = '31-60 Days';
+                    else if (overdueDays > 0) bucket = '1-30 Days';
+
+                    const enrichedInv = {
+                        ...inv,
+                        partner_name: inv.partner?.name || '',
+                        days_overdue: overdueDays,
+                        bucket: bucket,
+                        is_overdue: overdueDays > 0,
+                        paid_amount: Math.max(0, (Number(inv.amount_total) || 0) - (Number(inv.amount_residual) || 0))
+                    };
+
+                    if (inv.partner_id) {
+                        if (!invoicesByPartner.has(inv.partner_id)) {
+                            invoicesByPartner.set(inv.partner_id, []);
+                        }
+                        invoicesByPartner.get(inv.partner_id)!.push(enrichedInv);
+                    }
+                });
+
+                const enrichedAging = agingRows.map((row: any) => {
+                    const pInvs = (row.partner_id ? invoicesByPartner.get(row.partner_id) : []) || [];
+                    return {
+                        ...row,
+                        invoices: pInvs
+                    };
+                });
+
+                // Include any partners who have open invoices of matching move_type but not present in agingRows
+                const includedPartnerIds = new Set(enrichedAging.map((r: any) => r.partner_id).filter(Boolean));
+                invoicesByPartner.forEach((invs, pId) => {
+                    const relevantInvs = invs.filter(i => !i.move_type || i.move_type === targetMoveType);
+                    if (!includedPartnerIds.has(pId) && relevantInvs.length > 0) {
+                        let current = 0, b30 = 0, b60 = 0, b90 = 0, b90p = 0, total = 0;
+                        relevantInvs.forEach(i => {
+                            const res = Number(i.amount_residual) || 0;
+                            total += res;
+                            if (i.days_overdue === 0) current += res;
+                            else if (i.days_overdue <= 30) b30 += res;
+                            else if (i.days_overdue <= 60) b60 += res;
+                            else if (i.days_overdue <= 90) b90 += res;
+                            else b90p += res;
+                        });
+
+                        enrichedAging.push({
+                            partner_id: pId,
+                            partner_name: relevantInvs[0].partner_name || 'Partner',
+                            current,
+                            bucket_30: b30,
+                            bucket_60: b60,
+                            bucket_90: b90,
+                            bucket_90_plus: b90p,
+                            total_overdue: total,
+                            invoices: relevantInvs
+                        });
+                    }
+                });
+
+                data = enrichedAging;
+                error = null;
             } else if (activeReport === 'sl') {
                 const res = await supabase.rpc('rpc_get_accounting_sales_ledger_report', { p_start_date: startDate, p_end_date: endDate });
                 data = res.data; error = res.error;
@@ -124,6 +227,20 @@ export const FinancialReports: React.FC = () => {
 
     const toggleLedgerExpand = (name: string) => {
         setExpandedLedgers(prev => ({ ...prev, [name]: !prev[name] }));
+    };
+
+    const toggleAgingPartnerExpand = (partnerKey: string) => {
+        setExpandedAgingPartners(prev => ({ ...prev, [partnerKey]: !prev[partnerKey] }));
+    };
+
+    const handleToggleAllAging = (expand: boolean) => {
+        if (!Array.isArray(reportData)) return;
+        const newState: Record<string, boolean> = {};
+        reportData.forEach((r: any, idx: number) => {
+            const key = r.partner_id || r.partner_name || `partner-${idx}`;
+            newState[key] = expand;
+        });
+        setExpandedAgingPartners(newState);
     };
 
     const AccountSection = ({ title, accounts, total, color = 'text-slate-800' }: any) => (
@@ -438,47 +555,314 @@ export const FinancialReports: React.FC = () => {
                             </div>
                         )}
 
-                        {activeReport === 'aging' && Array.isArray(reportData) && (
-                            <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-zinc-800">
-                                <table className="w-full text-xs text-left border-collapse">
-                                    <thead className="bg-slate-50 dark:bg-zinc-800 font-black uppercase text-[9px] text-slate-400 tracking-widest">
-                                        <tr>
-                                            <th className="px-4 py-4 min-w-[200px]">Partner</th>
-                                            <th className="px-4 py-4 text-right">Current</th>
-                                            <th className="px-4 py-4 text-right">1-30 Days</th>
-                                            <th className="px-4 py-4 text-right">31-60 Days</th>
-                                            <th className="px-4 py-4 text-right">61-90 Days</th>
-                                            <th className="px-4 py-4 text-right">90+ Days</th>
-                                            <th className="px-4 py-4 text-right">Total</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
-                                        {reportData.map((row: any, idx: number) => (
-                                            <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
-                                                <td className="px-4 py-4 font-bold text-indigo-600 dark:text-indigo-400 underline decoration-indigo-500/30 underline-offset-4 cursor-pointer">{row.partner_name}</td>
-                                                <td className="px-4 py-4 text-right font-mono">{formatCurrency(row.current)}</td>
-                                                <td className="px-4 py-4 text-right font-mono">{formatCurrency(row.bucket_30)}</td>
-                                                <td className="px-4 py-4 text-right font-mono">{formatCurrency(row.bucket_60)}</td>
-                                                <td className="px-4 py-4 text-right font-mono">{formatCurrency(row.bucket_90)}</td>
-                                                <td className="px-4 py-4 text-right font-mono">{formatCurrency(row.bucket_90_plus)}</td>
-                                                <td className="px-4 py-4 text-right font-black font-mono text-slate-800 dark:text-white bg-slate-50/30 dark:bg-zinc-800/30">{formatCurrency(row.total_overdue)}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                    <tfoot className="bg-slate-100 dark:bg-zinc-800 font-bold border-t-2">
-                                        <tr>
-                                            <td className="px-4 py-4 uppercase text-[10px] tracking-widest">Grand Total</td>
-                                            <td className="px-4 py-4 text-right font-mono">{formatCurrency(reportData.reduce((s: number, r: any) => s + (r.current || 0), 0))}</td>
-                                            <td className="px-4 py-4 text-right font-mono">{formatCurrency(reportData.reduce((s: number, r: any) => s + (r.bucket_30 || 0), 0))}</td>
-                                            <td className="px-4 py-4 text-right font-mono">{formatCurrency(reportData.reduce((s: number, r: any) => s + (r.bucket_60 || 0), 0))}</td>
-                                            <td className="px-4 py-4 text-right font-mono">{formatCurrency(reportData.reduce((s: number, r: any) => s + (r.bucket_90 || 0), 0))}</td>
-                                            <td className="px-4 py-4 text-right font-mono">{formatCurrency(reportData.reduce((s: number, r: any) => s + (r.bucket_90_plus || 0), 0))}</td>
-                                            <td className="px-4 py-4 text-right font-black font-mono text-lg">{formatCurrency(reportData.reduce((s: number, r: any) => s + (r.total_overdue || 0), 0))}</td>
-                                        </tr>
-                                    </tfoot>
-                                </table>
-                            </div>
-                        )}
+                        {activeReport === 'aging' && Array.isArray(reportData) && (() => {
+                            const filteredAgingRows = reportData.filter((r: any) => {
+                                if (!agingSearch.trim()) return true;
+                                const term = agingSearch.toLowerCase();
+                                const matchPartner = (r.partner_name || '').toLowerCase().includes(term);
+                                const matchInvoice = (r.invoices || []).some((inv: any) =>
+                                    (inv.reference || '').toLowerCase().includes(term) ||
+                                    (inv.supplier_invoice_number || '').toLowerCase().includes(term) ||
+                                    (inv.client_po_number || '').toLowerCase().includes(term)
+                                );
+                                return matchPartner || matchInvoice;
+                            });
+
+                            const totalAll = filteredAgingRows.reduce((s: number, r: any) => s + (Number(r.total_overdue) || 0), 0);
+                            const totalCurrent = filteredAgingRows.reduce((s: number, r: any) => s + (Number(r.current) || 0), 0);
+                            const total30 = filteredAgingRows.reduce((s: number, r: any) => s + (Number(r.bucket_30) || 0), 0);
+                            const total60 = filteredAgingRows.reduce((s: number, r: any) => s + (Number(r.bucket_60) || 0), 0);
+                            const total90Plus = filteredAgingRows.reduce((s: number, r: any) => s + (Number(r.bucket_90) || 0) + (Number(r.bucket_90_plus) || 0), 0);
+                            const totalInvoicesCount = filteredAgingRows.reduce((s: number, r: any) => s + (r.invoices?.length || 0), 0);
+
+                            return (
+                                <div className="space-y-4">
+                                    {/* Aging KPI Summary Cards */}
+                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 no-print">
+                                        <div className="p-3 bg-white dark:bg-zinc-900 rounded-xl border border-slate-200 dark:border-zinc-800 shadow-2xs">
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                                                Total {partnerType === 'Customer' ? 'AR' : 'AP'} Balance
+                                            </span>
+                                            <span className="text-base font-black text-slate-900 dark:text-white mt-0.5 block">
+                                                {formatCurrency(totalAll)}
+                                            </span>
+                                            <span className="text-[10px] text-slate-400 mt-0.5 block">
+                                                {totalInvoicesCount} open {totalInvoicesCount === 1 ? 'invoice' : 'invoices'}
+                                            </span>
+                                        </div>
+                                        <div className="p-3 bg-emerald-50/50 dark:bg-emerald-950/20 rounded-xl border border-emerald-100 dark:border-emerald-900/30 shadow-2xs">
+                                            <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider block">
+                                                Current (Not Due)
+                                            </span>
+                                            <span className="text-base font-black text-emerald-700 dark:text-emerald-300 mt-0.5 block">
+                                                {formatCurrency(totalCurrent)}
+                                            </span>
+                                            <span className="text-[10px] text-emerald-600/80 dark:text-emerald-400 mt-0.5 block">
+                                                Within payment terms
+                                            </span>
+                                        </div>
+                                        <div className="p-3 bg-amber-50/50 dark:bg-amber-950/20 rounded-xl border border-amber-100 dark:border-amber-900/30 shadow-2xs">
+                                            <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300 uppercase tracking-wider block">
+                                                1 - 30 Days
+                                            </span>
+                                            <span className="text-base font-black text-amber-700 dark:text-amber-300 mt-0.5 block">
+                                                {formatCurrency(total30)}
+                                            </span>
+                                            <span className="text-[10px] text-amber-600/80 dark:text-amber-400 mt-0.5 block">
+                                                Recently overdue
+                                            </span>
+                                        </div>
+                                        <div className="p-3 bg-orange-50/50 dark:bg-orange-950/20 rounded-xl border border-orange-100 dark:border-orange-900/30 shadow-2xs">
+                                            <span className="text-[10px] font-bold text-orange-700 dark:text-orange-300 uppercase tracking-wider block">
+                                                31 - 60 Days
+                                            </span>
+                                            <span className="text-base font-black text-orange-700 dark:text-orange-300 mt-0.5 block">
+                                                {formatCurrency(total60)}
+                                            </span>
+                                            <span className="text-[10px] text-orange-600/80 dark:text-orange-400 mt-0.5 block">
+                                                Action required
+                                            </span>
+                                        </div>
+                                        <div className="p-3 bg-rose-50/50 dark:bg-rose-950/20 rounded-xl border border-rose-100 dark:border-rose-900/30 shadow-2xs col-span-2 md:col-span-1">
+                                            <span className="text-[10px] font-bold text-rose-700 dark:text-rose-300 uppercase tracking-wider block">
+                                                61+ Days Overdue
+                                            </span>
+                                            <span className="text-base font-black text-rose-700 dark:text-rose-300 mt-0.5 block">
+                                                {formatCurrency(total90Plus)}
+                                            </span>
+                                            <span className="text-[10px] text-rose-600/80 dark:text-rose-400 mt-0.5 block">
+                                                Critical follow-up
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Search & Bulk Toggle Controls */}
+                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 no-print">
+                                        <div className="relative w-full sm:w-72">
+                                            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                            <input
+                                                type="text"
+                                                value={agingSearch}
+                                                onChange={e => setAgingSearch(e.target.value)}
+                                                placeholder="Search partner or invoice reference..."
+                                                className="w-full pl-8 pr-3 py-1.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs outline-none focus:ring-2 ring-indigo-500/20"
+                                            />
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleToggleAllAging(true)}
+                                                className="px-2.5 py-1 text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors"
+                                            >
+                                                Expand All Invoices
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleToggleAllAging(false)}
+                                                className="px-2.5 py-1 text-xs font-bold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors"
+                                            >
+                                                Collapse All
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Main Table with Nested Invoices Sub-Table */}
+                                    <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-zinc-800">
+                                        <table className="w-full text-xs text-left border-collapse">
+                                            <thead className="bg-slate-50 dark:bg-zinc-800 font-black uppercase text-[9px] text-slate-400 tracking-widest">
+                                                <tr>
+                                                    <th className="px-4 py-4 min-w-[220px]">Partner & Open Invoices</th>
+                                                    <th className="px-4 py-4 text-right">Current</th>
+                                                    <th className="px-4 py-4 text-right">1-30 Days</th>
+                                                    <th className="px-4 py-4 text-right">31-60 Days</th>
+                                                    <th className="px-4 py-4 text-right">61-90 Days</th>
+                                                    <th className="px-4 py-4 text-right">90+ Days</th>
+                                                    <th className="px-4 py-4 text-right">Total Outstanding</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
+                                                {filteredAgingRows.length === 0 ? (
+                                                    <tr>
+                                                        <td colSpan={7} className="px-4 py-8 text-center text-xs text-slate-400 italic">
+                                                            No partner aging records found matching your filters.
+                                                        </td>
+                                                    </tr>
+                                                ) : (
+                                                    filteredAgingRows.map((row: any, idx: number) => {
+                                                        const partnerKey = row.partner_id || row.partner_name || `partner-${idx}`;
+                                                        const isExpanded = !!expandedAgingPartners[partnerKey];
+                                                        const invoices = row.invoices || [];
+
+                                                        return (
+                                                            <React.Fragment key={partnerKey}>
+                                                                <tr
+                                                                    className="hover:bg-slate-50/50 dark:hover:bg-zinc-800/40 transition-colors cursor-pointer"
+                                                                    onClick={() => toggleAgingPartnerExpand(partnerKey)}
+                                                                >
+                                                                    <td className="px-4 py-4 font-bold text-slate-800 dark:text-slate-200">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <button
+                                                                                type="button"
+                                                                                className="p-1 text-slate-400 hover:text-indigo-600 rounded transition-colors"
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    toggleAgingPartnerExpand(partnerKey);
+                                                                                }}
+                                                                            >
+                                                                                {isExpanded ? <ChevronDown className="w-4 h-4 text-indigo-600" /> : <ChevronRight className="w-4 h-4" />}
+                                                                            </button>
+                                                                            <span className="text-indigo-600 dark:text-indigo-400 font-bold hover:underline">
+                                                                                {row.partner_name}
+                                                                            </span>
+                                                                            {invoices.length > 0 ? (
+                                                                                <span className="px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 text-[10px] font-bold border border-indigo-200 dark:border-indigo-800">
+                                                                                    {invoices.length} {invoices.length === 1 ? 'invoice' : 'invoices'}
+                                                                                </span>
+                                                                            ) : (
+                                                                                <span className="px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-400 text-[10px] font-medium">
+                                                                                    On-Account
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    </td>
+                                                                    <td className="px-4 py-4 text-right font-mono text-slate-600 dark:text-slate-300">{formatCurrency(row.current)}</td>
+                                                                    <td className="px-4 py-4 text-right font-mono text-slate-600 dark:text-slate-300">{formatCurrency(row.bucket_30)}</td>
+                                                                    <td className="px-4 py-4 text-right font-mono text-slate-600 dark:text-slate-300">{formatCurrency(row.bucket_60)}</td>
+                                                                    <td className="px-4 py-4 text-right font-mono text-slate-600 dark:text-slate-300">{formatCurrency(row.bucket_90)}</td>
+                                                                    <td className="px-4 py-4 text-right font-mono text-slate-600 dark:text-slate-300">{formatCurrency(row.bucket_90_plus)}</td>
+                                                                    <td className="px-4 py-4 text-right font-black font-mono text-slate-900 dark:text-white bg-slate-50/40 dark:bg-zinc-800/40">
+                                                                        {formatCurrency(row.total_overdue)}
+                                                                    </td>
+                                                                </tr>
+
+                                                                {/* Expanded Invoices Sub-Table */}
+                                                                {isExpanded && (
+                                                                    <tr>
+                                                                        <td colSpan={7} className="p-0 bg-slate-50/70 dark:bg-zinc-900/60 border-y border-indigo-100 dark:border-indigo-900/30">
+                                                                            <div className="p-4 space-y-2">
+                                                                                <div className="flex items-center justify-between">
+                                                                                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
+                                                                                        <Receipt className="w-3.5 h-3.5 text-indigo-600" />
+                                                                                        <span>Outstanding Invoices Breakdown for {row.partner_name}</span>
+                                                                                    </div>
+                                                                                    <span className="text-[11px] text-slate-400">
+                                                                                        Aging calculated as of {endDate}
+                                                                                    </span>
+                                                                                </div>
+
+                                                                                {invoices.length === 0 ? (
+                                                                                    <div className="p-3 bg-white dark:bg-zinc-800 rounded-lg text-xs text-slate-400 italic text-center">
+                                                                                        No individual unsettled invoice lines recorded. The balance is held on general account or advance credits.
+                                                                                    </div>
+                                                                                ) : (
+                                                                                    <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-800">
+                                                                                        <table className="w-full text-xs text-left border-collapse">
+                                                                                            <thead className="bg-slate-50 dark:bg-zinc-850 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 dark:border-zinc-750">
+                                                                                                <tr>
+                                                                                                    <th className="px-3 py-2">Invoice Ref</th>
+                                                                                                    <th className="px-3 py-2">Supplier Inv / PO</th>
+                                                                                                    <th className="px-3 py-2">Invoice Date</th>
+                                                                                                    <th className="px-3 py-2">Due Date</th>
+                                                                                                    <th className="px-3 py-2 text-center">Overdue Status</th>
+                                                                                                    <th className="px-3 py-2 text-right">Original Total</th>
+                                                                                                    <th className="px-3 py-2 text-right">Paid to Date</th>
+                                                                                                    <th className="px-3 py-2 text-right font-bold">Balance Due</th>
+                                                                                                    <th className="px-3 py-2 text-center">Aging Bucket</th>
+                                                                                                </tr>
+                                                                                            </thead>
+                                                                                            <tbody className="divide-y divide-slate-100 dark:divide-zinc-750">
+                                                                                                {invoices.map((inv: any, iIdx: number) => {
+                                                                                                    const overdueDays = inv.days_overdue || 0;
+                                                                                                    return (
+                                                                                                        <tr key={inv.id || iIdx} className="hover:bg-slate-50/50 dark:hover:bg-zinc-700/20">
+                                                                                                            <td className="px-3 py-2 font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                                                                                                                {inv.reference || '—'}
+                                                                                                            </td>
+                                                                                                            <td className="px-3 py-2 font-mono text-slate-600 dark:text-slate-400">
+                                                                                                                {inv.supplier_invoice_number || inv.client_po_number || '—'}
+                                                                                                            </td>
+                                                                                                            <td className="px-3 py-2 text-slate-500">
+                                                                                                                {inv.date || '—'}
+                                                                                                            </td>
+                                                                                                            <td className="px-3 py-2 text-slate-500">
+                                                                                                                {inv.due_date || '—'}
+                                                                                                            </td>
+                                                                                                            <td className="px-3 py-2 text-center">
+                                                                                                                {overdueDays === 0 ? (
+                                                                                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
+                                                                                                                        <CheckCircle2 className="w-2.5 h-2.5" /> Current
+                                                                                                                    </span>
+                                                                                                                ) : overdueDays <= 30 ? (
+                                                                                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
+                                                                                                                        <Clock className="w-2.5 h-2.5" /> {overdueDays}d overdue
+                                                                                                                    </span>
+                                                                                                                ) : overdueDays <= 60 ? (
+                                                                                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-700 dark:bg-orange-950/50 dark:text-orange-300">
+                                                                                                                        <AlertCircle className="w-2.5 h-2.5" /> {overdueDays}d overdue
+                                                                                                                    </span>
+                                                                                                                ) : (
+                                                                                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">
+                                                                                                                        <AlertCircle className="w-2.5 h-2.5" /> {overdueDays}d overdue
+                                                                                                                    </span>
+                                                                                                                )}
+                                                                                                            </td>
+                                                                                                            <td className="px-3 py-2 text-right font-mono text-slate-600 dark:text-slate-400">
+                                                                                                                {formatCurrency(Number(inv.amount_total) || 0)}
+                                                                                                            </td>
+                                                                                                            <td className="px-3 py-2 text-right font-mono text-slate-500">
+                                                                                                                {formatCurrency(inv.paid_amount || 0)}
+                                                                                                            </td>
+                                                                                                            <td className="px-3 py-2 text-right font-mono font-bold text-slate-900 dark:text-white">
+                                                                                                                {formatCurrency(Number(inv.amount_residual) || 0)}
+                                                                                                            </td>
+                                                                                                            <td className="px-3 py-2 text-center">
+                                                                                                                <span className="px-2 py-0.5 bg-slate-100 dark:bg-zinc-700 text-slate-600 dark:text-slate-300 rounded text-[10px] font-semibold">
+                                                                                                                    {inv.bucket}
+                                                                                                                </span>
+                                                                                                            </td>
+                                                                                                        </tr>
+                                                                                                    );
+                                                                                                })}
+                                                                                            </tbody>
+                                                                                            <tfoot className="bg-slate-50 dark:bg-zinc-850 font-bold border-t border-slate-200 dark:border-zinc-700">
+                                                                                                <tr>
+                                                                                                    <td colSpan={7} className="px-3 py-2 text-right text-[10px] uppercase tracking-wider text-slate-500">
+                                                                                                        Total Open Invoices for {row.partner_name}
+                                                                                                    </td>
+                                                                                                    <td className="px-3 py-2 text-right font-mono font-black text-slate-900 dark:text-white">
+                                                                                                        {formatCurrency(invoices.reduce((s: number, i: any) => s + (Number(i.amount_residual) || 0), 0))}
+                                                                                                    </td>
+                                                                                                    <td></td>
+                                                                                                </tr>
+                                                                                            </tfoot>
+                                                                                        </table>
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        </td>
+                                                                    </tr>
+                                                                )}
+                                                            </React.Fragment>
+                                                        );
+                                                    })
+                                                )}
+                                            </tbody>
+                                            <tfoot className="bg-slate-100 dark:bg-zinc-800 font-bold border-t-2">
+                                                <tr>
+                                                    <td className="px-4 py-4 uppercase text-[10px] tracking-widest">Grand Total</td>
+                                                    <td className="px-4 py-4 text-right font-mono">{formatCurrency(totalCurrent)}</td>
+                                                    <td className="px-4 py-4 text-right font-mono">{formatCurrency(total30)}</td>
+                                                    <td className="px-4 py-4 text-right font-mono">{formatCurrency(total60)}</td>
+                                                    <td className="px-4 py-4 text-right font-mono">{formatCurrency(filteredAgingRows.reduce((s: number, r: any) => s + (r.bucket_90 || 0), 0))}</td>
+                                                    <td className="px-4 py-4 text-right font-mono">{formatCurrency(filteredAgingRows.reduce((s: number, r: any) => s + (r.bucket_90_plus || 0), 0))}</td>
+                                                    <td className="px-4 py-4 text-right font-black font-mono text-lg">{formatCurrency(totalAll)}</td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+                                    </div>
+                                </div>
+                            );
+                        })()}
 
                         {/* Sales Ledger & Purchase Ledger reports */}
                         {(activeReport === 'sl' || activeReport === 'pl_report') && Array.isArray(reportData) && (

@@ -4,7 +4,8 @@ import { useAuth } from '../../../contexts/AuthContext';
 import {
     Plus, Search, Filter, ArrowUpRight, ArrowDownLeft, CheckCircle, Clock,
     BookOpen, Users, Trash2, Split, Building2, CreditCard, AlertCircle,
-    CheckCircle2, ChevronDown, ChevronRight, Layers, FileSpreadsheet, ArrowRight, Tag
+    CheckCircle2, ChevronDown, ChevronRight, Layers, FileSpreadsheet, ArrowRight, Tag,
+    Receipt, FileText, CheckSquare, Square, RefreshCw, Landmark, Sparkles
 } from 'lucide-react';
 import { Modal } from '../../ui/Modal';
 import { PrintButton } from '../../ui/PrintButton';
@@ -29,6 +30,20 @@ interface BankLine {
     reference?: string;
     instrument_date?: string;
     amount: string | number;
+}
+
+export interface InvoiceAllocation {
+    id: string;
+    invoice_id?: string;
+    reference: string;
+    supplier_invoice_number?: string;
+    date?: string;
+    due_date?: string;
+    amount_total: number;
+    amount_residual: number;
+    allocated_amount: string;
+    selected: boolean;
+    is_manual?: boolean;
 }
 
 export interface PaymentsProps {
@@ -78,13 +93,19 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
     const [newCostCenterTargetIndex, setNewCostCenterTargetIndex] = useState<number | null>(null);
     const [creatingCostCenter, setCreatingCostCenter] = useState(false);
 
-    // Multi-line Dynamic Form States
+    // Multi-line Dynamic Form States (Direct Account Mode)
     const [expenseLines, setExpenseLines] = useState<ExpenseLine[]>([
         { id: 'exp-1', account_id: '', cost_center_id: '', partner_id: '', notes: '', entry_type: 'debit', amount: '' }
     ]);
     const [bankLines, setBankLines] = useState<BankLine[]>([
         { id: 'bnk-1', journal_id: '', bank_name: '', bank_account: '', reference: '', instrument_date: '', amount: '' }
     ]);
+
+    // Party Payment Dynamic State (Invoices against ref & additional bank charges)
+    const [partnerInvoices, setPartnerInvoices] = useState<any[]>([]);
+    const [loadingPartnerInvoices, setLoadingPartnerInvoices] = useState(false);
+    const [partyAllocations, setPartyAllocations] = useState<InvoiceAllocation[]>([]);
+    const [partyCharges, setPartyCharges] = useState<ExpenseLine[]>([]);
 
     // Edit/View State
     const [editMode, setEditMode] = useState(false);
@@ -227,6 +248,18 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
         return list;
     }, [bankAccountsFromCOA, bankConfigs]);
 
+    // Default Bank Charges Account (Account 5730 or matching bank charges/fees)
+    const defaultBankChargesAccount = useMemo(() => {
+        const acc = accounts.find(a =>
+            a.code === '5730' ||
+            (a.name || '').toLowerCase().includes('bank charge') ||
+            (a.name || '').toLowerCase().includes('bank fee') ||
+            (a.name || '').toLowerCase().includes('bank commission') ||
+            (a.name || '').toLowerCase().includes('swift')
+        );
+        return acc?.id || '';
+    }, [accounts]);
+
     // Calculate dynamic totals (handling Debits and Credit Deductions)
     const totalExpenseDebits = useMemo(() => {
         return expenseLines.reduce((sum, l) => {
@@ -261,12 +294,50 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
         return Math.round((totalExpenseAmount - totalBankAmount) * 100) / 100;
     }, [totalExpenseAmount, totalBankAmount]);
 
+    // Party Payment Totals (Against Ref Invoices + Additional Bank Charges/Fees)
+    const totalPartyInvoiceAllocated = useMemo(() => {
+        return partyAllocations
+            .filter(a => a.selected)
+            .reduce((sum, a) => sum + (Number(a.allocated_amount) || 0), 0);
+    }, [partyAllocations]);
+
+    const totalPartyChargesAmount = useMemo(() => {
+        return partyCharges.reduce((sum, c) => {
+            const amt = Number(c.amount) || 0;
+            const isCredit = c.entry_type === 'credit' || amt < 0;
+            if (paymentType === 'outbound') {
+                // Outbound Payment (Vendor):
+                // Debit charges (e.g. Dr Bank Charges 138.24) increase the total bank payout
+                // Credit lines (e.g. Cr Discount received) reduce the total bank payout
+                return isCredit ? sum - Math.abs(amt) : sum + Math.abs(amt);
+            }
+            // Inbound Receipt (Customer):
+            // Credit additions increase bank deposit
+            // Debit deductions (e.g. Dr Bank fees) reduce bank deposit
+            return isCredit ? sum + Math.abs(amt) : sum - Math.abs(amt);
+        }, 0);
+    }, [partyCharges, paymentType]);
+
+    const totalPartyExpectedBank = useMemo(() => {
+        return Math.round((totalPartyInvoiceAllocated + totalPartyChargesAmount) * 100) / 100;
+    }, [totalPartyInvoiceAllocated, totalPartyChargesAmount]);
+
+    const partyBalanceDifference = useMemo(() => {
+        return Math.round((totalPartyExpectedBank - totalBankAmount) * 100) / 100;
+    }, [totalPartyExpectedBank, totalBankAmount]);
+
     const isBalanced = useMemo(() => {
         if (paymentCategory === 'partner') {
-            return !!selectedPartner && totalBankAmount > 0;
+            if (!selectedPartner || totalBankAmount <= 0) return false;
+            // If invoices are selected or additional charges added, bank must balance expected net total
+            if (totalPartyInvoiceAllocated > 0 || partyCharges.length > 0) {
+                return Math.abs(partyBalanceDifference) < 0.001;
+            }
+            // Pure advance / on-account payment without specific invoice selection
+            return totalBankAmount > 0;
         }
         return totalExpenseAmount > 0 && Math.abs(balanceDifference) < 0.001;
-    }, [paymentCategory, selectedPartner, totalExpenseAmount, totalBankAmount, balanceDifference]);
+    }, [paymentCategory, selectedPartner, totalBankAmount, totalPartyInvoiceAllocated, partyCharges.length, partyBalanceDifference, totalExpenseAmount, balanceDifference]);
 
     // Multi-Line Handlers: Expense Lines
     const handleAddExpenseLine = () => {
@@ -390,6 +461,217 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
         }
     };
 
+    // Load Open Invoices for Selected Partner
+    const loadPartnerInvoices = async (partnerId: string, pType: string, existingAllocations: any[] = []) => {
+        if (!partnerId || !currentCompanyId) {
+            setPartnerInvoices([]);
+            setPartyAllocations([]);
+            return;
+        }
+        setLoadingPartnerInvoices(true);
+        try {
+            const { data, error } = await supabase
+                .from('accounting_journal_entries')
+                .select('id, reference, supplier_invoice_number, date, due_date, move_type, state, amount_total, amount_residual')
+                .eq('company_id', currentCompanyId)
+                .eq('partner_id', partnerId)
+                .eq('state', 'Posted')
+                .order('date', { ascending: true });
+
+            if (error) {
+                console.error('Error fetching partner invoices:', error);
+                setLoadingPartnerInvoices(false);
+                return;
+            }
+
+            const invs = data || [];
+            setPartnerInvoices(invs);
+
+            const existingMap = new Map<string, any>();
+            existingAllocations.forEach(a => {
+                if (a.invoice_id) existingMap.set(a.invoice_id, a);
+                else if (a.invoice_ref) existingMap.set(a.invoice_ref, a);
+                else if (a.reference) existingMap.set(a.reference, a);
+            });
+
+            // Map open invoices (or ones that were already allocated to this payment)
+            const allocations: InvoiceAllocation[] = invs
+                .filter(inv => Number(inv.amount_residual) > 0 || existingMap.has(inv.id) || existingMap.has(inv.reference))
+                .map(inv => {
+                    const matched = existingMap.get(inv.id) || existingMap.get(inv.reference);
+                    const isSelected = !!matched;
+                    const allocatedAmt = matched ? (matched.amount !== undefined ? matched.amount : matched.allocated_amount) : '';
+                    return {
+                        id: inv.id,
+                        invoice_id: inv.id,
+                        reference: inv.reference || '',
+                        supplier_invoice_number: inv.supplier_invoice_number || '',
+                        date: inv.date || '',
+                        due_date: inv.due_date || '',
+                        amount_total: Number(inv.amount_total) || 0,
+                        amount_residual: Number(inv.amount_residual) || 0,
+                        allocated_amount: allocatedAmt !== '' && allocatedAmt !== undefined ? String(allocatedAmt) : '',
+                        selected: isSelected,
+                        notes: matched?.notes || `Agst Ref ${inv.reference || inv.supplier_invoice_number || ''}`
+                    };
+                });
+
+            // Include any manual/on-account items from existing allocations
+            existingAllocations.forEach((ea, idx) => {
+                if (!ea.invoice_id && !invs.some(i => i.reference === (ea.invoice_ref || ea.reference))) {
+                    allocations.push({
+                        id: ea.id || `manual-${idx}-${Date.now()}`,
+                        reference: ea.invoice_ref || ea.reference || 'On Account / Advance',
+                        supplier_invoice_number: ea.supplier_invoice_number || '',
+                        date: ea.date || '',
+                        due_date: ea.due_date || '',
+                        amount_total: Number(ea.amount) || 0,
+                        amount_residual: Number(ea.amount) || 0,
+                        allocated_amount: String(ea.amount || ''),
+                        selected: true,
+                        is_manual: true,
+                        notes: ea.notes || 'On Account / Advance'
+                    });
+                }
+            });
+
+            setPartyAllocations(allocations);
+        } catch (e) {
+            console.error('Error loading partner invoices:', e);
+        } finally {
+            setLoadingPartnerInvoices(false);
+        }
+    };
+
+    // Party Allocation Handlers
+    const handleTogglePartyAllocation = (index: number) => {
+        setPartyAllocations(prev => {
+            const copy = [...prev];
+            const item = { ...copy[index] };
+            item.selected = !item.selected;
+            if (item.selected && (!item.allocated_amount || Number(item.allocated_amount) === 0)) {
+                item.allocated_amount = String(item.amount_residual);
+            }
+            copy[index] = item;
+            return copy;
+        });
+    };
+
+    const handleUpdatePartyAllocatedAmount = (index: number, value: string) => {
+        setPartyAllocations(prev => {
+            const copy = [...prev];
+            const item = { ...copy[index] };
+            item.allocated_amount = value;
+            const num = Number(value);
+            if (!isNaN(num) && num > 0) {
+                item.selected = true;
+            }
+            copy[index] = item;
+            return copy;
+        });
+    };
+
+    const handleAllocateFull = (index: number) => {
+        setPartyAllocations(prev => {
+            const copy = [...prev];
+            const item = { ...copy[index] };
+            item.selected = true;
+            item.allocated_amount = String(item.amount_residual);
+            copy[index] = item;
+            return copy;
+        });
+    };
+
+    const handleSelectAllAllocations = () => {
+        setPartyAllocations(prev => prev.map(item => ({
+            ...item,
+            selected: true,
+            allocated_amount: String(item.amount_residual)
+        })));
+    };
+
+    const handleClearAllAllocations = () => {
+        setPartyAllocations(prev => prev.map(item => ({
+            ...item,
+            selected: false,
+            allocated_amount: ''
+        })));
+    };
+
+    const handleAddManualPartyAllocation = () => {
+        setPartyAllocations(prev => [
+            ...prev,
+            {
+                id: `manual-${Date.now()}`,
+                reference: 'On Account / Advance',
+                supplier_invoice_number: '',
+                date: date || new Date().toISOString().split('T')[0],
+                due_date: '',
+                amount_total: 0,
+                amount_residual: 0,
+                allocated_amount: '',
+                selected: true,
+                is_manual: true,
+                notes: 'Advance / On Account'
+            }
+        ]);
+    };
+
+    const handleRemovePartyAllocation = (index: number) => {
+        setPartyAllocations(prev => prev.filter((_, i) => i !== index));
+    };
+
+    // Additional Line Entries (Bank Charges / Transfer Fees / Deductions) Handlers
+    const handleAddPartyCharge = () => {
+        setPartyCharges(prev => [
+            ...prev,
+            {
+                id: `chg-${Date.now()}-${Math.random()}`,
+                account_id: defaultBankChargesAccount || '',
+                cost_center_id: headerCostCenterId || '',
+                partner_id: selectedPartner || '',
+                notes: 'Bank Charges / Transfer Fee',
+                entry_type: 'debit',
+                amount: ''
+            }
+        ]);
+    };
+
+    const handleUpdatePartyCharge = (index: number, field: keyof ExpenseLine, value: any) => {
+        setPartyCharges(prev => {
+            const copy = [...prev];
+            copy[index] = { ...copy[index], [field]: value };
+            return copy;
+        });
+    };
+
+    const handleRemovePartyCharge = (index: number) => {
+        setPartyCharges(prev => prev.filter((_, i) => i !== index));
+    };
+
+    // Sync Bank Amount with Invoices & Charges
+    const handleSyncPartyBankAmount = () => {
+        const netAmt = totalPartyExpectedBank;
+        if (netAmt <= 0) return;
+        setBankLines(prev => {
+            const defaultJournalId = journals.length > 0 ? journals[0].id : '';
+            if (prev.length === 0) {
+                return [{
+                    id: `bnk-${Date.now()}`,
+                    journal_id: defaultJournalId,
+                    bank_name: '',
+                    bank_account: '',
+                    reference: '',
+                    instrument_date: date || new Date().toISOString().split('T')[0],
+                    amount: netAmt.toFixed(2)
+                }];
+            }
+            const copy = [...prev];
+            copy[0] = { ...copy[0], amount: netAmt.toFixed(2) };
+            return copy;
+        });
+    };
+
     const handleOpenModal = (pay?: any, readonly = false) => {
         const defaultJournalId = journals.length > 0 ? journals[0].id : '';
 
@@ -397,7 +679,8 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
             setEditingPaymentId(pay.id);
             setViewingPayment(pay);
             setPaymentNumber(pay.name || '');
-            setPaymentCategory(pay.payment_category === 'direct_account' || pay.account_id ? 'direct_account' : 'partner');
+            const isPartnerCat = pay.payment_category === 'partner' || (!pay.account_id && !!pay.partner_id);
+            setPaymentCategory(isPartnerCat ? 'partner' : 'direct_account');
             setPaymentType(pay.payment_type || 'outbound');
             setSelectedPartner(pay.partner_id || '');
             setHeaderCostCenterId(pay.cost_center_id || '');
@@ -406,9 +689,48 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
 
             const isPayInbound = (pay.payment_type || 'outbound') === 'inbound';
 
-            // Load multi-expense lines or fallback to single legacy record
-            if (pay.expense_lines && Array.isArray(pay.expense_lines) && pay.expense_lines.length > 0) {
-                setExpenseLines(pay.expense_lines.map((l: any, idx: number) => {
+            // Check if there are expense lines
+            const rawExpenseLines = pay.expense_lines && Array.isArray(pay.expense_lines) ? pay.expense_lines : [];
+
+            if (isPartnerCat) {
+                // Separate invoice allocations vs additional bank charges/deductions
+                const allocLines: any[] = [];
+                const chargeLines: any[] = [];
+
+                rawExpenseLines.forEach((l: any) => {
+                    const isAlloc = !!l.invoice_id || (l.notes && l.notes.includes('Agst Ref')) || l.is_manual;
+                    if (isAlloc) {
+                        allocLines.push(l);
+                    } else if (l.account_id) {
+                        chargeLines.push(l);
+                    }
+                });
+
+                setPartyCharges(chargeLines.map((l: any, idx: number) => ({
+                    id: l.id || `chg-${idx}`,
+                    account_id: l.account_id || defaultBankChargesAccount || '',
+                    cost_center_id: l.cost_center_id || pay.cost_center_id || '',
+                    partner_id: l.partner_id || pay.partner_id || '',
+                    notes: l.notes || 'Bank Charges',
+                    entry_type: l.entry_type || 'debit',
+                    amount: Math.abs(Number(l.amount)) || l.amount || ''
+                })));
+
+                if (pay.partner_id) {
+                    loadPartnerInvoices(pay.partner_id, pay.payment_type || 'outbound', allocLines);
+                } else {
+                    setPartyAllocations([]);
+                    setPartnerInvoices([]);
+                }
+            } else {
+                setPartyAllocations([]);
+                setPartyCharges([]);
+                setPartnerInvoices([]);
+            }
+
+            // Load multi-expense lines for direct account mode or fallback
+            if (rawExpenseLines.length > 0) {
+                setExpenseLines(rawExpenseLines.map((l: any, idx: number) => {
                     const rawAmt = l.amount !== undefined ? l.amount : '';
                     const isCredit = isPayInbound
                         ? (l.entry_type === 'debit' || Number(rawAmt) < 0 ? false : true)
@@ -471,6 +793,9 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
             setHeaderCostCenterId('');
             setDate(new Date().toISOString().split('T')[0]);
             setNotes('');
+            setPartyAllocations([]);
+            setPartyCharges([]);
+            setPartnerInvoices([]);
 
             setExpenseLines([{
                 id: `exp-${Date.now()}`,
@@ -594,8 +919,13 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
             if (paymentCategory === 'direct_account' && Math.abs(balanceDifference) > 0.001) {
                 throw new Error(`Voucher is unbalanced. Net Allocation (QAR ${totalExpenseAmount.toFixed(2)}) must equal Total Bank/Payment (QAR ${totalBankAmount.toFixed(2)}). Difference: QAR ${balanceDifference.toFixed(2)}`);
             }
-            if (paymentCategory === 'partner' && totalBankAmount <= 0) {
-                throw new Error('Please enter the received/disbursed amount in Section 2 (Bank & Cash Payment Sources).');
+            if (paymentCategory === 'partner') {
+                if (totalBankAmount <= 0) {
+                    throw new Error('Please enter the received/disbursed amount in Section 2 (Bank & Cash Payment Sources).');
+                }
+                if ((totalPartyInvoiceAllocated > 0 || partyCharges.length > 0) && Math.abs(partyBalanceDifference) > 0.001) {
+                    throw new Error(`Party Voucher is unbalanced. Invoices Allocated (QAR ${totalPartyInvoiceAllocated.toFixed(2)}) + Additional Charges (QAR ${totalPartyChargesAmount.toFixed(2)}) = QAR ${totalPartyExpectedBank.toFixed(2)}, but Total Bank Payment is QAR ${totalBankAmount.toFixed(2)}. Difference: QAR ${partyBalanceDifference.toFixed(2)}. Click "Sync Bank Amount" to balance.`);
+                }
             }
 
             const totalVoucherAmount = paymentCategory === 'direct_account' ? totalExpenseAmount : totalBankAmount;
@@ -626,7 +956,54 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                 : (partnerObj?.property_account_payable_id || defaultPayable);
 
             const formattedExpenseLines = paymentCategory === 'partner'
-                ? []
+                ? [
+                    // 1. Invoice Allocations against reference
+                    ...partyAllocations
+                        .filter(a => a.selected && Number(a.allocated_amount) > 0)
+                        .map(a => {
+                            const amt = Number(a.allocated_amount);
+                            return {
+                                id: a.id || `alloc-${Date.now()}-${Math.random()}`,
+                                invoice_id: a.invoice_id || null,
+                                invoice_ref: a.reference || null,
+                                account_id: partnerDefaultAccId || null,
+                                cost_center_id: headerCostCenterId ? String(headerCostCenterId).trim() : null,
+                                partner_id: selectedPartner,
+                                notes: a.notes || `Agst Ref ${a.reference || a.supplier_invoice_number || ''}`,
+                                entry_type: paymentType === 'inbound' ? 'credit' : 'debit',
+                                amount: amt
+                            };
+                        }),
+                    // 2. Fallback: If no invoices were selected, create one On-Account advance partner line
+                    ...(partyAllocations.filter(a => a.selected && Number(a.allocated_amount) > 0).length === 0 ? [{
+                        id: `on-account-${Date.now()}`,
+                        invoice_id: null,
+                        invoice_ref: null,
+                        account_id: partnerDefaultAccId || null,
+                        cost_center_id: headerCostCenterId ? String(headerCostCenterId).trim() : null,
+                        partner_id: selectedPartner,
+                        notes: notes ? `On Account - ${notes}` : 'On Account / Advance Payment',
+                        entry_type: paymentType === 'inbound' ? 'credit' : 'debit',
+                        amount: Math.max(0, totalBankAmount - (totalPartyChargesAmount > 0 ? totalPartyChargesAmount : 0))
+                    }] : []),
+                    // 3. Additional Line Entries / Bank Charges (Like Tally PBV.4116 Dr Bank Charges)
+                    ...partyCharges
+                        .filter(c => Number(c.amount) > 0)
+                        .map(c => {
+                            const rawAmt = Math.abs(Number(c.amount) || 0);
+                            const isCredit = c.entry_type === 'credit';
+                            return {
+                                id: c.id,
+                                invoice_id: null,
+                                account_id: c.account_id || defaultBankChargesAccount || null,
+                                cost_center_id: c.cost_center_id ? String(c.cost_center_id).trim() : (headerCostCenterId ? String(headerCostCenterId).trim() : null),
+                                partner_id: selectedPartner || null,
+                                notes: c.notes || 'Bank Charges / Additional Entry',
+                                entry_type: isCredit ? 'credit' : 'debit',
+                                amount: rawAmt
+                            };
+                        })
+                ]
                 : expenseLines.map(el => {
                     const rawAmt = Math.abs(Number(el.amount) || 0);
                     const isCredit = paymentType === 'inbound'
@@ -1090,6 +1467,9 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                                                 ...l,
                                                 entry_type: l.entry_type === 'debit' && (!l.amount || Number(l.amount) >= 0) ? 'credit' : l.entry_type
                                             })));
+                                            if (paymentCategory === 'partner' && selectedPartner) {
+                                                loadPartnerInvoices(selectedPartner, 'inbound', []);
+                                            }
                                         }}
                                         disabled={viewMode}
                                         className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
@@ -1108,6 +1488,9 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                                                 ...l,
                                                 entry_type: l.entry_type === 'credit' && (!l.amount || Number(l.amount) >= 0) ? 'debit' : l.entry_type
                                             })));
+                                            if (paymentCategory === 'partner' && selectedPartner) {
+                                                loadPartnerInvoices(selectedPartner, 'outbound', []);
+                                            }
                                         }}
                                         disabled={viewMode}
                                         className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
@@ -1139,7 +1522,12 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                                     </button>
                                     <button
                                         type="button"
-                                        onClick={() => setPaymentCategory('partner')}
+                                        onClick={() => {
+                                            setPaymentCategory('partner');
+                                            if (selectedPartner) {
+                                                loadPartnerInvoices(selectedPartner, paymentType, []);
+                                            }
+                                        }}
                                         disabled={viewMode}
                                         className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
                                             paymentCategory === 'partner'
@@ -1190,7 +1578,12 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                                 <SearchableSelect
                                     options={partnerOptions}
                                     value={selectedPartner}
-                                    onChange={setSelectedPartner}
+                                    onChange={val => {
+                                        setSelectedPartner(val);
+                                        if (paymentCategory === 'partner') {
+                                            loadPartnerInvoices(val, paymentType, []);
+                                        }
+                                    }}
                                     placeholder="Search Partner / Vendor / Customer..."
                                     disabled={viewMode}
                                     required={paymentCategory === 'partner'}
@@ -1419,6 +1812,362 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                             </div>
                         )}
 
+                        {/* SECTION 1 FOR PARTY PAYMENT: INVOICE SETTLEMENT & ADDITIONAL LINE ENTRIES */}
+                        {paymentCategory === 'partner' && (
+                            <div className="space-y-4">
+                                {/* SECTION 1A: INVOICE & BILL SETTLEMENT (AGAINST REF) */}
+                                <div className="p-4 bg-indigo-50/40 dark:bg-indigo-950/10 border border-indigo-100 dark:border-indigo-900/30 rounded-2xl space-y-3">
+                                    <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2">
+                                        <div className="flex items-center gap-2">
+                                            <Receipt className="w-4 h-4 text-indigo-600" />
+                                            <div>
+                                                <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2">
+                                                    <span>Invoice & Bill Settlement (Against Ref)</span>
+                                                    {selectedPartner && (
+                                                        <span className="text-[10px] font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-800">
+                                                            {paymentType === 'inbound' ? 'Customer Invoices' : 'Vendor Bills'}
+                                                        </span>
+                                                    )}
+                                                </h3>
+                                                <p className="text-[11px] text-slate-500">
+                                                    Select open invoices to settle. Balances will automatically update in AR/AP Aging.
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {!viewMode && (
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                {partyAllocations.length > 0 && (
+                                                    <>
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleSelectAllAllocations}
+                                                            className="px-2.5 py-1 bg-white dark:bg-zinc-800 hover:bg-indigo-50 dark:hover:bg-zinc-700 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-lg text-xs font-bold transition-all"
+                                                        >
+                                                            Select All
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleClearAllAllocations}
+                                                            className="px-2.5 py-1 bg-white dark:bg-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-700 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-zinc-700 rounded-lg text-xs font-bold transition-all"
+                                                        >
+                                                            Clear
+                                                        </button>
+                                                    </>
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    onClick={handleAddManualPartyAllocation}
+                                                    className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all"
+                                                    title="Add an Advance or On Account payment line"
+                                                >
+                                                    <Plus className="w-3.5 h-3.5" /> Add Advance / On-Account Line
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Invoices List / Table */}
+                                    {loadingPartnerInvoices ? (
+                                        <div className="py-6 text-center text-xs font-medium text-indigo-600 flex items-center justify-center gap-2">
+                                            <RefreshCw className="w-4 h-4 animate-spin" />
+                                            <span>Loading open invoices for selected partner...</span>
+                                        </div>
+                                    ) : partyAllocations.length === 0 ? (
+                                        <div className="p-4 bg-white dark:bg-zinc-800/80 rounded-xl border border-dashed border-slate-200 dark:border-zinc-700 text-center">
+                                            <p className="text-xs text-slate-500 font-medium">
+                                                {selectedPartner
+                                                    ? "No open unsettled invoices found for this partner. Any payment entered will be recorded On-Account as an advance."
+                                                    : "Please select a partner in the header above to load pending invoices."}
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <div className="overflow-x-auto rounded-xl border border-indigo-100 dark:border-indigo-900/30 bg-white dark:bg-zinc-800/90 shadow-xs">
+                                            <table className="w-full text-xs text-left border-collapse">
+                                                <thead className="bg-indigo-50/70 dark:bg-indigo-950/40 text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-indigo-100 dark:border-indigo-900/40">
+                                                    <tr>
+                                                        <th className="px-3 py-2.5 w-10 text-center">Settle</th>
+                                                        <th className="px-3 py-2.5">Invoice / Bill Ref</th>
+                                                        <th className="px-3 py-2.5">Supplier Inv #</th>
+                                                        <th className="px-3 py-2.5">Date / Due</th>
+                                                        <th className="px-3 py-2.5 text-right">Original Total</th>
+                                                        <th className="px-3 py-2.5 text-right">Unpaid Balance</th>
+                                                        <th className="px-3 py-2.5 w-44 text-right">Payment Allocated</th>
+                                                        <th className="px-3 py-2.5">Allocation Notes</th>
+                                                        {!viewMode && <th className="px-2 py-2.5 w-10 text-center"></th>}
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100 dark:divide-zinc-700/60">
+                                                    {partyAllocations.map((alloc, aIdx) => {
+                                                        const isSelected = alloc.selected;
+                                                        const isOverdue = alloc.due_date && new Date(alloc.due_date) < new Date(date);
+                                                        return (
+                                                            <tr
+                                                                key={alloc.id || aIdx}
+                                                                className={`transition-colors ${
+                                                                    isSelected
+                                                                        ? 'bg-indigo-50/30 dark:bg-indigo-950/20'
+                                                                        : 'hover:bg-slate-50/50 dark:hover:bg-zinc-700/20'
+                                                                }`}
+                                                            >
+                                                                <td className="px-3 py-2 text-center">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={isSelected}
+                                                                        onChange={() => handleTogglePartyAllocation(aIdx)}
+                                                                        disabled={viewMode}
+                                                                        className="w-4 h-4 text-indigo-600 rounded cursor-pointer accent-indigo-600"
+                                                                    />
+                                                                </td>
+                                                                <td className="px-3 py-2 font-mono font-bold text-indigo-700 dark:text-indigo-400">
+                                                                    {alloc.reference}
+                                                                    {alloc.is_manual && (
+                                                                        <span className="ml-1.5 px-1.5 py-0.5 bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 text-[9px] rounded font-bold uppercase">
+                                                                            Manual
+                                                                        </span>
+                                                                    )}
+                                                                </td>
+                                                                <td className="px-3 py-2 text-slate-600 dark:text-slate-400 font-mono">
+                                                                    {alloc.supplier_invoice_number || '—'}
+                                                                </td>
+                                                                <td className="px-3 py-2 text-slate-500 text-[11px]">
+                                                                    <div>{alloc.date || '—'}</div>
+                                                                    {alloc.due_date && (
+                                                                        <div className={`text-[10px] font-medium ${isOverdue ? 'text-rose-600 font-bold' : 'text-slate-400'}`}>
+                                                                            Due: {alloc.due_date} {isOverdue && '⚠️'}
+                                                                        </div>
+                                                                    )}
+                                                                </td>
+                                                                <td className="px-3 py-2 text-right font-mono text-slate-600 dark:text-slate-400">
+                                                                    QAR {alloc.amount_total > 0 ? alloc.amount_total.toFixed(2) : '—'}
+                                                                </td>
+                                                                <td className="px-3 py-2 text-right font-mono font-bold text-slate-800 dark:text-slate-200">
+                                                                    QAR {alloc.amount_residual > 0 ? alloc.amount_residual.toFixed(2) : '—'}
+                                                                </td>
+                                                                <td className="px-3 py-2 text-right">
+                                                                    <div className="flex items-center gap-1.5 justify-end">
+                                                                        <input
+                                                                            type="number"
+                                                                            step="0.01"
+                                                                            value={alloc.allocated_amount}
+                                                                            onChange={e => handleUpdatePartyAllocatedAmount(aIdx, e.target.value)}
+                                                                            disabled={viewMode}
+                                                                            placeholder="0.00"
+                                                                            className={`w-28 p-1.5 border rounded-lg text-xs font-bold text-right transition-colors ${
+                                                                                isSelected
+                                                                                    ? 'bg-indigo-50/60 dark:bg-indigo-950/60 border-indigo-300 dark:border-indigo-800 text-indigo-800 dark:text-indigo-200'
+                                                                                    : 'bg-slate-50 dark:bg-zinc-700/60 border-slate-200 dark:border-zinc-600 text-slate-400'
+                                                                            }`}
+                                                                        />
+                                                                        {!viewMode && alloc.amount_residual > 0 && (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => handleAllocateFull(aIdx)}
+                                                                                className="px-1.5 py-1 text-[10px] font-bold bg-indigo-100 hover:bg-indigo-200 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 rounded shadow-2xs transition-colors"
+                                                                                title="Allocate full remaining residual"
+                                                                            >
+                                                                                Full
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                </td>
+                                                                <td className="px-3 py-2">
+                                                                    <input
+                                                                        type="text"
+                                                                        value={alloc.notes || ''}
+                                                                        onChange={e => {
+                                                                            const val = e.target.value;
+                                                                            setPartyAllocations(prev => {
+                                                                                const copy = [...prev];
+                                                                                copy[aIdx] = { ...copy[aIdx], notes: val };
+                                                                                return copy;
+                                                                            });
+                                                                        }}
+                                                                        disabled={viewMode}
+                                                                        placeholder={`Agst Ref ${alloc.reference}`}
+                                                                        className="w-full p-1.5 bg-slate-50 dark:bg-zinc-700/40 border border-slate-200 dark:border-zinc-600 rounded-lg text-[11px] font-medium"
+                                                                    />
+                                                                </td>
+                                                                {!viewMode && (
+                                                                    <td className="px-2 py-2 text-center">
+                                                                        {alloc.is_manual && (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => handleRemovePartyAllocation(aIdx)}
+                                                                                className="p-1 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded transition-colors"
+                                                                                title="Remove Line"
+                                                                            >
+                                                                                <Trash2 className="w-3.5 h-3.5" />
+                                                                            </button>
+                                                                        )}
+                                                                    </td>
+                                                                )}
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                                <tfoot className="bg-indigo-50/50 dark:bg-indigo-950/30 border-t border-indigo-100 dark:border-indigo-900/40 text-xs font-bold">
+                                                    <tr>
+                                                        <td colSpan={6} className="px-3 py-2 text-right uppercase text-[10px] tracking-wider text-slate-600 dark:text-slate-400">
+                                                            Total Invoices Allocated ({partyAllocations.filter(a => a.selected).length} selected)
+                                                        </td>
+                                                        <td className="px-3 py-2 text-right font-mono font-black text-indigo-700 dark:text-indigo-300 text-sm">
+                                                            QAR {totalPartyInvoiceAllocated.toFixed(2)}
+                                                        </td>
+                                                        <td colSpan={viewMode ? 1 : 2}></td>
+                                                    </tr>
+                                                </tfoot>
+                                            </table>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* SECTION 1B: ADDITIONAL LINE ENTRIES / BANK CHARGES / DEDUCTIONS (LIKE TALLY DR BANK CHARGES) */}
+                                <div className="p-4 bg-amber-50/40 dark:bg-amber-950/10 border border-amber-200/70 dark:border-amber-900/30 rounded-2xl space-y-3">
+                                    <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2">
+                                        <div className="flex items-center gap-2">
+                                            <Landmark className="w-4 h-4 text-amber-600" />
+                                            <div>
+                                                <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2">
+                                                    <span>Additional Line Entries (Bank Charges / Transfer Fees / Deductions)</span>
+                                                    <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/60 px-2 py-0.5 rounded-full border border-amber-300 dark:border-amber-800">
+                                                        Tally PBV Dr Charges
+                                                    </span>
+                                                </h3>
+                                                <p className="text-[11px] text-slate-500">
+                                                    Add direct ledger entries (e.g. Bank Charges 5730, SWIFT fees, discounts) directly inside this party voucher.
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {!viewMode && (
+                                            <button
+                                                type="button"
+                                                onClick={handleAddPartyCharge}
+                                                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all self-start sm:self-auto"
+                                            >
+                                                <Plus className="w-3.5 h-3.5" /> Add Bank Charges / Fee Line
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    {partyCharges.length === 0 ? (
+                                        <div className="p-3 bg-white dark:bg-zinc-800/80 rounded-xl border border-dashed border-amber-200 dark:border-amber-900/40 flex justify-between items-center text-xs text-slate-400">
+                                            <span>No bank charges or additional fee lines added yet.</span>
+                                            {!viewMode && (
+                                                <button
+                                                    type="button"
+                                                    onClick={handleAddPartyCharge}
+                                                    className="text-amber-600 hover:text-amber-700 font-bold flex items-center gap-1 hover:underline"
+                                                >
+                                                    <Plus className="w-3 h-3" /> + Add Bank Charges (e.g. QAR 138.24)
+                                                </button>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            {partyCharges.map((chg, cIdx) => (
+                                                <div
+                                                    key={chg.id || cIdx}
+                                                    className="grid grid-cols-1 sm:grid-cols-12 gap-2 p-2.5 bg-white dark:bg-zinc-800/90 rounded-xl border border-amber-200 dark:border-amber-900/40 items-center shadow-2xs"
+                                                >
+                                                    {/* Account Ledger (4 cols) */}
+                                                    <div className="sm:col-span-4">
+                                                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">
+                                                            Charge / Fee Ledger #{cIdx + 1} <span className="text-rose-500">*</span>
+                                                        </label>
+                                                        <SearchableSelect
+                                                            options={accountOptions}
+                                                            value={chg.account_id}
+                                                            onChange={val => handleUpdatePartyCharge(cIdx, 'account_id', val)}
+                                                            placeholder="Search Bank Charges (5730)..."
+                                                            disabled={viewMode}
+                                                            required
+                                                        />
+                                                    </div>
+
+                                                    {/* Cost Center (2 cols) */}
+                                                    <div className="sm:col-span-2">
+                                                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Cost Center</label>
+                                                        <SearchableSelect
+                                                            options={costCenterOptions}
+                                                            value={chg.cost_center_id || ''}
+                                                            onChange={val => handleUpdatePartyCharge(cIdx, 'cost_center_id', val)}
+                                                            placeholder="Optional CC..."
+                                                            disabled={viewMode}
+                                                        />
+                                                    </div>
+
+                                                    {/* DR / CR (1 col) */}
+                                                    <div className="sm:col-span-1">
+                                                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">DR / CR</label>
+                                                        <select
+                                                            value={chg.entry_type || 'debit'}
+                                                            onChange={e => handleUpdatePartyCharge(cIdx, 'entry_type', e.target.value as any)}
+                                                            disabled={viewMode}
+                                                            className="w-full p-2 bg-amber-50 dark:bg-zinc-700 border border-amber-300 dark:border-zinc-600 rounded-lg text-xs font-black text-amber-800 dark:text-amber-200"
+                                                        >
+                                                            <option value="debit">DR (+)</option>
+                                                            <option value="credit">CR (-)</option>
+                                                        </select>
+                                                    </div>
+
+                                                    {/* Notes / Memo (2 cols) */}
+                                                    <div className="sm:col-span-2">
+                                                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Line Memo</label>
+                                                        <input
+                                                            type="text"
+                                                            value={chg.notes || ''}
+                                                            onChange={e => handleUpdatePartyCharge(cIdx, 'notes', e.target.value)}
+                                                            disabled={viewMode}
+                                                            placeholder="e.g. QNB Swift transfer fee"
+                                                            className="w-full p-2 bg-slate-50 dark:bg-zinc-700/60 border border-slate-200 dark:border-zinc-600 rounded-lg text-xs font-medium"
+                                                        />
+                                                    </div>
+
+                                                    {/* Amount (2 cols) */}
+                                                    <div className="sm:col-span-2">
+                                                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5 text-right">
+                                                            Amount (QAR) <span className="text-rose-500">*</span>
+                                                        </label>
+                                                        <input
+                                                            type="number"
+                                                            step="0.01"
+                                                            required
+                                                            value={chg.amount}
+                                                            onChange={e => handleUpdatePartyCharge(cIdx, 'amount', e.target.value)}
+                                                            disabled={viewMode}
+                                                            placeholder="0.00"
+                                                            className="w-full p-2 bg-slate-50 dark:bg-zinc-700/60 border border-amber-300 dark:border-zinc-600 rounded-lg text-xs font-bold text-right text-amber-900 dark:text-amber-200"
+                                                        />
+                                                    </div>
+
+                                                    {/* Delete Button (1 col) */}
+                                                    <div className="sm:col-span-1 flex justify-center pt-2 sm:pt-0">
+                                                        {!viewMode && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleRemovePartyCharge(cIdx)}
+                                                                className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg transition-colors"
+                                                                title="Delete Charge Line"
+                                                            >
+                                                                <Trash2 className="w-4 h-4" />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            <div className="flex justify-end pt-1 pr-2">
+                                                <span className="text-xs font-bold text-amber-800 dark:text-amber-200">
+                                                    Total Additional Charges: <strong>QAR {totalPartyChargesAmount.toFixed(2)}</strong>
+                                                </span>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
                         {/* SECTION 2: BANK / PAYMENT SOURCES (MULTI-LINE) */}
                         <div className="space-y-3 p-4 bg-blue-50/40 dark:bg-blue-950/10 border border-blue-100 dark:border-blue-900/30 rounded-2xl">
                             <div className="flex justify-between items-center">
@@ -1429,6 +2178,16 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                                     </h3>
                                 </div>
                                 <div className="flex items-center gap-3">
+                                    {paymentCategory === 'partner' && totalPartyExpectedBank > 0 && Math.abs(partyBalanceDifference) > 0.001 && !viewMode && (
+                                        <button
+                                            type="button"
+                                            onClick={handleSyncPartyBankAmount}
+                                            className="px-2.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-800 dark:bg-amber-950/60 dark:hover:bg-amber-900/60 dark:text-amber-300 border border-amber-300 dark:border-amber-800 rounded-xl text-xs font-bold shadow-2xs flex items-center gap-1.5 transition-all"
+                                            title="Automatically set the bank payment amount to match allocated invoices + bank charges"
+                                        >
+                                            <RefreshCw className="w-3.5 h-3.5" /> Sync Bank Amount (QAR {totalPartyExpectedBank.toFixed(2)})
+                                        </button>
+                                    )}
                                     <span className="text-xs font-bold text-blue-700 dark:text-blue-300">
                                         Total Bank/Payment: <strong>QAR {totalBankAmount.toFixed(2)}</strong>
                                     </span>
@@ -1595,8 +2354,8 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                                         <h4 className="text-xs font-bold">
                                             {paymentCategory === 'partner' ? (
                                                 isBalanced
-                                                    ? `Party Voucher Ready: QAR ${totalBankAmount.toFixed(2)}`
-                                                    : 'Incomplete Party Voucher'
+                                                    ? `Party Voucher Ready: Total QAR ${totalBankAmount.toFixed(2)}`
+                                                    : `Unbalanced Party Voucher: Expected QAR ${totalPartyExpectedBank.toFixed(2)}, Bank is QAR ${totalBankAmount.toFixed(2)} (Diff: QAR ${partyBalanceDifference.toFixed(2)})`
                                             ) : (
                                                 isBalanced
                                                     ? `Voucher Balanced: Total QAR ${totalBankAmount.toFixed(2)}`
@@ -1615,7 +2374,9 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                                                     </span>
                                                 ) : (
                                                     <>
-                                                        {paymentType === 'inbound' ? 'Receipt from Customer' : 'Payment to Vendor'}: <strong>{partners.find(p => p.id === selectedPartner)?.name || 'Selected Partner'}</strong> | Total: <strong>QAR {totalBankAmount.toFixed(2)}</strong> (Settles to Accounts {paymentType === 'inbound' ? 'Receivable' : 'Payable'})
+                                                        {paymentType === 'inbound' ? 'Receipt from Customer' : 'Payment to Vendor'}: <strong>{partners.find(p => p.id === selectedPartner)?.name || 'Selected Partner'}</strong> | Total Bank: <strong>QAR {totalBankAmount.toFixed(2)}</strong>
+                                                        {totalPartyInvoiceAllocated > 0 && <> • Invoices: <strong>QAR {totalPartyInvoiceAllocated.toFixed(2)}</strong></>}
+                                                        {totalPartyChargesAmount > 0 && <> • Bank Charges: <strong>+QAR {totalPartyChargesAmount.toFixed(2)}</strong></>}
                                                     </>
                                                 )
                                             ) : (
@@ -1652,6 +2413,16 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                                         className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all"
                                     >
                                         Auto-Balance Difference
+                                    </button>
+                                )}
+
+                                {!viewMode && paymentCategory === 'partner' && !isBalanced && Math.abs(partyBalanceDifference) > 0.001 && totalPartyExpectedBank > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={handleSyncPartyBankAmount}
+                                        className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5"
+                                    >
+                                        <RefreshCw className="w-3.5 h-3.5" /> Sync Bank Amount
                                     </button>
                                 )}
                             </div>
