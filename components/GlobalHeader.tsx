@@ -75,7 +75,7 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({ currentView }) => {
     }, []);
 
     return (
-        <header className="h-16 flex items-center justify-between px-6 bg-white dark:bg-zinc-900 border-b border-zinc-100 dark:border-zinc-800 z-50">
+        <header className="h-16 flex items-center justify-between px-6 bg-white dark:bg-zinc-900 border-b border-zinc-100 dark:border-zinc-800 z-50 no-print">
             {/* Left: Logo and Company Name */}
             <div className="flex items-center gap-3">
                 {/* KAA Brand Logo - Always Permanent in Header */}

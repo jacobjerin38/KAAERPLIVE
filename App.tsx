@@ -191,14 +191,14 @@ const AppContent: React.FC = () => {
   ];
 
   return (
-    <div className="flex flex-col h-screen bg-slate-50 dark:bg-zinc-950 transition-colors duration-300 overflow-hidden font-sans">
+    <div className="flex flex-col h-screen bg-slate-50 dark:bg-zinc-950 transition-colors duration-300 overflow-hidden font-sans print:h-auto print:overflow-visible print:bg-white">
       {!initialDataLoaded && <FullScreenLoader />}
       <GlobalHeader currentView={getCurrentView()} />
-      <main className="flex-1 overflow-hidden relative">
+      <main className="flex-1 overflow-hidden relative print:h-auto print:overflow-visible print:static">
         {normalizedPath !== '/' && normalizedPath !== '/essp' && (
           <button
             onClick={() => navigate('/')}
-            className="absolute top-4 left-4 z-40 p-2 bg-white/50 dark:bg-black/50 backdrop-blur-md rounded-full hover:bg-white dark:hover:bg-zinc-800 transition-all shadow-sm border border-white/20"
+            className="absolute top-4 left-4 z-40 p-2 bg-white/50 dark:bg-black/50 backdrop-blur-md rounded-full hover:bg-white dark:hover:bg-zinc-800 transition-all shadow-sm border border-white/20 no-print"
           >
             <ArrowLeft className="w-5 h-5 text-slate-600 dark:text-slate-300" />
           </button>
@@ -206,7 +206,7 @@ const AppContent: React.FC = () => {
 
         {/* Keep-Alive Modules Container */}
         <div 
-          className="w-full h-full relative"
+          className="w-full h-full relative print:h-auto print:overflow-visible print:static"
           style={{ display: KEEPALIVE_MODULES.some(m => m.path === normalizedPath) ? 'block' : 'none' }}
         >
           {KEEPALIVE_MODULES.map((module) => {
@@ -219,7 +219,7 @@ const AppContent: React.FC = () => {
             return (
               <div
                 key={module.id}
-                className="absolute inset-0 w-full h-full overflow-auto"
+                className="absolute inset-0 w-full h-full overflow-auto print:static print:h-auto print:overflow-visible print:w-full print:p-0"
                 style={{ 
                   display: normalizedPath === module.path ? 'block' : 'none',
                   visibility: normalizedPath === module.path ? 'visible' : 'hidden' 

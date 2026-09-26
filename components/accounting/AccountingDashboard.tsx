@@ -100,7 +100,7 @@ export const AccountingDashboard: React.FC = () => {
     };
 
     return (
-        <div className="h-full flex flex-col bg-slate-50 dark:bg-zinc-950">
+        <div className="h-full flex flex-col bg-slate-50 dark:bg-zinc-950 print:h-auto print:overflow-visible print:bg-white">
             {/* Header */}
             <div className="px-4 py-3 md:px-6 md:py-4 border-b border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex flex-col lg:flex-row lg:justify-between lg:items-center gap-3 no-print">
                 <h1 className="text-lg md:text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
@@ -202,7 +202,7 @@ export const AccountingDashboard: React.FC = () => {
             )}
 
             {/* Content Area */}
-            <div className="flex-1 overflow-y-auto p-4 md:p-6">
+            <div className="flex-1 overflow-y-auto p-4 md:p-6 print:h-auto print:overflow-visible print:p-0">
                 {activeTab === 'overview' && <FinanceDashboard />}
 
                 {activeTab === 'customers' && subTab === 'invoices' && (

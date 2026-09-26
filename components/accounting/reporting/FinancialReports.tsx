@@ -431,7 +431,7 @@ export const FinancialReports: React.FC = () => {
     const contractCC = costCenters.filter(cc => cc.type === 'CONTRACT');
 
     return (
-        <div className="space-y-6 max-w-5xl mx-auto h-full flex flex-col p-4">
+        <div className="space-y-6 max-w-5xl mx-auto h-full flex flex-col p-4 print:h-auto print:max-w-full print:p-0 print:overflow-visible">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-zinc-900 p-4 rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-sm animate-page-enter">
                 <div className="flex flex-wrap gap-2 no-print">
                     {[

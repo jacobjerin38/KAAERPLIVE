@@ -821,9 +821,9 @@ export const DayBook: React.FC<DayBookProps> = ({ onNavigateToEntry }) => {
     };
 
     return (
-        <div className="space-y-4 max-w-[1400px] mx-auto pb-12 print:p-0 print:m-0 print:max-w-full">
+        <div className="space-y-4 max-w-[1400px] mx-auto pb-12 print:p-0 print:m-0 print:max-w-full print:h-auto print:overflow-visible print:space-y-0">
             {/* Printable Report Header (Hidden in UI, visible on Print) */}
-            <div className="hidden print:block mb-6 border-b-2 border-slate-800 pb-4 text-center">
+            <div className="hidden print:block mb-6 border-b-2 border-slate-800 pb-4 text-center print:break-inside-avoid">
                 <h1 className="text-2xl font-black tracking-wider uppercase text-slate-900">{companyInfo.name}</h1>
                 <h2 className="text-lg font-bold text-slate-700 uppercase tracking-wide mt-1">DAY BOOK (Transaction Register)</h2>
                 <p className="text-xs text-slate-500 mt-1">
@@ -1066,12 +1066,12 @@ export const DayBook: React.FC<DayBookProps> = ({ onNavigateToEntry }) => {
             )}
 
             {/* Main Day Book Table (Tally Replica) */}
-            <div className="bg-white dark:bg-zinc-900 rounded-xl border border-slate-200 dark:border-zinc-800 shadow-sm overflow-hidden print:border print:border-slate-800">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs border-collapse">
+            <div className="bg-white dark:bg-zinc-900 rounded-xl border border-slate-200 dark:border-zinc-800 shadow-sm overflow-hidden print:border print:border-slate-800 print:shadow-none print:rounded-none print:overflow-visible print:h-auto print:m-0">
+                <div className="overflow-x-auto print:overflow-visible print:h-auto">
+                    <table className="w-full text-left text-xs border-collapse print:text-[11px] print:w-full">
                         {/* Table Header: Exactly matching Tally Day Book */}
-                        <thead>
-                            <tr className="bg-slate-100 dark:bg-zinc-800/90 text-slate-700 dark:text-slate-200 border-b border-slate-200 dark:border-zinc-700 text-[11px] font-bold uppercase tracking-wider">
+                        <thead className="print:table-header-group">
+                            <tr className="bg-slate-100 dark:bg-zinc-800/90 text-slate-700 dark:text-slate-200 border-b border-slate-200 dark:border-zinc-700 text-[11px] font-bold uppercase tracking-wider print:bg-slate-200 print:text-black">
                                 <th className="py-2.5 px-3 w-10 text-center no-print">#</th>
                                 <th className="py-2.5 px-3 w-28 whitespace-nowrap">Date</th>
                                 <th className="py-2.5 px-3 min-w-[240px]">Particulars</th>
@@ -1084,7 +1084,7 @@ export const DayBook: React.FC<DayBookProps> = ({ onNavigateToEntry }) => {
                             </tr>
                         </thead>
 
-                        <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
+                        <tbody className="divide-y divide-slate-100 dark:divide-zinc-800 print:divide-slate-300">
                             {loading ? (
                                 <tr>
                                     <td colSpan={9} className="py-12 text-center text-slate-400">
@@ -1116,8 +1116,8 @@ export const DayBook: React.FC<DayBookProps> = ({ onNavigateToEntry }) => {
                                                 onClick={() => toggleVoucherExpansion(v.id)}
                                                 onDoubleClick={() => onNavigateToEntry?.(v)}
                                                 title={`Click to expand breakdown | Double-click to open in ${dest.fullLabel}`}
-                                                className={`cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-zinc-800/60 ${
-                                                    index % 2 === 1 ? 'bg-slate-50/40 dark:bg-zinc-900/40' : ''
+                                                className={`cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-zinc-800/60 print:break-inside-avoid print:text-black ${
+                                                    index % 2 === 1 ? 'bg-slate-50/40 dark:bg-zinc-900/40 print:bg-slate-50/50' : 'print:bg-white'
                                                 } ${isExpanded ? 'bg-violet-50/40 dark:bg-violet-950/20' : ''}`}
                                             >
                                                 {/* Expand Arrow / Index */}
@@ -1161,15 +1161,16 @@ export const DayBook: React.FC<DayBookProps> = ({ onNavigateToEntry }) => {
                                                     </span>
                                                 </td>
 
-                                                {/* Voucher No. (Ref) - Clickable Link */}
+                                                {/* Voucher No. (Ref) - Clickable Link on Screen, Plain Text on Print */}
                                                 <td className="py-2.5 px-3 font-mono font-bold whitespace-nowrap">
+                                                    <span className="hidden print:inline text-black">{v.reference}</span>
                                                     <button
                                                         type="button"
                                                         onClick={(e) => {
                                                             e.stopPropagation();
                                                             onNavigateToEntry?.(v);
                                                         }}
-                                                        className="inline-flex items-center gap-1 text-violet-700 dark:text-violet-300 hover:text-violet-900 dark:hover:text-white hover:underline group cursor-pointer"
+                                                        className="no-print inline-flex items-center gap-1 text-violet-700 dark:text-violet-300 hover:text-violet-900 dark:hover:text-white hover:underline group cursor-pointer"
                                                         title={`Click to open ${v.reference} in ${dest.fullLabel}`}
                                                     >
                                                         <span>{v.reference}</span>
@@ -1226,7 +1227,7 @@ export const DayBook: React.FC<DayBookProps> = ({ onNavigateToEntry }) => {
 
                                             {/* Detailed Breakdown Row (Tally Alt+F1 expansion) */}
                                             {isExpanded && (
-                                                <tr className="bg-slate-50/80 dark:bg-zinc-950/50 border-y border-dashed border-slate-200 dark:border-zinc-800">
+                                                <tr className="bg-slate-50/80 dark:bg-zinc-950/50 border-y border-dashed border-slate-200 dark:border-zinc-800 print:break-inside-avoid print:bg-slate-50/50 print:text-black">
                                                     <td colSpan={9} className="py-3 px-6">
                                                         <div className="pl-6 border-l-2 border-violet-400 dark:border-violet-600 space-y-3 py-1">
                                                             {/* Breakdown Header with Quick Action */}
@@ -1237,7 +1238,7 @@ export const DayBook: React.FC<DayBookProps> = ({ onNavigateToEntry }) => {
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => onNavigateToEntry?.(v)}
-                                                                    className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-lg bg-violet-600 hover:bg-violet-700 text-white transition shadow-xs cursor-pointer"
+                                                                    className="no-print inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-lg bg-violet-600 hover:bg-violet-700 text-white transition shadow-xs cursor-pointer"
                                                                 >
                                                                     <Edit className="w-3 h-3" />
                                                                     <span>Open in {dest.fullLabel} to Modify</span>
@@ -1304,8 +1305,8 @@ export const DayBook: React.FC<DayBookProps> = ({ onNavigateToEntry }) => {
 
                         {/* Sticky Totals Footer (Exact Tally Format) */}
                         {filteredAndSortedVouchers.length > 0 && (
-                            <tfoot>
-                                <tr className="bg-slate-100 dark:bg-zinc-800 text-slate-900 dark:text-white font-extrabold border-t-2 border-slate-300 dark:border-zinc-700 text-xs">
+                            <tfoot className="print:table-footer-group">
+                                <tr className="bg-slate-100 dark:bg-zinc-800 text-slate-900 dark:text-white font-extrabold border-t-2 border-slate-300 dark:border-zinc-700 text-xs print:bg-slate-200 print:text-black print:break-inside-avoid">
                                     <td className="py-3 px-3 text-center no-print"></td>
                                     <td className="py-3 px-3 uppercase tracking-wider">Total</td>
                                     <td className="py-3 px-3 text-slate-500 dark:text-slate-400 font-medium">
@@ -1329,7 +1330,7 @@ export const DayBook: React.FC<DayBookProps> = ({ onNavigateToEntry }) => {
             </div>
 
             {/* Printable Sign-off Block */}
-            <div className="hidden print:grid grid-cols-3 gap-8 mt-12 pt-8 border-t border-slate-300 text-center text-xs text-slate-600">
+            <div className="hidden print:grid grid-cols-3 gap-8 mt-12 pt-8 border-t border-slate-300 text-center text-xs text-slate-600 print:break-inside-avoid">
                 <div>
                     <div className="border-b border-slate-400 pb-12 mb-2"></div>
                     <p className="font-bold">Prepared By</p>
