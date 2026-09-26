@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
-import { Plus, Search, Filter, FileText, CheckCircle, Clock, ShoppingCart, Zap, Building2, Trash2, Scale, Copy, PlusCircle, AlertCircle, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Plus, Search, Filter, FileText, CheckCircle, Clock, ShoppingCart, Zap, Building2, Trash2, Scale, Copy, PlusCircle, AlertCircle, ArrowUpDown, ArrowUp, ArrowDown, BookOpen, Check } from 'lucide-react';
 import { Modal } from '../../ui/Modal';
 import { PrintButton } from '../../ui/PrintButton';
 import { PeriodFilter, PeriodPreset, getDatesForPreset } from '../common/PeriodFilter';
@@ -119,6 +119,13 @@ export const Bills: React.FC<BillsProps> = ({ initialSearch, initialId, onClearI
     const [editMode, setEditMode] = useState(false);
     const [viewMode, setViewMode] = useState(false);
     const [editingBillId, setEditingBillId] = useState<string | null>(null);
+
+    // DR / CR Preview and Inspection State
+    const [isDrCrModalOpen, setIsDrCrModalOpen] = useState(false);
+    const [drCrModalBill, setDrCrModalBill] = useState<any>(null);
+    const [drCrLines, setDrCrLines] = useState<any[]>([]);
+    const [isDrCrModalLoading, setIsDrCrModalLoading] = useState(false);
+    const [showDrCrPreview, setShowDrCrPreview] = useState(true);
 
     // Sorting State (default: sort by PEC purchase reference ascending for PI.2026.69 onwards)
     const [sortBy, setSortBy] = useState<'reference' | 'supplier_inv' | 'date' | 'invoice_date' | 'total'>('reference');
@@ -344,7 +351,7 @@ export const Bills: React.FC<BillsProps> = ({ initialSearch, initialId, onClearI
                 setCreditPeriod('30');
             }
 
-            // Fetch lines for this bill
+            // Fetch lines for this bill with related account info
             const { data, error } = await supabase
                 .from('accounting_journal_lines')
                 .select('*')
@@ -356,8 +363,14 @@ export const Bills: React.FC<BillsProps> = ({ initialSearch, initialId, onClearI
                 return;
             }
 
-            // Filter out the balancing payable line (debit > 0)
-            const itemLines = (data as any[] || []).filter(l => Number(l.debit) > 0);
+            // Exclude the balancing AP line: It has no item_id, and has null or 0 quantity/unit_price,
+            // or its name matches the voucher reference / 'Invoice/Bill' / 'Vendor Bill' and it has no item_id
+            const itemLines = (data as any[] || []).filter(l => {
+                const isBalancing = (!l.item_id && (l.unit_price == null || Number(l.unit_price) === 0) && (l.quantity == null || Number(l.quantity) === 0)) ||
+                                    (l.name === 'Invoice/Bill' && !l.item_id) ||
+                                    (l.name === (bill.reference || '').trim() && !l.item_id && (l.unit_price == null || Number(l.unit_price) === 0));
+                return !isBalancing;
+            });
 
             const mappedLines: BillLine[] = itemLines.map((l: any) => {
                 const isItem = !!l.item_id;
@@ -376,16 +389,31 @@ export const Bills: React.FC<BillsProps> = ({ initialSearch, initialId, onClearI
                 }
                 const matchedLedger = purchaseLedgers.find(pl => pl.account_id === l.account_id);
 
+                const qty = Number(l.quantity || 1);
+                let unitPrice = Number(l.unit_price);
+                if (unitPrice === 0 || isNaN(unitPrice)) {
+                    if (Number(l.debit) > 0) {
+                        unitPrice = Number(l.debit) / qty;
+                    } else if (Number(l.credit) > 0) {
+                        unitPrice = -(Number(l.credit) / qty);
+                    } else if (Number(l.debit) < 0) {
+                        unitPrice = Number(l.debit) / qty;
+                    }
+                } else if (Number(l.credit) > 0 && Number(l.debit) === 0) {
+                    // Credit line on a vendor bill represents a deduction/negative price
+                    unitPrice = -Math.abs(unitPrice);
+                }
+
                 return {
                     line_type,
                     item_id: l.item_id || '',
                     account_id: l.account_id || '',
-                    purchase_ledger_id: matchedLedger ? matchedLedger.id : '',
+                    purchase_ledger_id: matchedLedger ? matchedLedger.id : (isItem && l.account_id ? `coa:${l.account_id}` : ''),
                     cost_center_id: l.cost_center_id || '',
                     project_cost_center_id: l.project_cost_center_id || '',
                     contract_cost_center_id: l.contract_cost_center_id || '',
-                    quantity: Number(l.quantity || 1),
-                    unit_price: Number(l.unit_price || (l.quantity ? Number(l.debit) / Number(l.quantity) : Number(l.debit)) || 0),
+                    quantity: qty,
+                    unit_price: unitPrice,
                     description: l.name || ''
                 };
             });
@@ -520,6 +548,156 @@ export const Bills: React.FC<BillsProps> = ({ initialSearch, initialId, onClearI
 
         newLines[index] = currentLine;
         setLines(newLines);
+    };
+
+    // Live Double-Entry (DR / CR) Preview Generator for the Bill Lines
+    const liveJournalPreview = useMemo(() => {
+        if (!lines || lines.length === 0) return { lines: [], totalDebit: 0, totalCredit: 0, isBalanced: true, netPayable: 0 };
+
+        const partner = partners.find(p => p.id === selectedPartner);
+        const payableAccountId = partner?.property_account_payable_id;
+        const payableAccount = accounts.find(a => a.id === payableAccountId) || accounts.find(a => a.code === '2010' || a.code === '2001') || { code: '2010', name: 'Sundry Creditors (Payable)' };
+
+        const previewLines: Array<{
+            accountCode: string;
+            accountName: string;
+            accountType: string;
+            narration: string;
+            projectCC?: string;
+            debit: number;
+            credit: number;
+            isPayable?: boolean;
+            isDeduction?: boolean;
+        }> = [];
+
+        let totalDebit = 0;
+        let totalCredit = 0;
+        let netTotal = 0;
+
+        lines.forEach((line, idx) => {
+            let acc: any = null;
+            let lineName = line.description || '';
+
+            if (line.line_type === 'expense' || line.line_type === 'asset' || line.line_type === 'liability') {
+                acc = accounts.find(a => a.id === line.account_id);
+            } else if (line.line_type === 'item') {
+                if (line.purchase_ledger_id?.startsWith('coa:')) {
+                    const coaId = line.purchase_ledger_id.replace('coa:', '');
+                    acc = accounts.find(a => a.id === coaId);
+                } else if (line.purchase_ledger_id) {
+                    const pl = purchaseLedgers.find(p => p.id === line.purchase_ledger_id);
+                    acc = accounts.find(a => a.id === pl?.account_id);
+                }
+                if (!acc && line.item_id) {
+                    const it = items.find(i => i.id === line.item_id);
+                    if (it?.expense_account_id) {
+                        acc = accounts.find(a => a.id === it.expense_account_id);
+                    }
+                    if (!lineName && it) lineName = it.name;
+                }
+                if (!acc) {
+                    acc = accounts.find(a => a.code === '5010') || accounts.find(a => a.type === 'Expense');
+                }
+            }
+
+            const amt = Number(line.quantity || 1) * Number(line.unit_price || 0);
+            netTotal += amt;
+
+            const proj = costCenters.find(c => c.id === line.project_cost_center_id);
+
+            if (amt >= 0) {
+                previewLines.push({
+                    accountCode: acc?.code || '5010',
+                    accountName: acc?.name || (line.line_type === 'item' ? 'Purchase Ledger' : 'Expense / Asset Account'),
+                    accountType: acc?.type || line.line_type,
+                    narration: lineName || `Line #${idx + 1}`,
+                    projectCC: proj ? `${proj.code} - ${proj.name}` : undefined,
+                    debit: amt,
+                    credit: 0,
+                    isDeduction: false
+                });
+                totalDebit += amt;
+            } else {
+                // Negative amount on Vendor Bill = Credit to account (deduction / reversal)
+                const absAmt = Math.abs(amt);
+                previewLines.push({
+                    accountCode: acc?.code || '5130',
+                    accountName: acc?.name || 'Expense / Deductions Account',
+                    accountType: acc?.type || line.line_type,
+                    narration: lineName || `Line #${idx + 1} (Deduction)`,
+                    projectCC: proj ? `${proj.code} - ${proj.name}` : undefined,
+                    debit: 0,
+                    credit: absAmt,
+                    isDeduction: true
+                });
+                totalCredit += absAmt;
+            }
+        });
+
+        // Balancing line for Vendor Accounts Payable
+        if (netTotal >= 0) {
+            previewLines.push({
+                accountCode: payableAccount.code || '2010',
+                accountName: `${payableAccount.name} ${partner ? `(${partner.name})` : ''}`,
+                accountType: 'Liability',
+                narration: billReference ? `${billReference} - Accounts Payable` : 'Accounts Payable',
+                debit: 0,
+                credit: netTotal,
+                isPayable: true
+            });
+            totalCredit += netTotal;
+        } else {
+            const absNet = Math.abs(netTotal);
+            previewLines.push({
+                accountCode: payableAccount.code || '2010',
+                accountName: `${payableAccount.name} ${partner ? `(${partner.name})` : ''}`,
+                accountType: 'Liability',
+                narration: billReference ? `${billReference} - Vendor Debit Balance` : 'Accounts Payable (Debit)',
+                debit: absNet,
+                credit: 0,
+                isPayable: true
+            });
+            totalDebit += absNet;
+        }
+
+        const isBalanced = Math.abs(totalDebit - totalCredit) < 0.01;
+
+        return {
+            lines: previewLines,
+            totalDebit,
+            totalCredit,
+            isBalanced,
+            netPayable: netTotal
+        };
+    }, [lines, accounts, purchaseLedgers, items, costCenters, selectedPartner, partners, billReference]);
+
+    const handleOpenDrCrModal = async (bill: any) => {
+        try {
+            setDrCrModalBill(bill);
+            setIsDrCrModalLoading(true);
+            setIsDrCrModalOpen(true);
+
+            const { data, error } = await supabase
+                .from('accounting_journal_lines')
+                .select(`
+                    *,
+                    account:accounting_chart_of_accounts(id, code, name, type, subtype),
+                    partner:accounting_partners(id, name, code, reference_code),
+                    project_cc:accounting_cost_centers!project_cost_center_id(id, code, name),
+                    contract_cc:accounting_cost_centers!contract_cost_center_id(id, code, name),
+                    cost_center:accounting_cost_centers!cost_center_id(id, code, name)
+                `)
+                .eq('entry_id', bill.id)
+                .order('debit', { ascending: false });
+
+            if (error) throw error;
+            setDrCrLines(data || []);
+        } catch (err: any) {
+            console.error('Error fetching journal lines for bill:', err);
+            alert('Failed to load DR/CR journal lines: ' + (err.message || ''));
+        } finally {
+            setIsDrCrModalLoading(false);
+        }
     };
 
     const handleCreateBill = async (e: React.FormEvent) => {
@@ -1032,6 +1210,14 @@ export const Bills: React.FC<BillsProps> = ({ initialSearch, initialId, onClearI
                                             className="px-2.5 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 rounded-lg transition-colors"
                                         >
                                             View
+                                        </button>
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); handleOpenDrCrModal(bill); }}
+                                            className="px-2 py-1 text-xs font-semibold text-emerald-700 bg-emerald-50 dark:bg-emerald-950/30 dark:text-emerald-400 hover:bg-emerald-100 rounded-lg transition-colors flex items-center gap-1"
+                                            title="View Double Entry (DR/CR) Journal Lines"
+                                        >
+                                            <Scale className="w-3 h-3" />
+                                            DR/CR
                                         </button>
                                         {bill.state === 'Draft' && (
                                             <>
@@ -1622,11 +1808,10 @@ export const Bills: React.FC<BillsProps> = ({ initialSearch, initialId, onClearI
                                                     <input
                                                         type="number"
                                                         step="0.01"
-                                                        min="0"
                                                         value={line.unit_price}
                                                         onChange={e => handleLineChange(idx, 'unit_price', e.target.value)}
                                                         disabled={viewMode}
-                                                        className="w-full pl-11 p-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm font-semibold focus:outline-none"
+                                                        className={`w-full pl-11 p-2 bg-white dark:bg-zinc-900 border ${Number(line.unit_price) < 0 ? 'border-amber-400 dark:border-amber-600 text-amber-700 dark:text-amber-400 font-bold' : 'border-slate-200 dark:border-zinc-700'} rounded-lg text-sm font-semibold focus:outline-none`}
                                                     />
                                                 </div>
                                             </div>
@@ -1723,6 +1908,104 @@ export const Bills: React.FC<BillsProps> = ({ initialSearch, initialId, onClearI
                                 </div>
                             )}
 
+                            {/* Live Double-Entry (DR / CR) Journal Entry Preview */}
+                            <div className="rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50/70 dark:bg-zinc-900/50 p-4 space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <Scale className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                                        <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                                            Double-Entry Accounting (DR / CR) Setup & Preview
+                                        </h4>
+                                        <span className="text-[10px] text-slate-500 font-medium hidden sm:inline">
+                                            (Auto-configured general ledger entries)
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        {liveJournalPreview.isBalanced ? (
+                                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 flex items-center gap-1">
+                                                <CheckCircle className="w-3 h-3" /> Balanced (DR = CR)
+                                            </span>
+                                        ) : (
+                                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 flex items-center gap-1">
+                                                <AlertCircle className="w-3 h-3" /> Unbalanced Entry
+                                            </span>
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowDrCrPreview(!showDrCrPreview)}
+                                            className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-semibold"
+                                        >
+                                            {showDrCrPreview ? 'Hide Details' : 'Show Details'}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {showDrCrPreview && (
+                                    <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm">
+                                        <table className="w-full text-xs text-left">
+                                            <thead>
+                                                <tr className="bg-slate-100 dark:bg-zinc-800/80 text-slate-600 dark:text-slate-300 font-bold border-b border-slate-200 dark:border-zinc-800">
+                                                    <th className="px-3 py-2">Account / Ledger</th>
+                                                    <th className="px-3 py-2">Narration / Description</th>
+                                                    <th className="px-3 py-2">Project / Cost Center</th>
+                                                    <th className="px-3 py-2 text-right">Debit (DR) QAR</th>
+                                                    <th className="px-3 py-2 text-right">Credit (CR) QAR</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100 dark:divide-zinc-800/60 font-mono">
+                                                {liveJournalPreview.lines.map((jl, jIdx) => (
+                                                    <tr key={jIdx} className={jl.isPayable ? 'bg-slate-50/70 dark:bg-zinc-800/40 font-semibold' : ''}>
+                                                        <td className="px-3 py-2 font-sans">
+                                                            <span className="font-mono font-bold text-slate-700 dark:text-slate-300 mr-1.5">
+                                                                [{jl.accountCode}]
+                                                            </span>
+                                                            <span className="text-slate-800 dark:text-slate-200">
+                                                                {jl.accountName}
+                                                            </span>
+                                                            {jl.isDeduction && (
+                                                                <span className="ml-1.5 px-1.5 py-0.5 text-[9px] font-sans font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300 rounded">
+                                                                    Deduction / Credit
+                                                                </span>
+                                                            )}
+                                                            {jl.isPayable && (
+                                                                <span className="ml-1.5 px-1.5 py-0.5 text-[9px] font-sans font-bold bg-indigo-100 text-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-300 rounded">
+                                                                    Vendor AP
+                                                                </span>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-3 py-2 font-sans text-slate-600 dark:text-slate-400">
+                                                            {jl.narration}
+                                                        </td>
+                                                        <td className="px-3 py-2 font-sans text-slate-500 text-[11px]">
+                                                            {jl.projectCC || '—'}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-right font-bold text-slate-900 dark:text-white">
+                                                            {jl.debit > 0 ? jl.debit.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-right font-bold text-slate-900 dark:text-white">
+                                                            {jl.credit > 0 ? jl.credit.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                            <tfoot>
+                                                <tr className="bg-slate-100/80 dark:bg-zinc-800 font-bold border-t border-slate-200 dark:border-zinc-700">
+                                                    <td colSpan={3} className="px-3 py-2 text-right font-sans uppercase tracking-wider text-[11px] text-slate-600 dark:text-slate-300">
+                                                        Total DR / CR:
+                                                    </td>
+                                                    <td className="px-3 py-2 text-right text-emerald-700 dark:text-emerald-400 font-bold font-mono">
+                                                        QAR {liveJournalPreview.totalDebit.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                    </td>
+                                                    <td className="px-3 py-2 text-right text-emerald-700 dark:text-emerald-400 font-bold font-mono">
+                                                        QAR {liveJournalPreview.totalCredit.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                    </td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
+
                             {/* Total Bar */}
                             <div className="flex justify-between items-center bg-slate-50 dark:bg-zinc-800/40 p-4 rounded-xl border border-slate-100 dark:border-zinc-800">
                                 <div className="text-xs text-slate-500">
@@ -1747,6 +2030,138 @@ export const Bills: React.FC<BillsProps> = ({ initialSearch, initialId, onClearI
                             </button>
                         </div>
                     </form>
+                </Modal>
+            )}
+
+            {/* Dedicated Journal Entry (DR / CR) Inspection Modal */}
+            {isDrCrModalOpen && drCrModalBill && (
+                <Modal
+                    isOpen={isDrCrModalOpen}
+                    onClose={() => { setIsDrCrModalOpen(false); setDrCrModalBill(null); setDrCrLines([]); }}
+                    title={`Accounting Entry (DR / CR) — ${drCrModalBill.reference || 'Bill'}`}
+                    maxWidth="max-w-4xl"
+                >
+                    <div className="space-y-5">
+                        {/* Header Details */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 bg-slate-50 dark:bg-zinc-800/40 rounded-xl border border-slate-200 dark:border-zinc-700 text-xs">
+                            <div>
+                                <span className="text-slate-400 block font-semibold">Vendor</span>
+                                <span className="font-bold text-slate-800 dark:text-slate-100">
+                                    {drCrModalBill.partner?.name || '—'}
+                                </span>
+                            </div>
+                            <div>
+                                <span className="text-slate-400 block font-semibold">Supplier Inv #</span>
+                                <span className="font-mono font-bold text-slate-800 dark:text-slate-100">
+                                    {drCrModalBill.supplier_invoice_number || '—'}
+                                </span>
+                            </div>
+                            <div>
+                                <span className="text-slate-400 block font-semibold">Bill / Voucher Date</span>
+                                <span className="font-mono font-semibold text-slate-700 dark:text-slate-200">
+                                    {drCrModalBill.invoice_date || drCrModalBill.date}
+                                </span>
+                            </div>
+                            <div>
+                                <span className="text-slate-400 block font-semibold">Status</span>
+                                <span className={`inline-block px-2 py-0.5 rounded-full font-bold text-[10px] ${
+                                    drCrModalBill.state === 'Posted' 
+                                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400' 
+                                        : 'bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-slate-400'
+                                }`}>
+                                    {drCrModalBill.state}
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Journal Lines Table */}
+                        {isDrCrModalLoading ? (
+                            <div className="p-12 text-center text-slate-400">Loading journal lines...</div>
+                        ) : drCrLines.length === 0 ? (
+                            <div className="p-8 text-center text-slate-400 bg-slate-50 dark:bg-zinc-800/30 rounded-xl border border-dashed border-slate-200 dark:border-zinc-700">
+                                No journal lines recorded for this bill.
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm">
+                                <table className="w-full text-xs text-left">
+                                    <thead>
+                                        <tr className="bg-slate-100 dark:bg-zinc-800/80 text-slate-600 dark:text-slate-300 font-bold border-b border-slate-200 dark:border-zinc-800">
+                                            <th className="px-4 py-3">Account Code & Name</th>
+                                            <th className="px-4 py-3">Narration / Description</th>
+                                            <th className="px-4 py-3">Project / Cost Center</th>
+                                            <th className="px-4 py-3 text-right">Debit (DR) QAR</th>
+                                            <th className="px-4 py-3 text-right">Credit (CR) QAR</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 dark:divide-zinc-800/60 font-mono">
+                                        {drCrLines.map((jl: any) => {
+                                            const isPayable = Number(jl.credit) > 0 && !jl.item_id && (!jl.quantity || Number(jl.quantity) === 0);
+                                            const isDeduction = Number(jl.credit) > 0 && (jl.item_id || (jl.quantity && Number(jl.quantity) > 0) || jl.name?.includes('Customs') || jl.name?.includes('Deduction'));
+                                            const ccName = jl.project_cc?.name || jl.contract_cc?.name || jl.cost_center?.name;
+
+                                            return (
+                                                <tr key={jl.id} className={isPayable ? 'bg-slate-50/70 dark:bg-zinc-800/40 font-semibold' : ''}>
+                                                    <td className="px-4 py-3 font-sans">
+                                                        <span className="font-mono font-bold text-slate-700 dark:text-slate-300 mr-1.5">
+                                                            [{jl.account?.code || '—'}]
+                                                        </span>
+                                                        <span className="text-slate-800 dark:text-slate-200">
+                                                            {jl.account?.name || '—'}
+                                                        </span>
+                                                        {isDeduction && (
+                                                            <span className="ml-1.5 px-1.5 py-0.5 text-[9px] font-sans font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300 rounded">
+                                                                Deduction / Credit
+                                                            </span>
+                                                        )}
+                                                        {isPayable && (
+                                                            <span className="ml-1.5 px-1.5 py-0.5 text-[9px] font-sans font-bold bg-indigo-100 text-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-300 rounded">
+                                                                Vendor AP
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-4 py-3 font-sans text-slate-600 dark:text-slate-400">
+                                                        {jl.name}
+                                                    </td>
+                                                    <td className="px-4 py-3 font-sans text-slate-500 text-[11px]">
+                                                        {ccName ? `${jl.project_cc?.code || ''} ${ccName}`.trim() : '—'}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right font-bold text-slate-900 dark:text-white">
+                                                        {Number(jl.debit) > 0 ? Number(jl.debit).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right font-bold text-slate-900 dark:text-white">
+                                                        {Number(jl.credit) > 0 ? Number(jl.credit).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                    <tfoot>
+                                        <tr className="bg-slate-100/80 dark:bg-zinc-800 font-bold border-t border-slate-200 dark:border-zinc-700">
+                                            <td colSpan={3} className="px-4 py-3 text-right font-sans uppercase tracking-wider text-[11px] text-slate-600 dark:text-slate-300">
+                                                Total Debits & Credits:
+                                            </td>
+                                            <td className="px-4 py-3 text-right text-emerald-700 dark:text-emerald-400 font-bold font-mono">
+                                                QAR {drCrLines.reduce((acc: number, l: any) => acc + Number(l.debit || 0), 0).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            </td>
+                                            <td className="px-4 py-3 text-right text-emerald-700 dark:text-emerald-400 font-bold font-mono">
+                                                QAR {drCrLines.reduce((acc: number, l: any) => acc + Number(l.credit || 0), 0).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        )}
+
+                        <div className="flex justify-end pt-3 border-t border-slate-200 dark:border-zinc-700">
+                            <button
+                                type="button"
+                                onClick={() => { setIsDrCrModalOpen(false); setDrCrModalBill(null); setDrCrLines([]); }}
+                                className="px-5 py-2 bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 text-slate-700 dark:text-slate-200 rounded-xl text-sm font-semibold transition-colors"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
                 </Modal>
             )}
         </div>
