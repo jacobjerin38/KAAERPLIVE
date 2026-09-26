@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
-import { Filter, Search, Printer, FileText } from 'lucide-react';
+import { FileText } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { PrintButton } from '../../ui/PrintButton';
+import { PeriodFilter, PeriodPreset, getDatesForPreset } from '../common/PeriodFilter';
 
 export const CashBook: React.FC = () => {
     const { currentCompanyId } = useAuth();
@@ -10,8 +11,9 @@ export const CashBook: React.FC = () => {
     const [records, setRecords] = useState<any[]>([]);
     
     // Filters
-    const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]);
-    const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+    const [preset, setPreset] = useState<PeriodPreset>('this_month');
+    const [startDate, setStartDate] = useState<string>(() => getDatesForPreset('this_month').startDate);
+    const [endDate, setEndDate] = useState<string>(() => getDatesForPreset('this_month').endDate);
 
     useEffect(() => {
         if (currentCompanyId) {
@@ -38,22 +40,27 @@ export const CashBook: React.FC = () => {
 
     return (
         <div className="space-y-6 print:space-y-4">
-            <div className="flex justify-between items-center bg-white dark:bg-zinc-900 p-4 rounded-xl border border-slate-200 dark:border-zinc-800 shadow-sm">
-                <div className="flex items-center gap-2">
-                    <FileText className="w-5 h-5 text-emerald-600" />
-                    <h2 className="text-lg font-bold text-slate-800 dark:text-white">Cash Book</h2>
-                </div>
-
-                <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2 no-print">
-                        <span className="text-xs font-bold text-slate-400 uppercase">From:</span>
-                        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="p-2 border rounded-lg text-sm bg-slate-50 dark:bg-zinc-800 dark:border-zinc-700" />
-                    </div>
-                    <div className="flex items-center gap-2 no-print">
-                        <span className="text-xs font-bold text-slate-400 uppercase">To:</span>
-                        <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="p-2 border rounded-lg text-sm bg-slate-50 dark:bg-zinc-800 dark:border-zinc-700" />
+            <div className="bg-white dark:bg-zinc-900 p-4 rounded-xl border border-slate-200 dark:border-zinc-800 shadow-sm space-y-3">
+                <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                        <FileText className="w-5 h-5 text-emerald-600" />
+                        <h2 className="text-lg font-bold text-slate-800 dark:text-white">Cash Book</h2>
                     </div>
                     <PrintButton />
+                </div>
+
+                <div className="pt-2 border-t border-slate-100 dark:border-zinc-800 no-print">
+                    <PeriodFilter
+                        preset={preset}
+                        startDate={startDate}
+                        endDate={endDate}
+                        showDateInputs={true}
+                        onPeriodChange={(newStart, newEnd, newPreset) => {
+                            setStartDate(newStart);
+                            setEndDate(newEnd);
+                            setPreset(newPreset);
+                        }}
+                    />
                 </div>
             </div>
 
@@ -73,7 +80,16 @@ export const CashBook: React.FC = () => {
                         {loading ? (
                             <tr><td colSpan={6} className="px-6 py-12 text-center text-slate-400">Loading Cash Book...</td></tr>
                         ) : records.length === 0 ? (
-                            <tr><td colSpan={6} className="px-6 py-12 text-center text-slate-400 italic">No cash transactions in this period.</td></tr>
+                            <tr>
+                                <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
+                                    <p className="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-1">No cash transactions in this period</p>
+                                    <p className="text-xs text-slate-400">
+                                        No records match in the selected period ({startDate} to {endDate}). Try selecting{' '}
+                                        <button type="button" onClick={() => { const { startDate: s, endDate: e } = getDatesForPreset('all'); setStartDate(s); setEndDate(e); setPreset('all'); }} className="text-violet-600 font-bold hover:underline cursor-pointer">All Dates</button> or{' '}
+                                        <button type="button" onClick={() => { const { startDate: s, endDate: e } = getDatesForPreset('august_2026'); setStartDate(s); setEndDate(e); setPreset('august_2026'); }} className="text-violet-600 font-bold hover:underline cursor-pointer">August 2026</button>.
+                                    </p>
+                                </td>
+                            </tr>
                         ) : records.map((row, idx) => (
                             <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
                                 <td className="px-6 py-4 text-slate-500 whitespace-nowrap">{row.date}</td>

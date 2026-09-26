@@ -5,6 +5,7 @@ import { Calendar, Filter, FileText, TrendingUp, TrendingDown, ChevronDown, Chev
 import { QatarVATReport } from './QatarVATReport';
 import { PrintButton } from '../../ui/PrintButton';
 import { formatLocalDate } from '../../../lib/dateFormat';
+import { PeriodFilter, PeriodPreset, getDatesForPreset } from '../common/PeriodFilter';
 
 
 export const FinancialReports: React.FC = () => {
@@ -25,8 +26,9 @@ export const FinancialReports: React.FC = () => {
     const [selectedContractCC, setSelectedContractCC] = useState('');
 
     // Filters
-    const [startDate, setStartDate] = useState(formatLocalDate(new Date(new Date().getFullYear(), 0, 1)));
-    const [endDate, setEndDate] = useState(formatLocalDate(new Date()));
+    const [preset, setPreset] = useState<PeriodPreset>('this_month');
+    const [startDate, setStartDate] = useState<string>(() => getDatesForPreset('this_month').startDate);
+    const [endDate, setEndDate] = useState<string>(() => getDatesForPreset('this_month').endDate);
 
 
     useEffect(() => {
@@ -207,7 +209,7 @@ export const FinancialReports: React.FC = () => {
                     ))}
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2 w-full md:w-auto no-print">
+                <div className="flex items-center gap-3 w-full md:w-auto justify-end no-print">
                     {activeReport === 'aging' && (
                         <select 
                             value={partnerType} 
@@ -218,13 +220,23 @@ export const FinancialReports: React.FC = () => {
                             <option value="Vendor">Payables</option>
                         </select>
                     )}
-                    {(activeReport === 'pl' || activeReport === 'vat' || activeReport === 'sl' || activeReport === 'pl_report' || activeReport === 'ea') && (
-                        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="p-2 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs focus:ring-2 ring-indigo-500/20 outline-none" />
-                    )}
-                    {(activeReport === 'tb' || activeReport === 'bs') ? null : <span className="text-slate-400 hidden md:block">→</span>}
-                    <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="p-2 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs focus:ring-2 ring-indigo-500/20 outline-none" />
+                    <PrintButton className="w-full md:w-auto justify-center" />
                 </div>
-                <PrintButton className="w-full md:w-auto justify-center" />
+            </div>
+
+            {/* Period Filter Card */}
+            <div className="bg-white dark:bg-zinc-900 p-4 rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-sm space-y-3 no-print">
+                <PeriodFilter
+                    preset={preset}
+                    startDate={startDate}
+                    endDate={endDate}
+                    showDateInputs={true}
+                    onPeriodChange={(newStart, newEnd, newPreset) => {
+                        setStartDate(newStart);
+                        setEndDate(newEnd);
+                        setPreset(newPreset);
+                    }}
+                />
             </div>
 
             {/* Cost Center Filters for Profit & Loss */}
@@ -280,9 +292,14 @@ export const FinancialReports: React.FC = () => {
                         formatCurrency={formatCurrency} 
                     />
                 ) : !reportData ? (
-                    <div className="flex flex-col justify-center items-center h-full text-slate-400">
+                    <div className="flex flex-col justify-center items-center h-full text-slate-400 py-12">
                          <FileText className="w-16 h-16 mb-4 opacity-10" />
-                         <p className="font-medium">No data found for the selected criteria.</p>
+                         <p className="font-semibold text-slate-600 dark:text-slate-300 mb-1">No data found for the selected period</p>
+                         <p className="text-xs text-slate-400">
+                             Selected range: {startDate} to {endDate}. Try selecting{' '}
+                             <button type="button" onClick={() => { const { startDate: s, endDate: e } = getDatesForPreset('all'); setStartDate(s); setEndDate(e); setPreset('all'); }} className="text-violet-600 font-bold hover:underline cursor-pointer">All Dates</button> or{' '}
+                             <button type="button" onClick={() => { const { startDate: s, endDate: e } = getDatesForPreset('august_2026'); setStartDate(s); setEndDate(e); setPreset('august_2026'); }} className="text-violet-600 font-bold hover:underline cursor-pointer">August 2026</button>.
+                         </p>
                     </div>
                 ) : (
                     <div className="max-w-4xl mx-auto space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">

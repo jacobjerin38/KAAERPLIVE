@@ -5,12 +5,14 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { useAuth } from '../../../contexts/AuthContext';
 import { PrintButton } from '../../ui/PrintButton';
 import { formatLocalDate } from '../../../lib/dateFormat';
+import { PeriodFilter, PeriodPreset, getDatesForPreset } from '../common/PeriodFilter';
 
 
 export const DailySalesReport: React.FC = () => {
     const { currentCompanyId } = useAuth();
-    const [startDate, setStartDate] = useState(formatLocalDate(new Date(new Date().getFullYear(), new Date().getMonth(), 1)));
-    const [endDate, setEndDate] = useState(formatLocalDate(new Date()));
+    const [preset, setPreset] = useState<PeriodPreset>('this_month');
+    const [startDate, setStartDate] = useState<string>(() => getDatesForPreset('this_month').startDate);
+    const [endDate, setEndDate] = useState<string>(() => getDatesForPreset('this_month').endDate);
     const [data, setData] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -60,9 +62,18 @@ export const DailySalesReport: React.FC = () => {
                 <PrintButton />
             </div>
 
-            <div className="flex items-end gap-4 bg-white dark:bg-zinc-900 p-4 rounded-xl border border-slate-200 dark:border-zinc-800 no-print">
-                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">From</label><input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm" /></div>
-                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">To</label><input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm" /></div>
+            <div className="bg-white dark:bg-zinc-900 p-4 rounded-xl border border-slate-200 dark:border-zinc-800 shadow-sm space-y-3 no-print">
+                <PeriodFilter
+                    preset={preset}
+                    startDate={startDate}
+                    endDate={endDate}
+                    showDateInputs={true}
+                    onPeriodChange={(newStart, newEnd, newPreset) => {
+                        setStartDate(newStart);
+                        setEndDate(newEnd);
+                        setPreset(newPreset);
+                    }}
+                />
             </div>
 
             {/* KPI Summary */}
@@ -104,7 +115,18 @@ export const DailySalesReport: React.FC = () => {
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
                         {loading ? <tr><td colSpan={4} className="px-5 py-12 text-center text-slate-400">Loading...</td></tr> :
-                         data.length === 0 ? <tr><td colSpan={4} className="px-5 py-12 text-center text-slate-400 italic">No sales data in this period.</td></tr> :
+                         data.length === 0 ? (
+                            <tr>
+                                <td colSpan={4} className="px-5 py-12 text-center text-slate-400">
+                                    <p className="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-1">No sales data in this period</p>
+                                    <p className="text-xs text-slate-400">
+                                        No records match in the selected period ({startDate} to {endDate}). Try selecting{' '}
+                                        <button type="button" onClick={() => { const { startDate: s, endDate: e } = getDatesForPreset('all'); setStartDate(s); setEndDate(e); setPreset('all'); }} className="text-violet-600 font-bold hover:underline cursor-pointer">All Dates</button> or{' '}
+                                        <button type="button" onClick={() => { const { startDate: s, endDate: e } = getDatesForPreset('august_2026'); setStartDate(s); setEndDate(e); setPreset('august_2026'); }} className="text-violet-600 font-bold hover:underline cursor-pointer">August 2026</button>.
+                                    </p>
+                                </td>
+                            </tr>
+                         ) :
                          data.map((d, i) => (
                             <tr key={i} className="hover:bg-slate-50/50 dark:hover:bg-zinc-800/30">
                                 <td className="px-5 py-3 font-medium text-slate-700 dark:text-slate-200">{d.date}</td>

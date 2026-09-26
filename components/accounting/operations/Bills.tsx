@@ -4,6 +4,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { Plus, Search, Filter, FileText, CheckCircle, Clock, ShoppingCart, Zap, Building2, Trash2, Scale, Copy, PlusCircle, AlertCircle, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { Modal } from '../../ui/Modal';
 import { PrintButton } from '../../ui/PrintButton';
+import { PeriodFilter, PeriodPreset, getDatesForPreset } from '../common/PeriodFilter';
 
 // Helper to add days to ISO date string YYYY-MM-DD safely
 const addDaysToDate = (dateStr: string, days: number): string => {
@@ -94,6 +95,15 @@ export const Bills: React.FC<BillsProps> = ({ initialSearch, initialId, onClearI
     const [accounts, setAccounts] = useState<any[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState<string>('all');
+    const [preset, setPreset] = useState<PeriodPreset>(() => (initialSearch || initialId ? 'all' : 'this_month'));
+    const [startDate, setStartDate] = useState<string>(() => {
+        if (initialSearch || initialId) return getDatesForPreset('all').startDate;
+        return getDatesForPreset('this_month').startDate;
+    });
+    const [endDate, setEndDate] = useState<string>(() => {
+        if (initialSearch || initialId) return getDatesForPreset('all').endDate;
+        return getDatesForPreset('this_month').endDate;
+    });
 
     // Form State
     const [selectedPartner, setSelectedPartner] = useState('');
@@ -756,6 +766,13 @@ export const Bills: React.FC<BillsProps> = ({ initialSearch, initialId, onClearI
     const genericCC = costCenters.filter(cc => !cc.type || (cc.type || '').toUpperCase() === 'GENERIC' || ((cc.type || '').toUpperCase() !== 'PROJECT' && (cc.type || '').toUpperCase() !== 'CONTRACT'));
 
     const filteredBills = bills.filter(b => {
+        const matchesStatus = statusFilter === 'all' || b.state === statusFilter;
+        if (!matchesStatus) return false;
+        if (preset !== 'all') {
+            const bDate = b.invoice_date || b.date;
+            if (startDate && bDate < startDate) return false;
+            if (endDate && bDate > endDate) return false;
+        }
         const matchesSearch = 
             (b.reference || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
             (b.supplier_invoice_number || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -763,8 +780,7 @@ export const Bills: React.FC<BillsProps> = ({ initialSearch, initialId, onClearI
             (b.partner?.reference_code || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
             (b.partner?.code || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
             (b.id || '').toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesStatus = statusFilter === 'all' || b.state === statusFilter;
-        return matchesSearch && matchesStatus;
+        return matchesSearch;
     });
 
     const handleSort = (field: 'reference' | 'supplier_inv' | 'date' | 'invoice_date' | 'total') => {
@@ -822,44 +838,58 @@ export const Bills: React.FC<BillsProps> = ({ initialSearch, initialId, onClearI
                 </div>
             </div>
 
-            {/* Filters and Search Bar */}
-            <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-zinc-900 p-4 rounded-xl border border-slate-200 dark:border-zinc-800">
-                <div className="flex items-center gap-2 flex-1 min-w-[240px]">
-                    <Search className="w-4 h-4 text-slate-400" />
-                    <input
-                        type="text"
-                        placeholder="Search by vendor, reference #, or ledger code..."
-                        value={searchTerm}
-                        onChange={e => setSearchTerm(e.target.value)}
-                        className="w-full bg-transparent text-sm border-none focus:outline-none placeholder:text-slate-400"
-                    />
-                </div>
-                <div className="flex items-center gap-2">
-                    <button
-                        type="button"
-                        onClick={() => handleSort('reference')}
-                        className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-all flex items-center gap-1.5 ${
-                            sortBy === 'reference'
-                                ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 shadow-sm'
-                                : 'bg-slate-50 dark:bg-zinc-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-zinc-700 hover:bg-slate-100'
-                        }`}
-                        title="Sort by Purchase Reference Number (PI.2026.69 onwards)"
-                    >
-                        <span>PI.2026.69 Onwards</span>
-                        {sortBy === 'reference' && (
-                            sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5" /> : <ArrowDown className="w-3.5 h-3.5" />
-                        )}
-                    </button>
-                    <Filter className="w-4 h-4 text-slate-400" />
-                    <select
-                        value={statusFilter}
-                        onChange={e => setStatusFilter(e.target.value)}
-                        className="text-xs font-medium bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg p-2 text-slate-700 dark:text-slate-300"
-                    >
-                        <option value="all">All Statuses</option>
-                        <option value="Draft">Draft</option>
-                        <option value="Posted">Posted</option>
-                    </select>
+            {/* Filters and Search Bar with PeriodFilter */}
+            <div className="bg-white dark:bg-zinc-900 p-4 rounded-xl border border-slate-200 dark:border-zinc-800 shadow-sm space-y-3 no-print">
+                <PeriodFilter
+                    preset={preset}
+                    startDate={startDate}
+                    endDate={endDate}
+                    showDateInputs={true}
+                    onPeriodChange={(newStart, newEnd, newPreset) => {
+                        setStartDate(newStart);
+                        setEndDate(newEnd);
+                        setPreset(newPreset);
+                    }}
+                />
+
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100 dark:border-zinc-800">
+                    <div className="flex items-center gap-2 flex-1 min-w-[240px]">
+                        <Search className="w-4 h-4 text-slate-400" />
+                        <input
+                            type="text"
+                            placeholder="Search by vendor, reference #, or ledger code..."
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                            className="w-full bg-transparent text-sm border-none focus:outline-none placeholder:text-slate-400"
+                        />
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => handleSort('reference')}
+                            className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-all flex items-center gap-1.5 ${
+                                sortBy === 'reference'
+                                    ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 shadow-sm'
+                                    : 'bg-slate-50 dark:bg-zinc-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-zinc-700 hover:bg-slate-100'
+                            }`}
+                            title="Sort by Purchase Reference Number (PI.2026.69 onwards)"
+                        >
+                            <span>PI.2026.69 Onwards</span>
+                            {sortBy === 'reference' && (
+                                sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5" /> : <ArrowDown className="w-3.5 h-3.5" />
+                            )}
+                        </button>
+                        <Filter className="w-4 h-4 text-slate-400" />
+                        <select
+                            value={statusFilter}
+                            onChange={e => setStatusFilter(e.target.value)}
+                            className="text-xs font-medium bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg p-2 text-slate-700 dark:text-slate-300"
+                        >
+                            <option value="all">All Statuses</option>
+                            <option value="Draft">Draft</option>
+                            <option value="Posted">Posted</option>
+                        </select>
+                    </div>
                 </div>
             </div>
 

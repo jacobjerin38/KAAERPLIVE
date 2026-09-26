@@ -5,6 +5,7 @@ import { Plus, Search, Filter, ArrowRight, Save, Trash2, Edit, Eye, BookOpen, Fi
 import { Modal } from '../../ui/Modal';
 import { PrintButton } from '../../ui/PrintButton';
 import OpeningBalances from './OpeningBalances';
+import { PeriodFilter, PeriodPreset, getDatesForPreset } from '../common/PeriodFilter';
 
 
 interface JournalEntry {
@@ -172,6 +173,15 @@ export const JournalEntries: React.FC<JournalEntriesProps> = ({ initialSearch, i
     };
 
     const [searchTerm, setSearchTerm] = useState('');
+    const [preset, setPreset] = useState<PeriodPreset>(() => (initialSearch || initialId ? 'all' : 'this_month'));
+    const [startDate, setStartDate] = useState<string>(() => {
+        if (initialSearch || initialId) return getDatesForPreset('all').startDate;
+        return getDatesForPreset('this_month').startDate;
+    });
+    const [endDate, setEndDate] = useState<string>(() => {
+        if (initialSearch || initialId) return getDatesForPreset('all').endDate;
+        return getDatesForPreset('this_month').endDate;
+    });
     const autoOpenedRef = useRef<string | null>(null);
 
     // Auto-open requested journal entry from Day Book or external navigation
@@ -223,16 +233,23 @@ export const JournalEntries: React.FC<JournalEntriesProps> = ({ initialSearch, i
     }, [entries, initialSearch, initialId, currentCompanyId]);
 
     const filteredEntries = useMemo(() => {
-        if (!searchTerm.trim()) return entries;
         const term = searchTerm.toLowerCase().trim();
-        return entries.filter(e =>
-            (e.reference && e.reference.toLowerCase().includes(term)) ||
-            (e.notes && e.notes.toLowerCase().includes(term)) ||
-            ((e as any).journal?.name && (e as any).journal.name.toLowerCase().includes(term)) ||
-            (e.date && e.date.includes(term)) ||
-            (e.id && e.id.toLowerCase().includes(term))
-        );
-    }, [entries, searchTerm]);
+        return entries.filter(e => {
+            if (preset !== 'all') {
+                const eDate = e.date;
+                if (startDate && eDate < startDate) return false;
+                if (endDate && eDate > endDate) return false;
+            }
+            if (!term) return true;
+            return (
+                (e.reference && e.reference.toLowerCase().includes(term)) ||
+                (e.notes && e.notes.toLowerCase().includes(term)) ||
+                ((e as any).journal?.name && (e as any).journal.name.toLowerCase().includes(term)) ||
+                (e.date && e.date.includes(term)) ||
+                (e.id && e.id.toLowerCase().includes(term))
+            );
+        });
+    }, [entries, searchTerm, preset, startDate, endDate]);
 
     const updateLine = (index: number, field: keyof JournalEntryLine, value: any) => {
         const newLines = [...(currentEntry.lines || [])];
@@ -484,16 +501,30 @@ export const JournalEntries: React.FC<JournalEntriesProps> = ({ initialSearch, i
                 </div>
             </div>
 
-            {/* Search Input Bar */}
-            <div className="relative no-print">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={e => setSearchTerm(e.target.value)}
-                    placeholder="Search journal entries by reference (e.g. JV.2026.01), narration, journal, date..."
-                    className="w-full pl-10 pr-4 py-2 text-xs md:text-sm bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs"
+            {/* Filter Bar with Period Presets & Search */}
+            <div className="bg-white dark:bg-zinc-900 p-4 rounded-xl border border-slate-200 dark:border-zinc-800 shadow-sm space-y-3 no-print">
+                <PeriodFilter
+                    preset={preset}
+                    startDate={startDate}
+                    endDate={endDate}
+                    showDateInputs={true}
+                    onPeriodChange={(newStart, newEnd, newPreset) => {
+                        setStartDate(newStart);
+                        setEndDate(newEnd);
+                        setPreset(newPreset);
+                    }}
                 />
+
+                <div className="relative pt-1 border-t border-slate-100 dark:border-zinc-800">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                        type="text"
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                        placeholder="Search journal entries by reference (e.g. JV.2026.01), narration, journal, date..."
+                        className="w-full pl-10 pr-4 py-2 text-xs md:text-sm bg-slate-50 dark:bg-zinc-800/80 border border-slate-200 dark:border-zinc-700 rounded-xl text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs"
+                    />
+                </div>
             </div>
 
             {/* List View */}
@@ -514,7 +545,10 @@ export const JournalEntries: React.FC<JournalEntriesProps> = ({ initialSearch, i
                         {filteredEntries.length === 0 ? (
                             <tr>
                                 <td colSpan={7} className="p-8 text-center text-slate-400">
-                                    No journal entries found matching your search.
+                                    <p className="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-1">No journal entries found</p>
+                                    <p className="text-xs text-slate-400">
+                                        No records match in the selected period ({startDate} to {endDate}). Try selecting <button type="button" onClick={() => { const { startDate: s, endDate: e } = getDatesForPreset('all'); setStartDate(s); setEndDate(e); setPreset('all'); }} className="text-violet-600 font-bold hover:underline cursor-pointer">All Dates</button> or <button type="button" onClick={() => { const { startDate: s, endDate: e } = getDatesForPreset('august_2026'); setStartDate(s); setEndDate(e); setPreset('august_2026'); }} className="text-violet-600 font-bold hover:underline cursor-pointer">August 2026</button>.
+                                    </p>
                                 </td>
                             </tr>
                         ) : (

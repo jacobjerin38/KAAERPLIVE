@@ -5,6 +5,7 @@ import { Plus, Search, Filter, FileText, CheckCircle, Clock, Package, Building2,
 import { Modal } from '../../ui/Modal';
 import { PrintButton } from '../../ui/PrintButton';
 import { formatLocalDate } from '../../../lib/dateFormat';
+import { PeriodFilter, PeriodPreset, getDatesForPreset } from '../common/PeriodFilter';
 
 
 // Helper to add days to ISO date string YYYY-MM-DD safely
@@ -96,6 +97,15 @@ export const Invoices: React.FC<InvoicesProps> = ({ initialSearch, initialId, on
     const [clientPoNumber, setClientPoNumber] = useState('');
     const [clientPoDate, setClientPoDate] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
+    const [preset, setPreset] = useState<PeriodPreset>(() => (initialSearch || initialId ? 'all' : 'this_month'));
+    const [startDate, setStartDate] = useState<string>(() => {
+        if (initialSearch || initialId) return getDatesForPreset('all').startDate;
+        return getDatesForPreset('this_month').startDate;
+    });
+    const [endDate, setEndDate] = useState<string>(() => {
+        if (initialSearch || initialId) return getDatesForPreset('all').endDate;
+        return getDatesForPreset('this_month').endDate;
+    });
 
     // Edit/View State
     const [editMode, setEditMode] = useState(false);
@@ -718,6 +728,11 @@ export const Invoices: React.FC<InvoicesProps> = ({ initialSearch, initialId, on
 
     const filteredInvoices = invoices.filter(inv => {
         if (typeFilter !== 'all' && inv.move_type !== typeFilter) return false;
+        if (preset !== 'all') {
+            const invDate = inv.date;
+            if (startDate && invDate < startDate) return false;
+            if (endDate && invDate > endDate) return false;
+        }
         const matchesSearch = 
             (inv.reference || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
             (inv.client_po_number || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -756,51 +771,65 @@ export const Invoices: React.FC<InvoicesProps> = ({ initialSearch, initialId, on
                 </div>
             </div>
 
-            {/* Filter Tabs & Search Bar */}
-            <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
-                <div className="inline-flex rounded-xl p-1 bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700">
-                    <button
-                        onClick={() => setTypeFilter('all')}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                            typeFilter === 'all'
-                                ? 'bg-white dark:bg-zinc-700 text-slate-800 dark:text-white shadow-xs'
-                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                        }`}
-                    >
-                        All Transactions ({invoices.length})
-                    </button>
-                    <button
-                        onClick={() => setTypeFilter('out_invoice')}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                            typeFilter === 'out_invoice'
-                                ? 'bg-blue-600 text-white shadow-xs'
-                                : 'text-blue-700 dark:text-blue-400 hover:text-blue-900'
-                        }`}
-                    >
-                        Invoices ({invoices.filter(i => i.move_type === 'out_invoice').length})
-                    </button>
-                    <button
-                        onClick={() => setTypeFilter('out_refund')}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                            typeFilter === 'out_refund'
-                                ? 'bg-purple-600 text-white shadow-xs'
-                                : 'text-purple-700 dark:text-purple-400 hover:text-purple-900'
-                        }`}
-                    >
-                        <RotateCcw className="w-3 h-3" />
-                        Credit Notes ({invoices.filter(i => i.move_type === 'out_refund').length})
-                    </button>
-                </div>
+            {/* Filter Bar with Period Filter */}
+            <div className="bg-white dark:bg-zinc-900 p-4 rounded-xl border border-slate-200 dark:border-zinc-800 shadow-sm space-y-3 no-print">
+                <PeriodFilter
+                    preset={preset}
+                    startDate={startDate}
+                    endDate={endDate}
+                    showDateInputs={true}
+                    onPeriodChange={(newStart, newEnd, newPreset) => {
+                        setStartDate(newStart);
+                        setEndDate(newEnd);
+                        setPreset(newPreset);
+                    }}
+                />
 
-                <div className="flex-1 max-w-md relative">
-                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
-                        type="text"
-                        placeholder="Search by customer, PO ref #, invoice #, or voucher ID..."
-                        value={searchTerm}
-                        onChange={e => setSearchTerm(e.target.value)}
-                        className="w-full pl-9 pr-4 py-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                    />
+                <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between pt-2 border-t border-slate-100 dark:border-zinc-800">
+                    <div className="inline-flex rounded-xl p-1 bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700">
+                        <button
+                            onClick={() => setTypeFilter('all')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                typeFilter === 'all'
+                                    ? 'bg-white dark:bg-zinc-700 text-slate-800 dark:text-white shadow-xs'
+                                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                            }`}
+                        >
+                            All Transactions ({invoices.length})
+                        </button>
+                        <button
+                            onClick={() => setTypeFilter('out_invoice')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                typeFilter === 'out_invoice'
+                                    ? 'bg-blue-600 text-white shadow-xs'
+                                    : 'text-blue-700 dark:text-blue-400 hover:text-blue-900'
+                            }`}
+                        >
+                            Invoices ({invoices.filter(i => i.move_type === 'out_invoice').length})
+                        </button>
+                        <button
+                            onClick={() => setTypeFilter('out_refund')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                typeFilter === 'out_refund'
+                                    ? 'bg-purple-600 text-white shadow-xs'
+                                    : 'text-purple-700 dark:text-purple-400 hover:text-purple-900'
+                            }`}
+                        >
+                            <RotateCcw className="w-3 h-3" />
+                            Credit Notes ({invoices.filter(i => i.move_type === 'out_refund').length})
+                        </button>
+                    </div>
+
+                    <div className="flex-1 max-w-md relative">
+                        <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <input
+                            type="text"
+                            placeholder="Search by customer, PO ref #, invoice #, or voucher ID..."
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                            className="w-full pl-9 pr-4 py-2 bg-slate-50 dark:bg-zinc-800/80 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                        />
+                    </div>
                 </div>
             </div>
 
@@ -823,7 +852,14 @@ export const Invoices: React.FC<InvoicesProps> = ({ initialSearch, initialId, on
                         {loading ? (
                             <tr><td colSpan={8} className="px-6 py-8 text-center text-slate-500">Loading...</td></tr>
                         ) : filteredInvoices.length === 0 ? (
-                            <tr><td colSpan={8} className="px-6 py-8 text-center text-slate-400">No records found.</td></tr>
+                            <tr>
+                                <td colSpan={8} className="px-6 py-8 text-center text-slate-400">
+                                    <p className="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-1">No invoices found</p>
+                                    <p className="text-xs text-slate-400">
+                                        No invoices match in the selected period ({startDate} to {endDate}). Try selecting <button type="button" onClick={() => { const { startDate: s, endDate: e } = getDatesForPreset('all'); setStartDate(s); setEndDate(e); setPreset('all'); }} className="text-violet-600 font-bold hover:underline cursor-pointer">All Dates</button> or <button type="button" onClick={() => { const { startDate: s, endDate: e } = getDatesForPreset('august_2026'); setStartDate(s); setEndDate(e); setPreset('august_2026'); }} className="text-violet-600 font-bold hover:underline cursor-pointer">August 2026</button>.
+                                    </p>
+                                </td>
+                            </tr>
                         ) : filteredInvoices.map(inv => (
                             <tr key={inv.id} className="hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-colors">
                                 <td className="px-5 py-4">

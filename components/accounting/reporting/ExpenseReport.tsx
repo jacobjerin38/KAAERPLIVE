@@ -5,14 +5,16 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recha
 import { useAuth } from '../../../contexts/AuthContext';
 import { PrintButton } from '../../ui/PrintButton';
 import { formatLocalDate } from '../../../lib/dateFormat';
+import { PeriodFilter, PeriodPreset, getDatesForPreset } from '../common/PeriodFilter';
 
 
 const COLORS = ['#8b5cf6','#f43f5e','#06b6d4','#f59e0b','#10b981','#6366f1','#ec4899','#14b8a6'];
 
 export const ExpenseReport: React.FC = () => {
     const { currentCompanyId } = useAuth();
-    const [startDate, setStartDate] = useState(formatLocalDate(new Date(new Date().getFullYear(), 0, 1)));
-    const [endDate, setEndDate] = useState(formatLocalDate(new Date()));
+    const [preset, setPreset] = useState<PeriodPreset>('this_month');
+    const [startDate, setStartDate] = useState<string>(() => getDatesForPreset('this_month').startDate);
+    const [endDate, setEndDate] = useState<string>(() => getDatesForPreset('this_month').endDate);
     const [data, setData] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -63,12 +65,23 @@ export const ExpenseReport: React.FC = () => {
                 <PrintButton />
             </div>
 
-            <div className="flex items-end gap-4 bg-white dark:bg-zinc-900 p-4 rounded-xl border border-slate-200 dark:border-zinc-800 no-print">
-                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">From</label><input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm" /></div>
-                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">To</label><input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm" /></div>
-                <div className="bg-rose-50 dark:bg-rose-900/20 px-4 py-2.5 rounded-lg">
-                    <p className="text-[10px] font-bold text-rose-400 uppercase">Total Expenses</p>
-                    <p className="text-lg font-bold text-rose-600">QAR {totalExpenses.toLocaleString()}</p>
+            <div className="bg-white dark:bg-zinc-900 p-4 rounded-xl border border-slate-200 dark:border-zinc-800 shadow-sm space-y-3 no-print">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <PeriodFilter
+                        preset={preset}
+                        startDate={startDate}
+                        endDate={endDate}
+                        showDateInputs={true}
+                        onPeriodChange={(newStart, newEnd, newPreset) => {
+                            setStartDate(newStart);
+                            setEndDate(newEnd);
+                            setPreset(newPreset);
+                        }}
+                    />
+                    <div className="bg-rose-50 dark:bg-rose-900/20 px-4 py-2.5 rounded-lg shrink-0 self-start sm:self-auto">
+                        <p className="text-[10px] font-bold text-rose-400 uppercase">Total Expenses</p>
+                        <p className="text-lg font-bold text-rose-600">QAR {totalExpenses.toLocaleString()}</p>
+                    </div>
                 </div>
             </div>
 
@@ -93,7 +106,18 @@ export const ExpenseReport: React.FC = () => {
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
                             {loading ? <tr><td colSpan={3} className="px-5 py-12 text-center text-slate-400">Loading...</td></tr> :
-                             data.length === 0 ? <tr><td colSpan={3} className="px-5 py-12 text-center text-slate-400 italic">No expense data.</td></tr> :
+                             data.length === 0 ? (
+                                <tr>
+                                    <td colSpan={3} className="px-5 py-12 text-center text-slate-400">
+                                        <p className="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-1">No expense data found</p>
+                                        <p className="text-xs text-slate-400">
+                                            No records match in the selected period ({startDate} to {endDate}). Try selecting{' '}
+                                            <button type="button" onClick={() => { const { startDate: s, endDate: e } = getDatesForPreset('all'); setStartDate(s); setEndDate(e); setPreset('all'); }} className="text-violet-600 font-bold hover:underline cursor-pointer">All Dates</button> or{' '}
+                                            <button type="button" onClick={() => { const { startDate: s, endDate: e } = getDatesForPreset('august_2026'); setStartDate(s); setEndDate(e); setPreset('august_2026'); }} className="text-violet-600 font-bold hover:underline cursor-pointer">August 2026</button>.
+                                        </p>
+                                    </td>
+                                </tr>
+                             ) :
                              data.map((d, i) => (
                                 <tr key={i} className="hover:bg-slate-50/50 dark:hover:bg-zinc-800/30">
                                     <td className="px-5 py-3">

@@ -4,6 +4,7 @@ import { BookOpen, Filter, Download } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { PrintButton } from '../../ui/PrintButton';
 import { formatLocalDate } from '../../../lib/dateFormat';
+import { PeriodFilter, PeriodPreset, getDatesForPreset } from '../common/PeriodFilter';
 
 
 interface GLEntry {
@@ -16,8 +17,9 @@ export const GeneralLedger: React.FC = () => {
     const { currentCompanyId } = useAuth();
     const [accounts, setAccounts] = useState<any[]>([]);
     const [selectedAccount, setSelectedAccount] = useState('');
-    const [startDate, setStartDate] = useState(formatLocalDate(new Date(new Date().getFullYear(), 0, 1)));
-    const [endDate, setEndDate] = useState(formatLocalDate(new Date()));
+    const [preset, setPreset] = useState<PeriodPreset>('this_month');
+    const [startDate, setStartDate] = useState(() => getDatesForPreset('this_month').startDate);
+    const [endDate, setEndDate] = useState(() => getDatesForPreset('this_month').endDate);
     const [entries, setEntries] = useState<GLEntry[]>([]);
 
     const [loading, setLoading] = useState(false);
@@ -160,48 +162,62 @@ export const GeneralLedger: React.FC = () => {
             </div>
 
             {/* Filters */}
-            <div className="flex flex-wrap items-end gap-4 bg-white dark:bg-zinc-900 p-4 rounded-xl border border-slate-200 dark:border-zinc-800 shadow-sm">
-                <div className="w-full md:flex-1 min-w-[200px]">
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Account</label>
-                    <select value={selectedAccount} onChange={e => setSelectedAccount(e.target.value)}
-                        className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm">
-                        <option value="">— Select Account —</option>
-                        {accounts.map(a => <option key={a.id} value={a.id}>{a.code} - {a.name} ({a.type})</option>)}
-                    </select>
-                </div>
-                <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">From</label>
-                    <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm" />
-                </div>
-                <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">To</label>
-                    <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm" />
-                </div>
-                
-                {/* Cost Center Filters */}
-                <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Project CC</label>
-                    <select value={selectedProjectCC} onChange={e => setSelectedProjectCC(e.target.value)}
-                        className="p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm">
-                        <option value="">All Projects</option>
-                        {projectCC.map(cc => <option key={cc.id} value={cc.id}>{cc.code}</option>)}
-                    </select>
-                </div>
-                <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Contract CC</label>
-                    <select value={selectedContractCC} onChange={e => setSelectedContractCC(e.target.value)}
-                        className="p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm">
-                        <option value="">All Contracts</option>
-                        {contractCC.map(cc => <option key={cc.id} value={cc.id}>{cc.code}</option>)}
-                    </select>
-                </div>
-                <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Cost Center</label>
-                    <select value={selectedCC} onChange={e => setSelectedCC(e.target.value)}
-                        className="p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm">
-                        <option value="">All Generic</option>
-                        {genericCC.map(cc => <option key={cc.id} value={cc.id}>{cc.code}</option>)}
-                    </select>
+            <div className="bg-white dark:bg-zinc-900 p-4 rounded-xl border border-slate-200 dark:border-zinc-800 shadow-sm space-y-3 no-print">
+                <PeriodFilter
+                    preset={preset}
+                    startDate={startDate}
+                    endDate={endDate}
+                    showDateInputs={false}
+                    onPeriodChange={(newStart, newEnd, newPreset) => {
+                        setStartDate(newStart);
+                        setEndDate(newEnd);
+                        setPreset(newPreset);
+                    }}
+                />
+
+                <div className="flex flex-wrap items-end gap-4 pt-3 border-t border-slate-100 dark:border-zinc-800">
+                    <div className="w-full md:flex-1 min-w-[200px]">
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Account</label>
+                        <select value={selectedAccount} onChange={e => setSelectedAccount(e.target.value)}
+                            className="w-full p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm">
+                            <option value="">— Select Account —</option>
+                            {accounts.map(a => <option key={a.id} value={a.id}>{a.code} - {a.name} ({a.type})</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">From</label>
+                        <input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setPreset('custom'); }} className="p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm" />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">To</label>
+                        <input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setPreset('custom'); }} className="p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm" />
+                    </div>
+                    
+                    {/* Cost Center Filters */}
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Project CC</label>
+                        <select value={selectedProjectCC} onChange={e => setSelectedProjectCC(e.target.value)}
+                            className="p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm">
+                            <option value="">All Projects</option>
+                            {projectCC.map(cc => <option key={cc.id} value={cc.id}>{cc.code}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Contract CC</label>
+                        <select value={selectedContractCC} onChange={e => setSelectedContractCC(e.target.value)}
+                            className="p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm">
+                            <option value="">All Contracts</option>
+                            {contractCC.map(cc => <option key={cc.id} value={cc.id}>{cc.code}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Cost Center</label>
+                        <select value={selectedCC} onChange={e => setSelectedCC(e.target.value)}
+                            className="p-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-sm">
+                            <option value="">All Generic</option>
+                            {genericCC.map(cc => <option key={cc.id} value={cc.id}>{cc.code}</option>)}
+                        </select>
+                    </div>
                 </div>
             </div>
 
@@ -251,7 +267,16 @@ export const GeneralLedger: React.FC = () => {
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
                             {rows.length === 0 ? (
-                                <tr><td colSpan={8} className="px-4 py-12 text-center text-slate-400 italic">No transactions in this period.</td></tr>
+                                <tr>
+                                    <td colSpan={8} className="px-4 py-12 text-center text-slate-400">
+                                        <p className="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-1">No transactions found for this account</p>
+                                        <p className="text-xs text-slate-400">
+                                            No records match in the selected period ({startDate} to {endDate}). Try selecting{' '}
+                                            <button type="button" onClick={() => { const { startDate: s, endDate: e } = getDatesForPreset('all'); setStartDate(s); setEndDate(e); setPreset('all'); }} className="text-violet-600 font-bold hover:underline cursor-pointer">All Dates</button> or{' '}
+                                            <button type="button" onClick={() => { const { startDate: s, endDate: e } = getDatesForPreset('august_2026'); setStartDate(s); setEndDate(e); setPreset('august_2026'); }} className="text-violet-600 font-bold hover:underline cursor-pointer">August 2026</button>.
+                                        </p>
+                                    </td>
+                                </tr>
                             ) : rows.map((r, i) => (
                                 <tr key={i} className="hover:bg-slate-50/50 dark:hover:bg-zinc-800/30 transition-colors">
                                     <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{r.date}</td>

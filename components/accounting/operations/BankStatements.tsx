@@ -4,6 +4,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { Plus, Search, Filter, CheckCircle, AlertCircle, ArrowRight } from 'lucide-react';
 import { Modal } from '../../ui/Modal';
 import { PrintButton } from '../../ui/PrintButton';
+import { PeriodFilter, PeriodPreset, getDatesForPreset } from '../common/PeriodFilter';
 
 
 export const BankStatements: React.FC = () => {
@@ -12,6 +13,10 @@ export const BankStatements: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [selectedStatement, setSelectedStatement] = useState<any | null>(null);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [preset, setPreset] = useState<PeriodPreset>('this_month');
+    const [startDate, setStartDate] = useState<string>(() => getDatesForPreset('this_month').startDate);
+    const [endDate, setEndDate] = useState<string>(() => getDatesForPreset('this_month').endDate);
 
     // Create Form
     const [name, setName] = useState('');
@@ -244,6 +249,21 @@ export const BankStatements: React.FC = () => {
         );
     }
 
+    const filteredStatements = statements.filter(stm => {
+        if (preset !== 'all') {
+            const sDate = stm.date;
+            if (startDate && sDate < startDate) return false;
+            if (endDate && sDate > endDate) return false;
+        }
+        if (!searchTerm) return true;
+        const term = searchTerm.toLowerCase();
+        return (
+            (stm.name && stm.name.toLowerCase().includes(term)) ||
+            (stm.journal?.name && stm.journal.name.toLowerCase().includes(term)) ||
+            (stm.journal?.code && stm.journal.code.toLowerCase().includes(term))
+        );
+    });
+
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
@@ -260,8 +280,45 @@ export const BankStatements: React.FC = () => {
                 </div>
             </div>
 
+            {/* Filter Bar with Period Presets & Search */}
+            <div className="bg-white dark:bg-zinc-900 p-4 rounded-xl border border-slate-200 dark:border-zinc-800 shadow-sm space-y-3 no-print">
+                <PeriodFilter
+                    preset={preset}
+                    startDate={startDate}
+                    endDate={endDate}
+                    showDateInputs={true}
+                    onPeriodChange={(newStart, newEnd, newPreset) => {
+                        setStartDate(newStart);
+                        setEndDate(newEnd);
+                        setPreset(newPreset);
+                    }}
+                />
+
+                <div className="relative pt-1 border-t border-slate-100 dark:border-zinc-800">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                        type="text"
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                        placeholder="Search statements by name or bank journal..."
+                        className="w-full pl-10 pr-4 py-2 text-xs md:text-sm bg-slate-50 dark:bg-zinc-800/80 border border-slate-200 dark:border-zinc-700 rounded-xl text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {loading ? <p>Loading...</p> : statements.map(stm => (
+                {loading ? (
+                    <div className="col-span-full py-12 text-center text-slate-500 font-semibold">Loading bank statements...</div>
+                ) : filteredStatements.length === 0 ? (
+                    <div className="col-span-full py-12 text-center text-slate-400 bg-white dark:bg-zinc-900 rounded-xl border border-slate-200 dark:border-zinc-800 p-8">
+                        <p className="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-1">No bank statements found</p>
+                        <p className="text-xs text-slate-400">
+                            No records match in the selected period ({startDate} to {endDate}). Try selecting{' '}
+                            <button type="button" onClick={() => { const { startDate: s, endDate: e } = getDatesForPreset('all'); setStartDate(s); setEndDate(e); setPreset('all'); }} className="text-violet-600 font-bold hover:underline cursor-pointer">All Dates</button> or{' '}
+                            <button type="button" onClick={() => { const { startDate: s, endDate: e } = getDatesForPreset('august_2026'); setStartDate(s); setEndDate(e); setPreset('august_2026'); }} className="text-violet-600 font-bold hover:underline cursor-pointer">August 2026</button>.
+                        </p>
+                    </div>
+                ) : filteredStatements.map(stm => (
                     <div
                         key={stm.id}
                         onClick={() => fetchStatementDetails(stm.id)}

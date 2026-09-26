@@ -9,6 +9,7 @@ import {
 import { Modal } from '../../ui/Modal';
 import { PrintButton } from '../../ui/PrintButton';
 import { SearchableSelect, SearchableOption } from '../../ui/SearchableSelect';
+import { PeriodFilter, PeriodPreset, getDatesForPreset } from '../common/PeriodFilter';
 
 interface ExpenseLine {
     id: string;
@@ -43,6 +44,15 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [filterCategory, setFilterCategory] = useState<string>('ALL');
+    const [preset, setPreset] = useState<PeriodPreset>(() => (initialSearch || initialId ? 'all' : 'this_month'));
+    const [startDate, setStartDate] = useState<string>(() => {
+        if (initialSearch || initialId) return getDatesForPreset('all').startDate;
+        return getDatesForPreset('this_month').startDate;
+    });
+    const [endDate, setEndDate] = useState<string>(() => {
+        if (initialSearch || initialId) return getDatesForPreset('all').endDate;
+        return getDatesForPreset('this_month').endDate;
+    });
 
     // Masters
     const [partners, setPartners] = useState<any[]>([]);
@@ -800,6 +810,12 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
     // Filtered Payments List
     const filteredPayments = useMemo(() => {
         return payments.filter(pay => {
+            if (preset !== 'all') {
+                const payDate = pay.date;
+                if (startDate && payDate < startDate) return false;
+                if (endDate && payDate > endDate) return false;
+            }
+
             const matchesSearch = !searchQuery ||
                 (pay.name && pay.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
                 (pay.partner?.name && pay.partner.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
@@ -813,7 +829,7 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
             if (filterCategory === 'DRAFT') return pay.state === 'draft';
             return true;
         });
-    }, [payments, searchQuery, filterCategory]);
+    }, [payments, searchQuery, filterCategory, preset, startDate, endDate]);
 
     return (
         <div className="space-y-6">
@@ -838,38 +854,52 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
             </div>
 
             {/* Filter Bar */}
-            <div className="bg-white dark:bg-zinc-900 p-3 rounded-2xl border border-slate-200 dark:border-zinc-800 flex flex-col sm:flex-row gap-3 items-center justify-between shadow-sm">
-                <div className="relative w-full sm:w-80">
-                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input
-                        type="text"
-                        placeholder="Search voucher #, partner, ledger..."
-                        value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
-                        className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20"
-                    />
-                </div>
+            <div className="bg-white dark:bg-zinc-900 p-4 rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-sm space-y-3 no-print">
+                <PeriodFilter
+                    preset={preset}
+                    startDate={startDate}
+                    endDate={endDate}
+                    showDateInputs={true}
+                    onPeriodChange={(newStart, newEnd, newPreset) => {
+                        setStartDate(newStart);
+                        setEndDate(newEnd);
+                        setPreset(newPreset);
+                    }}
+                />
 
-                <div className="flex gap-2 w-full sm:w-auto overflow-x-auto">
-                    {[
-                        { id: 'ALL', label: 'All Payments' },
-                        { id: 'DIRECT', label: 'Expense / Ledgers' },
-                        { id: 'PARTY', label: 'Party Payments' },
-                        { id: 'DRAFT', label: 'Draft' },
-                        { id: 'POSTED', label: 'Posted' }
-                    ].map(tab => (
-                        <button
-                            key={tab.id}
-                            onClick={() => setFilterCategory(tab.id)}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
-                                filterCategory === tab.id
-                                    ? 'bg-indigo-600 text-white shadow-sm'
-                                    : 'bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
-                            }`}
-                        >
-                            {tab.label}
-                        </button>
-                    ))}
+                <div className="flex flex-col sm:flex-row gap-3 items-center justify-between pt-2 border-t border-slate-100 dark:border-zinc-800">
+                    <div className="relative w-full sm:w-80">
+                        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                            type="text"
+                            placeholder="Search voucher #, partner, ledger..."
+                            value={searchQuery}
+                            onChange={e => setSearchQuery(e.target.value)}
+                            className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20"
+                        />
+                    </div>
+
+                    <div className="flex gap-2 w-full sm:w-auto overflow-x-auto">
+                        {[
+                            { id: 'ALL', label: 'All Payments' },
+                            { id: 'DIRECT', label: 'Expense / Ledgers' },
+                            { id: 'PARTY', label: 'Party Payments' },
+                            { id: 'DRAFT', label: 'Draft' },
+                            { id: 'POSTED', label: 'Posted' }
+                        ].map(tab => (
+                            <button
+                                key={tab.id}
+                                onClick={() => setFilterCategory(tab.id)}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                                    filterCategory === tab.id
+                                        ? 'bg-indigo-600 text-white shadow-sm'
+                                        : 'bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+                                }`}
+                            >
+                                {tab.label}
+                            </button>
+                        ))}
+                    </div>
                 </div>
             </div>
 
@@ -893,7 +923,16 @@ export const Payments: React.FC<PaymentsProps> = ({ initialSearch, initialId, on
                             {loading ? (
                                 <tr><td colSpan={8} className="px-6 py-12 text-center text-slate-500 font-semibold">Loading payment vouchers...</td></tr>
                             ) : filteredPayments.length === 0 ? (
-                                <tr><td colSpan={8} className="px-6 py-12 text-center text-slate-400 font-semibold">No payment vouchers found.</td></tr>
+                                <tr>
+                                    <td colSpan={8} className="px-6 py-12 text-center text-slate-400">
+                                        <p className="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-1">No payment vouchers found</p>
+                                        <p className="text-xs text-slate-400">
+                                            No records match in the selected period ({startDate} to {endDate}). Try selecting{' '}
+                                            <button type="button" onClick={() => { const { startDate: s, endDate: e } = getDatesForPreset('all'); setStartDate(s); setEndDate(e); setPreset('all'); }} className="text-violet-600 font-bold hover:underline cursor-pointer">All Dates</button> or{' '}
+                                            <button type="button" onClick={() => { const { startDate: s, endDate: e } = getDatesForPreset('august_2026'); setStartDate(s); setEndDate(e); setPreset('august_2026'); }} className="text-violet-600 font-bold hover:underline cursor-pointer">August 2026</button>.
+                                        </p>
+                                    </td>
+                                </tr>
                             ) : filteredPayments.map(pay => {
                                 const isDirect = pay.payment_category === 'direct_account' || !!pay.account_id;
                                 const multiExp = pay.expense_lines && Array.isArray(pay.expense_lines) && pay.expense_lines.length > 1;
