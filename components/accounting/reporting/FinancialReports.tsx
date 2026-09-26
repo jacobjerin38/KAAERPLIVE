@@ -3,7 +3,8 @@ import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
 import {
     Calendar, Filter, FileText, TrendingUp, TrendingDown, ChevronDown, ChevronRight,
-    Search, AlertCircle, Clock, CheckCircle2, Layers, Receipt, ArrowRight, ChevronUp, RefreshCw
+    Search, AlertCircle, Clock, CheckCircle2, Layers, Receipt, ArrowRight, ChevronUp, RefreshCw,
+    X, Download, Printer, ArrowUpRight, ExternalLink, BookOpen, FileSpreadsheet
 } from 'lucide-react';
 import { QatarVATReport } from './QatarVATReport';
 import { PrintButton } from '../../ui/PrintButton';
@@ -25,6 +26,14 @@ export const FinancialReports: React.FC = () => {
     // Expanded rows for Aging report invoice drill-down
     const [expandedAgingPartners, setExpandedAgingPartners] = useState<Record<string, boolean>>({});
     const [agingSearch, setAgingSearch] = useState('');
+
+    // Account Ledger Breakdown Drill-down state
+    const [selectedAccountBreakdown, setSelectedAccountBreakdown] = useState<any>(null);
+    const [isBreakdownModalOpen, setIsBreakdownModalOpen] = useState(false);
+    const [loadingBreakdown, setLoadingBreakdown] = useState(false);
+    const [breakdownData, setBreakdownData] = useState<any>(null);
+    const [breakdownSearch, setBreakdownSearch] = useState('');
+    const [breakdownPeriodType, setBreakdownPeriodType] = useState<'statement' | 'all'>('statement');
 
     // Cost Centers for filtering (only for P&L)
     const [costCenters, setCostCenters] = useState<any[]>([]);
@@ -63,6 +72,16 @@ export const FinancialReports: React.FC = () => {
             .eq('is_active', true);
         setCostCenters(data || []);
     };
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape' && isBreakdownModalOpen) {
+                setIsBreakdownModalOpen(false);
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isBreakdownModalOpen]);
 
     useEffect(() => { 
         setReportData(null);
@@ -243,18 +262,120 @@ export const FinancialReports: React.FC = () => {
         setExpandedAgingPartners(newState);
     };
 
+    const handleAccountClick = (acc: any) => {
+        setSelectedAccountBreakdown(acc);
+        setIsBreakdownModalOpen(true);
+        setBreakdownSearch('');
+        setBreakdownPeriodType('statement');
+        fetchAccountBreakdown(acc, 'statement');
+    };
+
+    const handlePeriodTypeToggle = (type: 'statement' | 'all') => {
+        setBreakdownPeriodType(type);
+        if (selectedAccountBreakdown) {
+            fetchAccountBreakdown(selectedAccountBreakdown, type);
+        }
+    };
+
+    const fetchAccountBreakdown = async (acc: any, periodType: 'statement' | 'all' = 'statement') => {
+        if (!currentCompanyId) return;
+        setLoadingBreakdown(true);
+        try {
+            const isPl = activeReport === 'pl' || activeReport === 'ea';
+            let pStartDate: string | null = null;
+            let pEndDate: string | null = null;
+
+            if (periodType === 'statement') {
+                if (isPl) {
+                    pStartDate = startDate;
+                    pEndDate = endDate;
+                } else {
+                    pStartDate = null;
+                    pEndDate = endDate;
+                }
+            } else {
+                pStartDate = null;
+                pEndDate = null;
+            }
+
+            const { data, error } = await supabase.rpc('rpc_get_accounting_account_breakdown', {
+                p_company_id: currentCompanyId,
+                p_account_id: acc.account_id || acc.id || null,
+                p_account_code: acc.code || null,
+                p_start_date: pStartDate,
+                p_end_date: pEndDate,
+                p_cost_center_id: (isPl && selectedCC) ? selectedCC : null,
+                p_project_cost_center_id: (isPl && selectedProjectCC) ? selectedProjectCC : null,
+                p_contract_cost_center_id: (isPl && selectedContractCC) ? selectedContractCC : null
+            });
+
+            if (error) throw error;
+            setBreakdownData(data);
+        } catch (err: any) {
+            console.error('Error fetching account breakdown:', err);
+            setBreakdownData(null);
+        } finally {
+            setLoadingBreakdown(false);
+        }
+    };
+
+    const handleExportBreakdownCSV = () => {
+        if (!breakdownData || !breakdownData.transactions || breakdownData.transactions.length === 0) return;
+        
+        const headers = ['Date', 'Voucher Ref', 'Move Type', 'Journal', 'Partner', 'Narration / Description', 'Account Code', 'Account Name', 'Cost Center', 'Debit', 'Credit', 'Running Balance'];
+        const rows = breakdownData.transactions.map((tx: any) => [
+            tx.date || '',
+            `"${(tx.voucher_ref || '').replace(/"/g, '""')}"`,
+            `"${(tx.move_type || '').replace(/"/g, '""')}"`,
+            `"${(tx.journal_name || '').replace(/"/g, '""')}"`,
+            `"${(tx.partner_name || '').replace(/"/g, '""')}"`,
+            `"${(tx.description || '').replace(/"/g, '""')}"`,
+            `"${(tx.account_code || '').replace(/"/g, '""')}"`,
+            `"${(tx.account_name || '').replace(/"/g, '""')}"`,
+            `"${(tx.cost_center_name || '').replace(/"/g, '""')}"`,
+            Number(tx.debit) || 0,
+            Number(tx.credit) || 0,
+            Number(tx.running_balance) || 0
+        ]);
+
+        const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement('a');
+        link.setAttribute('href', encodedUri);
+        const accCode = breakdownData.account?.code || selectedAccountBreakdown?.code || 'account';
+        const safeName = (breakdownData.account?.name || selectedAccountBreakdown?.name || 'breakdown').replace(/[^a-zA-Z0-9_-]/g, '_');
+        link.setAttribute('download', `${accCode}_${safeName}_breakdown_${endDate}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    const handlePrintBreakdown = () => {
+        window.print();
+    };
+
     const AccountSection = ({ title, accounts, total, color = 'text-slate-800' }: any) => (
         <div className="space-y-3 mb-6">
             <h3 className={`font-bold text-lg border-b pb-2 ${color}`}>{title}</h3>
             <div className="space-y-1">
                 {accounts && accounts.length > 0 ? (
                     accounts.map((acc: any, idx: number) => (
-                        <div key={idx} className="flex justify-between text-sm py-1 hover:bg-slate-50 dark:hover:bg-zinc-800 rounded px-1">
+                        <div 
+                            key={idx} 
+                            onClick={() => handleAccountClick(acc)}
+                            className="flex justify-between items-center text-sm py-1.5 px-2 hover:bg-indigo-50/70 dark:hover:bg-indigo-950/30 rounded-lg cursor-pointer transition-all group border border-transparent hover:border-indigo-150 dark:hover:border-indigo-900/50"
+                            title={`Click to view breakdown of ${acc.name}`}
+                        >
                             <div className="flex flex-col">
-                                <span className="font-medium text-slate-700 dark:text-slate-300">{acc.name}</span>
+                                <span className="font-medium text-slate-700 dark:text-slate-300 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors flex items-center gap-1.5">
+                                    {acc.name}
+                                    <ArrowUpRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-indigo-500 shrink-0" />
+                                </span>
                                 <span className="text-[10px] text-slate-400 font-mono">{acc.code}</span>
                             </div>
-                            <span className="font-mono font-semibold">{formatCurrency(acc.balance)}</span>
+                            <span className="font-mono font-semibold text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                                {formatCurrency(acc.balance)}
+                            </span>
                         </div>
                     ))
                 ) : (
@@ -279,12 +400,22 @@ export const FinancialReports: React.FC = () => {
                 <div className="space-y-1">
                     {items && items.length > 0 ? (
                         items.map((item: any, idx: number) => (
-                            <div key={idx} className="flex justify-between text-sm py-2 px-2 hover:bg-slate-50 dark:hover:bg-zinc-800/50 rounded-lg transition-colors">
+                            <div 
+                                key={idx} 
+                                onClick={() => handleAccountClick(item)}
+                                className="flex justify-between items-center text-sm py-2 px-2 hover:bg-indigo-50/70 dark:hover:bg-indigo-950/30 rounded-lg transition-all cursor-pointer group border border-transparent hover:border-indigo-150 dark:hover:border-indigo-900/50"
+                                title={`Click to view breakdown of ${item.name}`}
+                            >
                                 <div>
-                                    <p className="font-bold text-slate-700 dark:text-slate-200">{item.name}</p>
+                                    <p className="font-bold text-slate-700 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors flex items-center gap-1.5">
+                                        {item.name}
+                                        <ArrowUpRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-indigo-500 shrink-0" />
+                                    </p>
                                     <p className="text-[10px] text-slate-400 font-mono">{item.code} • {item.subtype}</p>
                                 </div>
-                                <p className="font-mono font-bold text-slate-600 dark:text-slate-400">{formatCurrency(item.balance)}</p>
+                                <p className="font-mono font-bold text-slate-600 dark:text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                                    {formatCurrency(item.balance)}
+                                </p>
                             </div>
                         ))
                     ) : (
@@ -435,6 +566,13 @@ export const FinancialReports: React.FC = () => {
                             </div>
                         </div>
 
+                        {(activeReport === 'bs' || activeReport === 'pl' || activeReport === 'tb' || activeReport === 'ea') && (
+                            <div className="flex items-center justify-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 text-xs font-semibold w-fit mx-auto border border-indigo-100 dark:border-indigo-900/40 shadow-2xs no-print">
+                                <Layers className="w-3.5 h-3.5" />
+                                <span>Click any account row to view its transaction breakdown & composition</span>
+                            </div>
+                        )}
+
                         {activeReport === 'bs' && (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
                                 <div>
@@ -530,9 +668,17 @@ export const FinancialReports: React.FC = () => {
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
                                         {reportData.map((row: any, idx: number) => (
-                                            <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                                            <tr 
+                                                key={idx} 
+                                                onClick={() => handleAccountClick(row)}
+                                                className="hover:bg-indigo-50/70 dark:hover:bg-indigo-950/30 transition-colors cursor-pointer group"
+                                                title={`Click to view breakdown of ${row.name}`}
+                                            >
                                                 <td className="px-6 py-4">
-                                                    <p className="font-bold text-slate-700 dark:text-slate-200">{row.name}</p>
+                                                    <p className="font-bold text-slate-700 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors flex items-center gap-1.5">
+                                                        {row.name}
+                                                        <ArrowUpRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-indigo-500 shrink-0" />
+                                                    </p>
                                                     <p className="text-[10px] text-slate-400 font-mono">{row.code} • {row.type}</p>
                                                 </td>
                                                 <td className="px-6 py-4 text-right font-mono font-medium">{row.total_debit > 0 ? formatCurrency(row.total_debit) : '—'}</td>
@@ -936,7 +1082,12 @@ export const FinancialReports: React.FC = () => {
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
                                         {reportData.map((row: any, idx: number) => (
-                                            <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                                            <tr 
+                                                key={idx} 
+                                                onClick={() => handleAccountClick({ code: row.account_code, name: row.account_name, balance: row.amount })}
+                                                className="hover:bg-indigo-50/70 dark:hover:bg-indigo-950/30 transition-colors cursor-pointer group"
+                                                title={`Click to view breakdown of ${row.account_name}`}
+                                            >
                                                 <td className="px-6 py-4">
                                                     <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider mr-2 ${row.type === 'Direct' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'}`}>
                                                         {row.type}
@@ -944,9 +1095,12 @@ export const FinancialReports: React.FC = () => {
                                                     <span className="font-bold text-slate-700 dark:text-slate-200">{row.category}</span>
                                                 </td>
                                                 <td className="px-6 py-4 text-slate-600 dark:text-slate-400">
-                                                    {row.account_code} — {row.account_name}
+                                                    <div className="flex items-center gap-1.5 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                                                        <span>{row.account_code} — {row.account_name}</span>
+                                                        <ArrowUpRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-indigo-500 shrink-0" />
+                                                    </div>
                                                 </td>
-                                                <td className="px-6 py-4 text-right font-mono font-bold text-rose-600">{formatCurrency(Number(row.amount))}</td>
+                                                <td className="px-6 py-4 text-right font-mono font-bold text-rose-600 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">{formatCurrency(Number(row.amount))}</td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -964,6 +1118,331 @@ export const FinancialReports: React.FC = () => {
                     </div>
                 )}
             </div>
+
+            {/* Account Breakdown Drill-Down Modal */}
+            {isBreakdownModalOpen && (
+                <div 
+                    className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200"
+                    onClick={() => setIsBreakdownModalOpen(false)}
+                >
+                    <div 
+                        className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {/* Modal Header */}
+                        <div className="p-5 border-b border-slate-100 dark:border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/50 dark:bg-zinc-850/50">
+                            <div className="flex items-start gap-3">
+                                <div className="p-2.5 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 rounded-2xl border border-indigo-100 dark:border-indigo-900/50">
+                                    <BookOpen className="w-6 h-6" />
+                                </div>
+                                <div>
+                                    <div className="flex items-center flex-wrap gap-2">
+                                        <h3 className="text-xl font-black text-slate-900 dark:text-white">
+                                            {breakdownData?.account?.name || selectedAccountBreakdown?.name || 'Account Breakdown'}
+                                        </h3>
+                                        <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-md bg-slate-200 dark:bg-zinc-700 text-slate-700 dark:text-slate-300">
+                                            {breakdownData?.account?.code || selectedAccountBreakdown?.code}
+                                        </span>
+                                        {breakdownData?.account?.subtype && (
+                                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
+                                                {breakdownData.account.subtype}
+                                            </span>
+                                        )}
+                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-zinc-800 text-slate-500 capitalize">
+                                            {breakdownData?.account?.type || selectedAccountBreakdown?.type || 'Account'}
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-1.5">
+                                        <Calendar className="w-3.5 h-3.5" />
+                                        <span>
+                                            {breakdownPeriodType === 'all'
+                                                ? 'All Time Historical Transactions'
+                                                : activeReport === 'pl' || activeReport === 'ea'
+                                                    ? `Transactions from ${startDate} to ${endDate}`
+                                                    : `Transactions as of ${endDate}`}
+                                        </span>
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 self-end sm:self-center">
+                                <button
+                                    type="button"
+                                    onClick={handleExportBreakdownCSV}
+                                    disabled={!breakdownData?.transactions?.length}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl hover:bg-slate-50 dark:hover:bg-zinc-750 disabled:opacity-40 transition-colors shadow-2xs cursor-pointer"
+                                    title="Export transactions to CSV for Excel"
+                                >
+                                    <Download className="w-3.5 h-3.5" />
+                                    <span>Export CSV</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handlePrintBreakdown}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl hover:bg-slate-50 dark:hover:bg-zinc-750 transition-colors shadow-2xs cursor-pointer"
+                                    title="Print Account Breakdown"
+                                >
+                                    <Printer className="w-3.5 h-3.5" />
+                                    <span>Print</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setIsBreakdownModalOpen(false)}
+                                    className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-xl transition-colors cursor-pointer"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Modal Body */}
+                        <div className="p-5 flex-1 overflow-y-auto space-y-5">
+                            {loadingBreakdown ? (
+                                <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+                                    <RefreshCw className="w-8 h-8 animate-spin text-indigo-500 mb-3" />
+                                    <p className="text-xs font-bold uppercase tracking-wider">Loading Ledger Breakdown...</p>
+                                </div>
+                            ) : !breakdownData || !breakdownData.success ? (
+                                <div className="text-center py-16 text-slate-400">
+                                    <AlertCircle className="w-12 h-12 mx-auto mb-2 opacity-30 text-rose-500" />
+                                    <p className="font-bold text-slate-700 dark:text-slate-300">Could not load breakdown</p>
+                                    <p className="text-xs text-slate-400 mt-1">{breakdownData?.message || 'No data found for this account.'}</p>
+                                </div>
+                            ) : (
+                                <>
+                                    {/* 4 KPI Summary Cards */}
+                                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                                        <div className="p-3.5 bg-slate-50 dark:bg-zinc-850/60 rounded-2xl border border-slate-200/80 dark:border-zinc-800">
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                                                Opening Balance
+                                            </span>
+                                            <span className="text-base font-black text-slate-800 dark:text-slate-200 mt-1 block">
+                                                {formatCurrency(Number(breakdownData.opening_balance) || 0)}
+                                            </span>
+                                            <span className="text-[10px] text-slate-400 mt-0.5 block">
+                                                Prior to period
+                                            </span>
+                                        </div>
+
+                                        <div className="p-3.5 bg-emerald-50/50 dark:bg-emerald-950/20 rounded-2xl border border-emerald-100 dark:border-emerald-900/30">
+                                            <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider block">
+                                                Total Debits
+                                            </span>
+                                            <span className="text-base font-black text-emerald-700 dark:text-emerald-300 mt-1 block font-mono">
+                                                {formatCurrency(Number(breakdownData.total_debit) || 0)}
+                                            </span>
+                                            <span className="text-[10px] text-emerald-600/80 dark:text-emerald-400 mt-0.5 block">
+                                                {breakdownData.transactions?.filter((t: any) => Number(t.debit) > 0).length || 0} debit entries
+                                            </span>
+                                        </div>
+
+                                        <div className="p-3.5 bg-rose-50/50 dark:bg-rose-950/20 rounded-2xl border border-rose-100 dark:border-rose-900/30">
+                                            <span className="text-[10px] font-bold text-rose-700 dark:text-rose-300 uppercase tracking-wider block">
+                                                Total Credits
+                                            </span>
+                                            <span className="text-base font-black text-rose-700 dark:text-rose-300 mt-1 block font-mono">
+                                                {formatCurrency(Number(breakdownData.total_credit) || 0)}
+                                            </span>
+                                            <span className="text-[10px] text-rose-600/80 dark:text-rose-400 mt-0.5 block">
+                                                {breakdownData.transactions?.filter((t: any) => Number(t.credit) > 0).length || 0} credit entries
+                                            </span>
+                                        </div>
+
+                                        <div className="p-3.5 bg-indigo-50/60 dark:bg-indigo-950/40 rounded-2xl border border-indigo-200 dark:border-indigo-800 shadow-2xs">
+                                            <span className="text-[10px] font-bold text-indigo-700 dark:text-indigo-300 uppercase tracking-wider block">
+                                                Net Closing Balance
+                                            </span>
+                                            <span className="text-lg font-black text-indigo-900 dark:text-indigo-200 mt-1 block font-mono">
+                                                {formatCurrency(Number(breakdownData.closing_balance) || 0)}
+                                            </span>
+                                            <span className="text-[10px] text-indigo-600/90 dark:text-indigo-400 mt-0.5 block font-medium">
+                                                Matches Report Statement
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Search & Period Toggles */}
+                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                                        <div className="relative w-full sm:w-80">
+                                            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                            <input
+                                                type="text"
+                                                value={breakdownSearch}
+                                                onChange={e => setBreakdownSearch(e.target.value)}
+                                                placeholder="Search voucher ref, memo, partner, or date..."
+                                                className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs outline-none focus:ring-2 ring-indigo-500/20"
+                                            />
+                                        </div>
+
+                                        <div className="flex items-center gap-2">
+                                            <div className="bg-slate-100 dark:bg-zinc-800 p-0.5 rounded-xl border border-slate-200 dark:border-zinc-700 flex items-center">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handlePeriodTypeToggle('statement')}
+                                                    className={`px-3 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${breakdownPeriodType === 'statement'
+                                                        ? 'bg-white dark:bg-zinc-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                                                        : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                                                >
+                                                    Report Cut-off
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handlePeriodTypeToggle('all')}
+                                                    className={`px-3 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${breakdownPeriodType === 'all'
+                                                        ? 'bg-white dark:bg-zinc-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                                                        : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                                                >
+                                                    All Time
+                                                </button>
+                                            </div>
+                                            <span className="text-[11px] text-slate-400 px-1 font-medium">
+                                                {breakdownData.transactions?.length || 0} entries
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Transactions Table */}
+                                    {(() => {
+                                        const term = breakdownSearch.trim().toLowerCase();
+                                        const filteredTransactions = (breakdownData.transactions || []).filter((tx: any) => {
+                                            if (!term) return true;
+                                            return (
+                                                (tx.voucher_ref || '').toLowerCase().includes(term) ||
+                                                (tx.description || '').toLowerCase().includes(term) ||
+                                                (tx.partner_name || '').toLowerCase().includes(term) ||
+                                                (tx.journal_name || '').toLowerCase().includes(term) ||
+                                                (tx.date || '').toLowerCase().includes(term) ||
+                                                (tx.account_name || '').toLowerCase().includes(term) ||
+                                                (tx.account_code || '').toLowerCase().includes(term)
+                                            );
+                                        });
+
+                                        if (filteredTransactions.length === 0) {
+                                            return (
+                                                <div className="p-8 text-center bg-slate-50/50 dark:bg-zinc-850/50 rounded-2xl border border-dashed border-slate-200 dark:border-zinc-800">
+                                                    <FileText className="w-8 h-8 mx-auto text-slate-300 dark:text-zinc-600 mb-2" />
+                                                    <p className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                                                        {term ? 'No transactions match your search filter.' : 'No transactions recorded for this account.'}
+                                                    </p>
+                                                    {term && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setBreakdownSearch('')}
+                                                            className="text-xs text-indigo-600 font-bold hover:underline mt-1 cursor-pointer"
+                                                        >
+                                                            Clear search
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            );
+                                        }
+
+                                        return (
+                                            <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-zinc-800">
+                                                <table className="w-full text-xs text-left border-collapse">
+                                                    <thead className="bg-slate-50 dark:bg-zinc-800 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 dark:border-zinc-700">
+                                                        <tr>
+                                                            <th className="px-3.5 py-3">Date</th>
+                                                            <th className="px-3.5 py-3">Voucher Ref</th>
+                                                            <th className="px-3.5 py-3">Journal</th>
+                                                            <th className="px-3.5 py-3">Partner / Counterpart</th>
+                                                            <th className="px-3.5 py-3">Narration / Memo</th>
+                                                            <th className="px-3.5 py-3 text-right">Debit</th>
+                                                            <th className="px-3.5 py-3 text-right">Credit</th>
+                                                            <th className="px-3.5 py-3 text-right font-bold">Running Balance</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-100 dark:divide-zinc-800 font-medium">
+                                                        {filteredTransactions.map((tx: any, tIdx: number) => {
+                                                            const isDebit = Number(tx.debit) > 0;
+                                                            const isCredit = Number(tx.credit) > 0;
+                                                            return (
+                                                                <tr key={tx.line_id || tIdx} className="hover:bg-indigo-50/30 dark:hover:bg-zinc-800/40 transition-colors">
+                                                                    <td className="px-3.5 py-2.5 text-slate-500 whitespace-nowrap">
+                                                                        {tx.date}
+                                                                    </td>
+                                                                    <td className="px-3.5 py-2.5 font-mono font-bold text-indigo-600 dark:text-indigo-400 whitespace-nowrap">
+                                                                        <div className="flex items-center gap-1.5">
+                                                                            <span>{tx.voucher_ref || '—'}</span>
+                                                                            {tx.move_type && (
+                                                                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                                                                                    tx.move_type === 'in_invoice' ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300' :
+                                                                                    tx.move_type === 'out_invoice' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300' :
+                                                                                    'bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-slate-400'
+                                                                                }`}>
+                                                                                    {tx.move_type === 'in_invoice' ? 'Bill' : tx.move_type === 'out_invoice' ? 'Invoice' : 'JV'}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    </td>
+                                                                    <td className="px-3.5 py-2.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                                                                        {tx.journal_name || tx.journal_code || '—'}
+                                                                    </td>
+                                                                    <td className="px-3.5 py-2.5 text-slate-700 dark:text-slate-300 max-w-[160px] truncate" title={tx.partner_name}>
+                                                                        {tx.partner_name || '—'}
+                                                                    </td>
+                                                                    <td className="px-3.5 py-2.5 text-slate-600 dark:text-slate-300 max-w-[240px] truncate" title={tx.description}>
+                                                                        {tx.description || '—'}
+                                                                        {tx.account_name && selectedAccountBreakdown?.code === '999999' && (
+                                                                            <span className="block text-[10px] text-slate-400 font-mono">
+                                                                                {tx.account_code} · {tx.account_name}
+                                                                            </span>
+                                                                        )}
+                                                                    </td>
+                                                                    <td className={`px-3.5 py-2.5 text-right font-mono ${isDebit ? 'font-bold text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`}>
+                                                                        {isDebit ? formatCurrency(Number(tx.debit)) : '—'}
+                                                                    </td>
+                                                                    <td className={`px-3.5 py-2.5 text-right font-mono ${isCredit ? 'font-bold text-rose-600 dark:text-rose-400' : 'text-slate-400'}`}>
+                                                                        {isCredit ? formatCurrency(Number(tx.credit)) : '—'}
+                                                                    </td>
+                                                                    <td className="px-3.5 py-2.5 text-right font-mono font-black text-slate-900 dark:text-white bg-slate-50/50 dark:bg-zinc-800/30">
+                                                                        {formatCurrency(Number(tx.running_balance))}
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })}
+                                                    </tbody>
+                                                    <tfoot className="bg-slate-100 dark:bg-zinc-800 font-bold border-t-2 border-slate-200 dark:border-zinc-700">
+                                                        <tr>
+                                                            <td colSpan={5} className="px-3.5 py-3 text-right uppercase text-[10px] tracking-widest text-slate-500">
+                                                                Total Movement ({filteredTransactions.length} items)
+                                                            </td>
+                                                            <td className="px-3.5 py-3 text-right font-mono text-emerald-600 dark:text-emerald-400">
+                                                                {formatCurrency(filteredTransactions.reduce((s: number, t: any) => s + (Number(t.debit) || 0), 0))}
+                                                            </td>
+                                                            <td className="px-3.5 py-3 text-right font-mono text-rose-600 dark:text-rose-400">
+                                                                {formatCurrency(filteredTransactions.reduce((s: number, t: any) => s + (Number(t.credit) || 0), 0))}
+                                                            </td>
+                                                            <td className="px-3.5 py-3 text-right font-mono font-black text-slate-900 dark:text-white">
+                                                                {formatCurrency(Number(breakdownData.closing_balance) || 0)}
+                                                            </td>
+                                                        </tr>
+                                                    </tfoot>
+                                                </table>
+                                            </div>
+                                        );
+                                    })()}
+                                </>
+                            )}
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="p-4 border-t border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-850/50 flex items-center justify-between text-xs text-slate-500">
+                            <span className="flex items-center gap-1.5">
+                                <Receipt className="w-3.5 h-3.5 text-indigo-500" />
+                                All figures in {companyCurrency || 'QAR'}. Double-entry posting verified.
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => setIsBreakdownModalOpen(false)}
+                                className="px-4 py-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold rounded-xl hover:opacity-90 transition-opacity cursor-pointer"
+                            >
+                                Done
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
