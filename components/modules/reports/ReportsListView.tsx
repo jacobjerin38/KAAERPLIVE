@@ -4,7 +4,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { checkIsAdmin } from '../../crm/services';
 import {
     Plus, FileText, Download, Trash2, Search, Play, Clock,
-    BarChart3, Loader2, ChevronRight, Columns, DollarSign, Calendar, AlertTriangle, Lock
+    BarChart3, Loader2, ChevronRight, Columns, DollarSign, Calendar, AlertTriangle, Lock, Users, FileCheck
 } from 'lucide-react';
 import { ReportBuilder } from './ReportBuilder';
 import { LeaveAnalyticsReport } from '../hrms/reports/LeaveAnalyticsReport';
@@ -13,6 +13,8 @@ import { BonusGratuityReport } from '../hrms/reports/BonusGratuityReport';
 import { MonthlyAttendanceReport } from '../hrms/reports/MonthlyAttendanceReport';
 import { OvertimeReport } from '../hrms/reports/OvertimeReport';
 import { LateEarlyReport } from '../hrms/reports/LateEarlyReport';
+import { EmployeeWiseCrmReport } from '../../crm/reports/EmployeeWiseCrmReport';
+import CustomersView from '../../crm/CustomersView';
 
 interface ReportsListViewProps {
     moduleFilter?: string;   // e.g. "CRM" — show only CRM modules
@@ -30,9 +32,11 @@ export const ReportsListView: React.FC<ReportsListViewProps> = ({ moduleFilter, 
     const [searchQuery, setSearchQuery] = useState('');
     const [editReport, setEditReport] = useState<any>(null);
     const [selectedStandardReport, setSelectedStandardReport] = useState<string | null>(null);
-    const [reportCategory, setReportCategory] = useState<'CUSTOM' | 'STANDARD'>('CUSTOM');
+    const [reportCategory, setReportCategory] = useState<'CUSTOM' | 'STANDARD'>(moduleFilter === 'CRM' ? 'STANDARD' : 'CUSTOM');
 
     const allStandardReports = useMemo(() => [
+        { id: 'CRM_EMPLOYEE_PERFORMANCE', name: 'Employee-Wise CRM & Sales Report', desc: 'Performance matrix: call-off orders, revenue, pipeline, clients & leads by employee', icon: Users, color: 'indigo', module: 'CRM' },
+        { id: 'CRM_CALL_OFF_ORDERS', name: 'Call-Off Work Orders & PO Register', desc: 'Chronological register of call-off contracts, work orders, status, and assigned employees', icon: FileCheck, color: 'blue', module: 'CRM' },
         { id: 'MONTHLY_ATTENDANCE', name: 'Monthly Attendance Report', desc: 'Working days, leaves, shifts & punch audit', icon: Calendar, color: 'cyan', module: 'ATTENDANCE' },
         { id: 'OVERTIME_REPORT', name: 'Overtime Statement', desc: 'Rules, multipliers, daily caps & approvals', icon: Clock, color: 'amber', module: 'ATTENDANCE' },
         { id: 'LATE_EARLY_REPORT', name: 'Late In / Early Out Report', desc: 'Punctuality analysis & grace comparisons', icon: AlertTriangle, color: 'rose', module: 'ATTENDANCE' },
@@ -107,9 +111,11 @@ export const ReportsListView: React.FC<ReportsListViewProps> = ({ moduleFilter, 
             return (
                 <div className="h-full flex flex-col p-8 overflow-y-auto">
                     <button onClick={() => { setView('LIST'); setSelectedStandardReport(null); }}
-                        className="mb-6 flex items-center gap-2 text-slate-500 hover:text-indigo-600 font-bold text-sm transition-colors w-fit">
+                        className="mb-6 flex items-center gap-2 text-slate-500 hover:text-indigo-600 font-bold text-sm transition-colors w-fit no-print">
                         <Plus className="w-4 h-4 rotate-45" /> Back to Reports
                     </button>
+                    {selectedStandardReport === 'CRM_EMPLOYEE_PERFORMANCE' && <EmployeeWiseCrmReport companyId={companyId} />}
+                    {selectedStandardReport === 'CRM_CALL_OFF_ORDERS' && <CustomersView companyId={companyId || ''} initialTab="WORK_ORDERS_REPORT" />}
                     {selectedStandardReport === 'MONTHLY_ATTENDANCE' && <MonthlyAttendanceReport />}
                     {selectedStandardReport === 'OVERTIME_REPORT' && <OvertimeReport />}
                     {selectedStandardReport === 'LATE_EARLY_REPORT' && <LateEarlyReport />}

@@ -493,7 +493,7 @@ export const getCustomerWorkOrders = async (customerId: string): Promise<CRMCust
   const { data, error } = await (supabase as any).from('crm_customer_work_orders')
     .select(`
       *,
-      customer:crm_customers(id, name, contract_number, contract_title)
+      customer:crm_customers(id, name, contract_number, contract_title, owner_id)
     `)
     .eq('customer_id', customerId)
     .order('created_at', { ascending: true });
@@ -502,14 +502,31 @@ export const getCustomerWorkOrders = async (customerId: string): Promise<CRMCust
     console.error('Error fetching customer work orders:', error);
     return [];
   }
-  return data || [];
+
+  const workOrders = data || [];
+  if (workOrders.length > 0) {
+    const resolve = await getPersonResolver();
+    workOrders.forEach((wo: any) => {
+      const repId = wo.employee_id || wo.assigned_to || wo.customer?.owner_id || wo.created_by;
+      if (repId) {
+        wo.assigned_person = resolve(repId);
+      }
+      if (wo.created_by) {
+        wo.creator = resolve(wo.created_by);
+      }
+      if (wo.customer?.owner_id) {
+        wo.customer_owner = resolve(wo.customer.owner_id);
+      }
+    });
+  }
+  return workOrders;
 };
 
 export const getAllWorkOrders = async (companyId: string): Promise<CRMCustomerWorkOrder[]> => {
   const { data, error } = await (supabase as any).from('crm_customer_work_orders')
     .select(`
       *,
-      customer:crm_customers(id, name, contract_number, contract_title)
+      customer:crm_customers(id, name, contract_number, contract_title, owner_id)
     `)
     .eq('company_id', companyId)
     .order('created_at', { ascending: false });
@@ -518,7 +535,24 @@ export const getAllWorkOrders = async (companyId: string): Promise<CRMCustomerWo
     console.error('Error fetching all work orders:', error);
     return [];
   }
-  return data || [];
+
+  const workOrders = data || [];
+  if (workOrders.length > 0) {
+    const resolve = await getPersonResolver(companyId);
+    workOrders.forEach((wo: any) => {
+      const repId = wo.employee_id || wo.assigned_to || wo.customer?.owner_id || wo.created_by;
+      if (repId) {
+        wo.assigned_person = resolve(repId);
+      }
+      if (wo.created_by) {
+        wo.creator = resolve(wo.created_by);
+      }
+      if (wo.customer?.owner_id) {
+        wo.customer_owner = resolve(wo.customer.owner_id);
+      }
+    });
+  }
+  return workOrders;
 };
 
 export const createCustomerWorkOrder = async (wo: Partial<CRMCustomerWorkOrder>): Promise<CRMCustomerWorkOrder | null> => {

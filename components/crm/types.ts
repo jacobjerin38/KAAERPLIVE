@@ -142,6 +142,10 @@ export interface CRMCustomerWorkOrder {
   document_url?: string;
   created_by?: string;
   creator?: { id: string; name: string; email?: string };
+  assigned_to?: string;
+  employee_id?: string;
+  assigned_person?: { id: string; name: string; email?: string };
+  customer_owner?: { id: string; name: string; email?: string };
   created_at: string;
   updated_at?: string;
 }

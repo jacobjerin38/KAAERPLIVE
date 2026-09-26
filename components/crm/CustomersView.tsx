@@ -12,12 +12,18 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import { AttachmentPanel } from './AttachmentPanel';
 
-export default function CustomersView({ companyId }: { companyId: string }) {
+export default function CustomersView({ 
+    companyId,
+    initialTab
+}: { 
+    companyId: string;
+    initialTab?: 'CUSTOMERS' | 'WORK_ORDERS_REPORT';
+}) {
     const { user, userRole } = useAuth();
     const isAdmin = checkIsAdmin(userRole);
 
     // View Switching: 'CUSTOMERS' or 'WORK_ORDERS_REPORT'
-    const [activeViewTab, setActiveViewTab] = useState<'CUSTOMERS' | 'WORK_ORDERS_REPORT'>('CUSTOMERS');
+    const [activeViewTab, setActiveViewTab] = useState<'CUSTOMERS' | 'WORK_ORDERS_REPORT'>(initialTab || 'CUSTOMERS');
 
     // Customers State
     const [customers, setCustomers] = useState<Customer[]>([]);
@@ -49,15 +55,16 @@ export default function CustomersView({ companyId }: { companyId: string }) {
     const [woSearchQuery, setWoSearchQuery] = useState('');
     const [selectedClientFilter, setSelectedClientFilter] = useState<string>('ALL');
     const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('ALL');
+    const [selectedWoRepFilter, setSelectedWoRepFilter] = useState<string>('ALL');
 
     // Print Report Modal
     const [showPrintModal, setShowPrintModal] = useState(false);
 
     useEffect(() => {
-        if (isAdmin && companyId) {
+        if (companyId) {
             getSalesReps(companyId).then(setSalesReps);
         }
-    }, [isAdmin, companyId]);
+    }, [companyId]);
 
     useEffect(() => {
         loadCustomers();
@@ -131,15 +138,20 @@ export default function CustomersView({ companyId }: { companyId: string }) {
 
     // Work Order Handlers
     const handleOpenAddWO = (preselectedCustomerId?: string) => {
-        const customer = preselectedCustomerId ? customers.find(c => c.id === preselectedCustomerId) : undefined;
+        const customer = preselectedCustomerId ? customers.find(c => c.id === preselectedCustomerId) : (customers[0] || undefined);
+        const defaultOwnerId = customer?.owner_id || user?.id;
+        const rep = salesReps.find(r => r.id === defaultOwnerId || r.profileId === defaultOwnerId);
+
         setActiveWO({
             company_id: companyId,
-            customer_id: preselectedCustomerId || (customers[0]?.id || ''),
+            customer_id: customer?.id || preselectedCustomerId || '',
             contract_ref: customer?.contract_number || 'QCTCM2922',
             currency: 'QAR',
             status: 'In Progress',
             issue_date: new Date().toISOString().split('T')[0],
-            start_date: new Date().toISOString().split('T')[0]
+            start_date: new Date().toISOString().split('T')[0],
+            assigned_to: rep?.profileId || (defaultOwnerId || undefined),
+            employee_id: rep?.id || undefined
         });
         setShowWOModal(true);
     };
@@ -178,7 +190,9 @@ export default function CustomersView({ companyId }: { companyId: string }) {
                     completion_date: activeWO.completion_date || null as any,
                     status: activeWO.status || 'In Progress',
                     remarks: activeWO.remarks || null as any,
-                    document_url: activeWO.document_url || null as any
+                    document_url: activeWO.document_url || null as any,
+                    assigned_to: activeWO.assigned_to || null as any,
+                    employee_id: activeWO.employee_id || null as any
                 });
             } else {
                 await createCustomerWorkOrder({
@@ -195,7 +209,9 @@ export default function CustomersView({ companyId }: { companyId: string }) {
                     status: activeWO.status || 'In Progress',
                     remarks: activeWO.remarks || null as any,
                     document_url: activeWO.document_url || null as any,
-                    created_by: user?.id
+                    created_by: user?.id,
+                    assigned_to: activeWO.assigned_to || null as any,
+                    employee_id: activeWO.employee_id || null as any
                 });
             }
 
@@ -250,6 +266,14 @@ export default function CustomersView({ companyId }: { companyId: string }) {
         if (selectedStatusFilter !== 'ALL' && wo.status !== selectedStatusFilter) {
             return false;
         }
+        if (selectedWoRepFilter !== 'ALL') {
+            const repMatch = 
+                wo.employee_id === selectedWoRepFilter ||
+                wo.assigned_to === selectedWoRepFilter ||
+                (wo.assigned_person && (wo.assigned_person.id === selectedWoRepFilter || wo.assigned_person.profile_id === selectedWoRepFilter)) ||
+                (wo.customer_owner && (wo.customer_owner.id === selectedWoRepFilter || wo.customer_owner.profile_id === selectedWoRepFilter));
+            if (!repMatch) return false;
+        }
         if (woSearchQuery.trim()) {
             const q = woSearchQuery.toLowerCase().trim();
             const clientName = (wo.customer?.name || '').toLowerCase();
@@ -257,10 +281,48 @@ export default function CustomersView({ companyId }: { companyId: string }) {
             const desc = (wo.description || '').toLowerCase();
             const contract = (wo.contract_ref || '').toLowerCase();
             const remarks = (wo.remarks || '').toLowerCase();
-            return clientName.includes(q) || woNum.includes(q) || desc.includes(q) || contract.includes(q) || remarks.includes(q);
+            const repName = (wo.assigned_person?.name || wo.customer_owner?.name || '').toLowerCase();
+            return clientName.includes(q) || woNum.includes(q) || desc.includes(q) || contract.includes(q) || remarks.includes(q) || repName.includes(q);
         }
         return true;
     });
+
+    // Per-Employee summary statistics for reporting & print breakdown
+    const employeeSummary = React.useMemo(() => {
+        const map = new Map<string, {
+            name: string;
+            code?: string;
+            totalOrders: number;
+            inProgress: number;
+            completed: number;
+            totalAmountQAR: number;
+        }>();
+
+        filteredWorkOrders.forEach(wo => {
+            const repName = wo.assigned_person?.name || wo.customer_owner?.name || 'Unassigned';
+            const repCode = wo.assigned_person?.code || '';
+            const key = repName;
+            if (!map.has(key)) {
+                map.set(key, {
+                    name: repName,
+                    code: repCode,
+                    totalOrders: 0,
+                    inProgress: 0,
+                    completed: 0,
+                    totalAmountQAR: 0,
+                });
+            }
+            const record = map.get(key)!;
+            record.totalOrders += 1;
+            if (wo.status === 'In Progress') record.inProgress += 1;
+            if (wo.status === 'Completed') record.completed += 1;
+            const amt = Number(wo.amount) || 0;
+            const qarAmt = wo.currency === 'USD' ? amt * 3.64 : amt;
+            record.totalAmountQAR += qarAmt;
+        });
+
+        return Array.from(map.values()).sort((a, b) => b.totalOrders - a.totalOrders);
+    }, [filteredWorkOrders]);
 
     // Counts & Stats
     const totalWOs = workOrders.length;
@@ -285,13 +347,15 @@ export default function CustomersView({ companyId }: { companyId: string }) {
             alert("No work orders to export.");
             return;
         }
-        const headers = ["SL.NO", "Client", "Description", "PO / WO Number", "Contract Ref", "Amount (QAR)", "Currency", "Status", "Issue Date", "Remarks"];
+        const headers = ["SL.NO", "Client", "Rep / Employee", "Description", "PO / WO Number", "Contract Ref", "Amount (QAR)", "Currency", "Status", "Issue Date", "Remarks"];
         const rows = filteredWorkOrders.map((wo, idx) => {
             const num = Number(wo.amount) || 0;
             const qarAmt = wo.currency === 'USD' ? num * 3.64 : num;
+            const repName = wo.assigned_person?.name || wo.customer_owner?.name || 'Unassigned';
             return [
                 idx + 1,
                 `"${(wo.customer?.name || '').replace(/"/g, '""')}"`,
+                `"${repName.replace(/"/g, '""')}"`,
                 `"${(wo.description || '').replace(/"/g, '""')}"`,
                 `"${(wo.wo_number || '').replace(/"/g, '""')}"`,
                 `"${(wo.contract_ref || '').replace(/"/g, '""')}"`,
@@ -679,15 +743,56 @@ export default function CustomersView({ companyId }: { companyId: string }) {
                         </div>
                     </div>
 
+                    {/* Employee Quick Summary Chips */}
+                    {employeeSummary.length > 0 && (
+                        <div className="flex items-center gap-2 overflow-x-auto pb-1 mb-2">
+                            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap flex items-center gap-1">
+                                <Users size={12} /> By Rep:
+                            </span>
+                            <button
+                                onClick={() => setSelectedWoRepFilter('ALL')}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                                    selectedWoRepFilter === 'ALL'
+                                        ? 'bg-indigo-600 text-white shadow-sm'
+                                        : 'bg-white dark:bg-zinc-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-zinc-700 border border-slate-200 dark:border-zinc-700'
+                                }`}
+                            >
+                                <span>All Reps</span>
+                                <span className="px-1.5 py-0.2 bg-black/10 rounded-full text-[10px]">{workOrders.length}</span>
+                            </button>
+                            {employeeSummary.map((emp, i) => (
+                                <button
+                                    key={i}
+                                    onClick={() => {
+                                        const rep = salesReps.find(r => r.name.toLowerCase() === emp.name.toLowerCase());
+                                        if (rep) {
+                                            setSelectedWoRepFilter(selectedWoRepFilter === rep.id ? 'ALL' : rep.id);
+                                        }
+                                    }}
+                                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                                        selectedWoRepFilter !== 'ALL' && salesReps.find(r => r.id === selectedWoRepFilter)?.name.toLowerCase() === emp.name.toLowerCase()
+                                            ? 'bg-indigo-600 text-white shadow-sm'
+                                            : 'bg-white dark:bg-zinc-900 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-zinc-800 border border-slate-200 dark:border-zinc-700'
+                                    }`}
+                                >
+                                    <span>{emp.name}</span>
+                                    <span className="px-1.5 py-0.2 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 rounded-full text-[10px] font-bold">
+                                        {emp.totalOrders}
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
+                    )}
+
                     {/* Filter Bar */}
                     <div className="flex flex-wrap items-center justify-between gap-3 mb-3 bg-white dark:bg-zinc-900 p-2.5 rounded-xl border border-slate-200 dark:border-zinc-800">
                         <div className="flex flex-wrap items-center gap-3 flex-1">
                             {/* Search */}
-                            <div className="relative min-w-[220px] flex-1 max-w-md">
+                            <div className="relative min-w-[200px] flex-1 max-w-md">
                                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                                 <input
                                     type="text"
-                                    placeholder="Search WO#, Description, Client, Contract..."
+                                    placeholder="Search WO#, Client, Rep, Scope..."
                                     value={woSearchQuery}
                                     onChange={e => setWoSearchQuery(e.target.value)}
                                     className="w-full pl-8 pr-7 py-1.5 text-xs bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 dark:text-slate-200"
@@ -710,6 +815,21 @@ export default function CustomersView({ companyId }: { companyId: string }) {
                                     <option value="ALL">All Clients ({customers.length})</option>
                                     {customers.map(c => (
                                         <option key={c.id} value={c.id}>{c.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Rep / Employee Filter */}
+                            <div className="flex items-center gap-1.5 text-xs">
+                                <span className="text-slate-400 font-medium">Rep / Employee:</span>
+                                <select
+                                    value={selectedWoRepFilter}
+                                    onChange={e => setSelectedWoRepFilter(e.target.value)}
+                                    className="px-2.5 py-1.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-200"
+                                >
+                                    <option value="ALL">All Reps ({salesReps.length})</option>
+                                    {salesReps.map(r => (
+                                        <option key={r.id} value={r.id}>{r.name}</option>
                                     ))}
                                 </select>
                             </div>
@@ -737,7 +857,7 @@ export default function CustomersView({ companyId }: { companyId: string }) {
                         </span>
                     </div>
 
-                    {/* Table (EXACT MATCH to Client's Attached Screenshot) */}
+                    {/* Table (EXACT MATCH to Client's Attached Screenshot with Rep Column) */}
                     <div className="flex-1 bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-800 overflow-auto shadow-sm">
                         {woLoading ? (
                             <div className="h-full flex items-center justify-center py-16">
@@ -760,13 +880,14 @@ export default function CustomersView({ companyId }: { companyId: string }) {
                                 <thead>
                                     <tr className="bg-slate-100 dark:bg-zinc-800/80 text-slate-700 dark:text-slate-200 font-bold border-b border-slate-200 dark:border-zinc-700 sticky top-0 z-10">
                                         <th className="py-3 px-3 w-14 text-center">SL.NO</th>
-                                        <th className="py-3 px-4 min-w-[180px]">Client</th>
-                                        <th className="py-3 px-4 min-w-[280px]">Description</th>
-                                        <th className="py-3 px-4 min-w-[150px]">PO/ WO</th>
-                                        <th className="py-3 px-3 min-w-[120px]">Contract Ref</th>
+                                        <th className="py-3 px-4 min-w-[170px]">Client</th>
+                                        <th className="py-3 px-3 min-w-[140px]">Rep / Employee</th>
+                                        <th className="py-3 px-4 min-w-[260px]">Description</th>
+                                        <th className="py-3 px-4 min-w-[140px]">PO/ WO</th>
+                                        <th className="py-3 px-3 min-w-[110px]">Contract Ref</th>
                                         <th className="py-3 px-3 min-w-[100px]">Amount</th>
-                                        <th className="py-3 px-3 min-w-[100px]">Status</th>
-                                        <th className="py-3 px-4 min-w-[140px]">Remarks</th>
+                                        <th className="py-3 px-3 min-w-[90px]">Status</th>
+                                        <th className="py-3 px-4 min-w-[130px]">Remarks</th>
                                         <th className="py-3 px-3 w-20 text-center">Actions</th>
                                     </tr>
                                 </thead>
@@ -782,6 +903,19 @@ export default function CustomersView({ companyId }: { companyId: string }) {
                                             <td className="py-3 px-4 font-bold text-slate-900 dark:text-white">
                                                 <div className="flex items-center gap-1.5">
                                                     <span>{wo.customer?.name || 'Unknown Client'}</span>
+                                                </div>
+                                            </td>
+                                            <td className="py-3 px-3">
+                                                <div className="flex items-center gap-1.5">
+                                                    <div className="w-5 h-5 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-400 flex items-center justify-center text-[10px] font-bold shrink-0">
+                                                        {(wo.assigned_person?.name || wo.customer_owner?.name || 'U').charAt(0).toUpperCase()}
+                                                    </div>
+                                                    <div className="text-slate-700 dark:text-slate-300 font-medium leading-tight truncate max-w-[120px]">
+                                                        <span>{wo.assigned_person?.name || wo.customer_owner?.name || 'Unassigned'}</span>
+                                                        {wo.assigned_person?.code && (
+                                                            <span className="block text-[10px] text-slate-400 font-mono">{wo.assigned_person.code}</span>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </td>
                                             <td className="py-3 px-4 text-slate-700 dark:text-slate-300 font-medium">
@@ -1256,6 +1390,31 @@ export default function CustomersView({ companyId }: { companyId: string }) {
                                 </select>
                             </div>
 
+                            {/* Assigned Rep / Employee Selector */}
+                            <div className="space-y-1">
+                                <label className="text-xs font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1">
+                                    Assigned Representative / Employee
+                                </label>
+                                <select
+                                    value={activeWO.employee_id || activeWO.assigned_to || ''}
+                                    onChange={e => {
+                                        const repId = e.target.value;
+                                        const rep = salesReps.find(r => r.id === repId);
+                                        setActiveWO({
+                                            ...activeWO,
+                                            employee_id: repId || undefined,
+                                            assigned_to: rep?.profileId || (repId || undefined)
+                                        });
+                                    }}
+                                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                >
+                                    <option value="">Default to Client Owner / Unassigned</option>
+                                    {salesReps.map(r => (
+                                        <option key={r.id} value={r.id}>{r.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <Input
                                     label="PO / Work Order Number"
@@ -1421,46 +1580,101 @@ export default function CustomersView({ companyId }: { companyId: string }) {
                                 <div className="text-right text-xs">
                                     <p className="font-bold text-slate-800">Date: {new Date().toLocaleDateString('en-GB')}</p>
                                     <p className="text-slate-500 mt-0.5">Total Records: {filteredWorkOrders.length}</p>
+                                    {selectedWoRepFilter !== 'ALL' && (
+                                        <p className="text-indigo-600 font-bold mt-0.5">
+                                            Rep: {salesReps.find(r => r.id === selectedWoRepFilter)?.name || 'Selected Employee'}
+                                        </p>
+                                    )}
                                 </div>
                             </div>
 
-                            {/* Exact Table Layout from Screenshot */}
-                            <table className="w-full border-collapse text-xs border border-slate-300">
-                                <thead>
-                                    <tr className="bg-slate-200 text-slate-900 font-bold border-b border-slate-300">
-                                        <th className="py-2.5 px-3 border border-slate-300 text-center w-14">SL.NO</th>
-                                        <th className="py-2.5 px-3 border border-slate-300 min-w-[180px]">Client</th>
-                                        <th className="py-2.5 px-3 border border-slate-300 min-w-[260px]">Description</th>
-                                        <th className="py-2.5 px-3 border border-slate-300 min-w-[160px]">PO/ WO</th>
-                                        <th className="py-2.5 px-3 border border-slate-300 min-w-[90px] text-center">Status</th>
-                                        <th className="py-2.5 px-3 border border-slate-300 min-w-[100px] text-right">Amount</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {filteredWorkOrders.map((wo, idx) => (
-                                        <tr key={wo.id} className="border-b border-slate-200">
-                                            <td className="py-2.5 px-3 border border-slate-300 text-center font-bold text-slate-700">
-                                                {idx + 1}
-                                            </td>
-                                            <td className="py-2.5 px-3 border border-slate-300 font-bold text-slate-900">
-                                                {wo.customer?.name || '—'}
-                                            </td>
-                                            <td className="py-2.5 px-3 border border-slate-300 text-slate-800 font-medium">
-                                                {wo.description}
-                                            </td>
-                                            <td className="py-2.5 px-3 border border-slate-300 font-mono font-bold text-slate-900">
-                                                {wo.wo_number}
-                                            </td>
-                                            <td className="py-2.5 px-3 border border-slate-300 text-center font-semibold text-slate-700">
-                                                {wo.status}
-                                            </td>
-                                            <td className="py-2.5 px-3 border border-slate-300 text-right font-semibold text-slate-900">
-                                                {formatWOAmount(wo.amount, wo.currency)}
-                                            </td>
+                            {/* Employee-Wise Summary Breakdown Table in Print */}
+                            {employeeSummary.length > 0 && (
+                                <div>
+                                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 mb-2">
+                                        Employee / Sales Representative Work Order Summary Breakdown
+                                    </h3>
+                                    <table className="w-full border-collapse text-xs border border-slate-300">
+                                        <thead>
+                                            <tr className="bg-slate-100 text-slate-900 font-bold border-b border-slate-300">
+                                                <th className="py-2 px-3 border border-slate-300 text-left">Representative / Employee</th>
+                                                <th className="py-2 px-3 border border-slate-300 text-center w-24">Total Orders</th>
+                                                <th className="py-2 px-3 border border-slate-300 text-center w-28">In Progress</th>
+                                                <th className="py-2 px-3 border border-slate-300 text-center w-28">Completed</th>
+                                                <th className="py-2 px-3 border border-slate-300 text-right w-36">Total Value (QAR)</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {employeeSummary.map((emp, idx) => (
+                                                <tr key={idx} className="border-b border-slate-200">
+                                                    <td className="py-2 px-3 border border-slate-300 font-semibold text-slate-800">
+                                                        {emp.name} {emp.code ? `(${emp.code})` : ''}
+                                                    </td>
+                                                    <td className="py-2 px-3 border border-slate-300 text-center font-bold text-slate-700">
+                                                        {emp.totalOrders}
+                                                    </td>
+                                                    <td className="py-2 px-3 border border-slate-300 text-center font-semibold text-amber-700">
+                                                        {emp.inProgress}
+                                                    </td>
+                                                    <td className="py-2 px-3 border border-slate-300 text-center font-semibold text-emerald-700">
+                                                        {emp.completed}
+                                                    </td>
+                                                    <td className="py-2 px-3 border border-slate-300 text-right font-bold text-slate-900">
+                                                        {emp.totalAmountQAR.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} QAR
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+
+                            {/* Detailed Work Orders Table Layout */}
+                            <div>
+                                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 mb-2">
+                                    Call-Off Work Orders & PO Register
+                                </h3>
+                                <table className="w-full border-collapse text-xs border border-slate-300">
+                                    <thead>
+                                        <tr className="bg-slate-200 text-slate-900 font-bold border-b border-slate-300">
+                                            <th className="py-2.5 px-2 border border-slate-300 text-center w-12">SL.NO</th>
+                                            <th className="py-2.5 px-3 border border-slate-300 min-w-[150px]">Client</th>
+                                            <th className="py-2.5 px-3 border border-slate-300 min-w-[120px]">Rep / Employee</th>
+                                            <th className="py-2.5 px-3 border border-slate-300 min-w-[220px]">Description</th>
+                                            <th className="py-2.5 px-3 border border-slate-300 min-w-[130px]">PO/ WO</th>
+                                            <th className="py-2.5 px-3 border border-slate-300 min-w-[80px] text-center">Status</th>
+                                            <th className="py-2.5 px-3 border border-slate-300 min-w-[90px] text-right">Amount</th>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                    </thead>
+                                    <tbody>
+                                        {filteredWorkOrders.map((wo, idx) => (
+                                            <tr key={wo.id} className="border-b border-slate-200">
+                                                <td className="py-2.5 px-2 border border-slate-300 text-center font-bold text-slate-700">
+                                                    {idx + 1}
+                                                </td>
+                                                <td className="py-2.5 px-3 border border-slate-300 font-bold text-slate-900">
+                                                    {wo.customer?.name || '—'}
+                                                </td>
+                                                <td className="py-2.5 px-3 border border-slate-300 text-slate-700 font-medium">
+                                                    {wo.assigned_person?.name || wo.customer_owner?.name || '—'}
+                                                </td>
+                                                <td className="py-2.5 px-3 border border-slate-300 text-slate-800 font-medium">
+                                                    {wo.description}
+                                                </td>
+                                                <td className="py-2.5 px-3 border border-slate-300 font-mono font-bold text-slate-900">
+                                                    {wo.wo_number}
+                                                </td>
+                                                <td className="py-2.5 px-3 border border-slate-300 text-center font-semibold text-slate-700">
+                                                    {wo.status}
+                                                </td>
+                                                <td className="py-2.5 px-3 border border-slate-300 text-right font-semibold text-slate-900">
+                                                    {formatWOAmount(wo.amount, wo.currency)}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
 
                             <div className="pt-8 flex justify-between text-xs text-slate-500 border-t border-slate-200">
                                 <div>
