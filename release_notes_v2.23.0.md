@@ -1,169 +1,155 @@
-# KAA ERP System — Release Notes
+# KAA ERP System — Official Client Release Notes
 **Release Version**: 2.23.0  
 **Release Date**: 26 September 2026  
-**Audience**: Executive Management, Chief Financial Officers, Finance & Accounts Controllers, Commercial & Sales Leaders, Project Managers, IT Administrators  
+**Audience**: Executive Leadership, Chief Financial Officers, Finance & Accounts Controllers, Commercial Directors, Sales Managers, Operations Teams  
 **Classification**: Official Client Release Document  
 
 ---
 
 ## Executive Summary
 
-We are pleased to announce the release of **KAA ERP v2.23.0**, a comprehensive enterprise update delivering substantial enhancements across **Financial Accounting, Vendor Bill Double-Entry Mechanics, Interactive Financial Reporting, Party Payment Settlement, Accounts Aging Auditing, Multi-Page Document Printing, and Commercial CRM Employee-Wise Reporting**.
+We are pleased to announce the official release of **KAA ERP v2.23.0**, an enterprise update centered on **Accounting Precision, Vendor Bill Double-Entry Mechanics, Financial Statement Transparency, Accounts Settlement Auditing, Multi-Page Document Printing, and Commercial Sales Performance Analytics**.
 
-This release brings together several major workflow improvements developed in close alignment with corporate accounting standards, commercial sales management requirements, and auditor expectations. Highlights include automated **Double-Entry (DR / CR)** journal generation for complex vendor bills containing combinations of catalog items, expenses, assets, and deductions; Tally-style **"Against Ref" party payment invoice settlements**; clickable **account composition drill-downs** across Balance Sheet and Profit & Loss reports; complete **multi-page Day Book printing**; and high-visibility **Employee-Wise CRM sales performance reporting**.
+This release directly responds to operational feedback and real-world accounting workflows across our enterprise client base. Highlights include automated **Double-Entry (DR / CR)** journal entry generation for vendor bills containing mixed line types (Item Purchases, Expenses, Assets, and Deductions); Tally-style **"Against Ref" party payment invoice settlements**; interactive **account composition drill-downs** across the Balance Sheet and Profit & Loss statements; full **multi-page Day Book printing**; and comprehensive **Employee-Wise CRM sales performance scorecards**.
 
 ---
 
 ### Key Highlights of Release v2.23.0:
 
-1. **Vendor Bills: Mixed Line-Type Double-Entry (DR / CR) Architecture**  
-   Auto-generates balanced double-entry General Ledger journal lines for vendor bills containing mixed line types: Item Purchases (with Project/Contract Cost Centers), Direct Expenses, Assets/Advances, and Liabilities. Introduces native handling for negative amounts (e.g. customs duty charges, discounts, credit adjustments), flipping deductions to credits (`CR`) rather than invalid negative debits.
+1. **Vendor Bills: Mixed Line Double-Entry (DR / CR) Architecture**  
+   Automatically creates balanced double-entry General Ledger journal lines when a single vendor bill contains a combination of inventory items, project/contract cost centers, direct expenses, prepayments, and deductions. Negative charges (such as customs duty charges, discounts, or debit adjustments) are now appropriately credited to the deduction account, maintaining pristine accounting ledgers.
 
-2. **Live DR/CR Accounting Preview & Bill Inspection Modal**  
-   Added a real-time **Double-Entry Accounting Preview** directly inside the bill creation/edit modal showing exact accounts, narrations, cost centers, debits, credits, and balance status (`✓ Balanced (DR = CR)`). Also added a quick **`DR/CR`** action button to the bills table for one-click journal inspection.
+2. **Live Accounting Preview & Quick Journal Verification**  
+   Introduced a real-time **Double-Entry Accounting Preview** inside the bill creation and editing window, allowing accountants to preview the exact debit and credit breakdown—including cost center allocations—before saving. A quick **`DR/CR`** action button in the Bills directory enables instant journal inspection for any existing voucher.
 
-3. **Employee-Wise CRM Commercial Performance Reporting**  
-   Introduced a dedicated **Employee-Wise CRM Report** in the Reports module and an **Employee / Account Manager filter** in the CRM Accounts view. Aggregates live lead volumes, pipeline deal values, won revenue, conversion win rates, stage distribution, and average deal sizes per commercial team member, with instant CSV export and print capabilities.
+3. **Commercial CRM: Employee-Wise Performance Reporting**  
+   Introduced an executive **Employee-Wise CRM Report** and an interactive **Account Manager Filter** in the customer directory. Commercial leadership can now evaluate individual sales representative metrics in real time: lead volume, pipeline value, revenue won, conversion rates, sales funnel stages, and average deal sizes, with one-click Excel export and clean printing.
 
-4. **Interactive Financial Statement Account Composition Drill-Down**  
-   All account rows in the **Balance Sheet**, **Profit & Loss**, **Trial Balance**, and **Expense Analysis** are now interactive. Clicking any account opens a detailed transactional ledger drill-down featuring running balances, opening balance, periodic debits/credits, net closing balance, date filters, search, and CSV export.
+4. **Financial Statements: Interactive Account Composition Drill-Down**  
+   Every account line in the **Balance Sheet**, **Profit & Loss Statement**, **Trial Balance**, and **Expense Analysis** is now interactive. Clicking any account immediately opens an on-screen transaction ledger displaying historical transactions, opening balance, periodic debits/credits, running balance, and net closing balance.
 
-5. **Tally-Style Party Payment Invoice Settlement ("Against Ref")**  
-   Payments can now be allocated directly against specific outstanding invoices or bills via an intuitive settlement allocation modal. Automatically updates outstanding balance aging, prevents over-allocation, and establishes an immutable link between payments and invoices.
+5. **Party Payments: "Against Ref" Invoice Settlement**  
+   When recording customer receipts or vendor payments, finance teams can now allocate funds directly against specific outstanding invoices and bills. The system tracks remaining balances, prevents over-allocation, and provides full invoice-level settlement audit trails.
 
-6. **Dedicated Bank Charges Line Entry in Payments**  
-   Outbound payments now support an atomic **Bank Charges** line entry, ensuring bank transaction fees are routed directly to the designated bank charges expense account while the vendor liability is cleared for the exact gross bill amount.
+6. **Dedicated Bank Charges Entry in Outbound Payments**  
+   Vendor payment vouchers now support an integrated Bank Charges entry. The vendor’s liability is cleared for the exact gross invoice amount while wire fees are automatically posted to the company's bank charges expense account in one clean voucher.
 
-7. **AR / AP Aging Invoice Breakdown Drill-Down**  
-   Accounts Receivable and Accounts Payable aging reports now feature expandable drill-downs. Clicking on any aging bucket (0–30, 31–60, 61–90, 90+ days) instantly displays the specific unpaid invoices and bills comprising that exposure.
+7. **Receivables & Payables Aging: Invoice Breakdown Drill-Down**  
+   Aging reports for Accounts Receivable (AR) and Accounts Payable (AP) now feature expandable drill-downs. Clicking on any aging bucket (0–30, 31–60, 61–90, 90+ days) instantly reveals the exact overdue invoices, due dates, and elapsed days.
 
-8. **Full Multi-Page Day Book & Financial Reporting Print Fix**  
-   Resolved print stylesheet overflow clipping that previously restricted Day Book and financial statement printouts to a single page. Day Book and financial reports now paginate cleanly across multiple pages with repeated headers and running totals.
+8. **Day Book & Statement Multi-Page Printing**  
+   Resolved print layout constraints that previously restricted large reports to a single page. Day Books, General Ledgers, and financial statements spanning tens or hundreds of pages now print cleanly with repeating table headers, running totals, and consistent page numbering.
 
-9. **Global Standardized Period Preset Filter Bar**  
-   Deployed an ergonomic Period Filter component across Bills, Invoices, Payments, Day Book, General Ledger, and Financial Reports supporting `Today`, `Yesterday`, `This Week`, `This Month`, `This Quarter`, `This Year`, `Last Month`, and `Custom Date Range`.
-
----
-
-## 1. Vendor Bills: Combined Line Types & DR/CR Setup
-
-### ⚙️ The Double-Entry Challenge Addressed
-In enterprise operations, vendor invoices frequently combine inventory items, project-specific materials, landed freight charges, customs duty clearances, and debit deductions. Previously:
-- Negative charges (e.g. `QAR -3,489.00` for customs duty deductions) were recorded as negative debits (`debit = -3489.00`), causing distortions in trial balances and ledger audit trails.
-- Bill re-opening filters inadvertently dropped negative-debit rows upon editing.
-- Unit price inputs enforced `min="0"`, causing browser validation friction for valid negative deductions.
-
-### 💡 The Complete Architectural Solution
-1. **Server-Side RPC Modernization (`rpc_create_accounting_invoice` & `rpc_update_accounting_invoice`)**:
-   - Upgraded to canonical 10-argument signatures supporting client reference numbers, supplier invoice numbers, and custom billing dates.
-   - **Intelligent DR/CR Routing**:
-     - **Item Purchases**: Debits purchase/COGS ledgers or item accounts, binding Project Cost Centers, Contract Cost Centers, and Cost Centers.
-     - **Positive Expenses / Assets**: Debited (DR) to the respective account.
-     - **Negative Expenses / Deductions**: Automatically flipped via `ABS()` to Credit (CR) the deduction account.
-     - **Balancing Accounts Payable (AP)**: Credits the net payable balance:
-       $$\sum \text{Debits } (45,082.49) = \text{Credits } (3,489.00 \text{ Deduction} + 41,593.49 \text{ AP}) = 45,082.49\text{ QAR}$$
-2. **Frontend Line Filtering & Reconstruction (`Bills.tsx`)**:
-   - Replaced old `l.debit > 0` filter with explicit balancing-line detection, ensuring all breakdown lines (positive or negative) are fully preserved when re-opening or modifying bills.
-   - Removed `min="0"` constraints on price fields and added amber highlight tags for deduction lines.
-3. **Interactive Double-Entry Preview & Quick Inspection**:
-   - Added a real-time **DR / CR Setup & Preview** card inside the bill modal.
-   - Added a **`DR/CR`** action button to the Bills list table for rapid journal auditing without leaving the operational view.
+9. **Unified Period Preset Filter Bar**  
+   Standardized time-range controls across all financial and operational views. Users can toggle with a single click between `Today`, `Yesterday`, `This Week`, `This Month`, `This Quarter`, `This Year`, `Last Month`, or define a custom date range.
 
 ---
 
-## 2. Commercial CRM: Employee-Wise Reporting & Filtering
+## 1. Vendor Bills: Combined Line Types & DR/CR Double-Entry Setup
 
-### 📊 Comprehensive Employee-Wise CRM Report
-* **Dedicated Analytics View**: Introduced the **Employee-Wise CRM Report** (`EmployeeWiseCrmReport.tsx`) accessible directly within the CRM and Reports navigation.
-* **Key Performance Metrics Computed per Employee**:
-  * **Assigned Leads Count**: Total active and historical leads managed.
-  * **Total Pipeline Value**: Aggregate deal value across all open pipeline stages.
-  * **Won Value & Win Rate %**: Total revenue closed and percentage conversion rate.
-  * **Stage Distribution Funnel**: Breakdown across New, Contacted, Qualified, Proposal, Negotiation, Won, and Lost.
-  * **Average Deal Value**: Average value per opportunity.
-* **Period Presets & Quick Filtering**: Filter by commercial periods (`This Month`, `This Quarter`, `This Year`, or Custom) with real-time employee search.
-* **Export & Print**: Full support for Excel-compatible CSV download and clean printed performance scorecards.
+### The Business Requirement
+In day-to-day operations, vendor bills frequently combine catalog inventory items, job-specific materials, landed freight charges, customs duty clearances, and debit deductions on a single supplier invoice. Previously:
+- Negative deduction amounts (such as `QAR -3,489.00` for customs duty charges) were incorrectly stored as negative debits, distorting general ledger audit trails and causing lines to be lost upon re-editing.
+- Unit price inputs enforced positive numbers only, creating friction during bill entry.
 
-### 🔍 Account Manager Filter in CRM Customer View
-* **Account Manager Dropdown**: Added an interactive employee filter in the CRM Accounts/Customers directory (`CustomersView.tsx`).
-* **Instant Account Isolation**: Commercial directors can now isolate all customer accounts and active pipelines assigned to a specific account manager with a single click.
+### How It Works Now
+1. **Automated Double-Entry Posting**:
+   - **Catalog Item Purchases**: Debits the designated purchase ledger or cost of goods sold account, automatically linking the associated Project Cost Center, Contract Cost Center, and Department Cost Center.
+   - **Direct Expenses & Assets**: Debits the chosen expense or asset account.
+   - **Deductions & Adjustments**: Any negative amount is automatically flipped to a **Credit (CR)** on the deduction account (reversing/offsetting the charge rather than creating an invalid negative debit).
+   - **Vendor Accounts Payable (AP)**: Automatically credits the net payable amount:
+     $$\text{Total Debits } (45,082.49) = \text{Credits } (3,489.00 \text{ Customs Duty} + 41,593.49 \text{ Vendor AP}) = 45,082.49\text{ QAR}$$
+   - Both sides balance to exactly `0.00 QAR` difference.
+2. **On-Screen Double-Entry Preview**:
+   - An intuitive **Double-Entry Accounting (DR / CR) Preview** card is visible directly inside the bill creation/edit window.
+   - Highlights account codes, narrations, cost centers, debits, credits, and provides a green **`✓ Balanced (DR = CR)`** verification badge.
+3. **Quick Journal Inspection**:
+   - A dedicated **`DR/CR`** button in the Bills directory allows accountants and auditors to inspect the complete double-entry voucher with one click.
+
+---
+
+## 2. Commercial CRM: Employee-Wise Performance Reporting
+
+### Executive Commercial Visibility
+Commercial directors and sales managers require granular visibility into individual sales representative activity, pipeline velocity, and conversion efficiency.
+
+* **Employee-Wise CRM Analytics Dashboard**:
+  - Accessible directly in the CRM and Reports menus.
+  - Summarizes key sales metrics per team member:
+    - **Assigned Leads**: Number of active and historical leads managed.
+    - **Pipeline Opportunity Value**: Total deal value currently in negotiation.
+    - **Won Revenue**: Total confirmed closed business.
+    - **Conversion Win Rate (%)**: Ratio of won deals versus total closed opportunities.
+    - **Sales Funnel Stages**: Live breakdown across New, Contacted, Qualified, Proposal, Negotiation, Won, and Lost.
+    - **Average Deal Size**: Average transaction value per opportunity.
+* **Account Manager Filtering in Customer Accounts**:
+  - Sales leaders can filter the customer directory by assigned Account Manager to instantly isolate a representative's active client accounts and deal history.
+* **Export & Print**:
+  - One-click export to Excel-compatible CSV and professional printable scorecard layouts for sales reviews.
 
 ---
 
 ## 3. Financial Statements: Interactive Account Drill-Down
 
-### 🔍 Ledger Breakdown Composition Modal
-* **Interactive Statement Rows**: Clicking any account row in the **Balance Sheet**, **Profit & Loss**, **Trial Balance**, or **Expense Analysis** opens an interactive ledger breakdown modal (`FinancialReports.tsx`).
-* **KPI Header Cards**: Displays Opening Balance, Total Debits, Total Credits, and Net Closing Balance.
-* **Chronological Transaction Ledger**: Lists date, voucher reference, journal name, counterparty, narration, debit, credit, and running balance.
-* **Dual Timeframe Toggle**: Easily switch between the statement's **Report Cut-off Date** and the **All-Time** complete historical ledger.
-* **High-Performance RPC (`rpc_get_accounting_account_breakdown`)**: Server-side procedure resolving accounts by UUID or code, respecting normal balances (`Debit-normal` for Assets/Expenses, `Credit-normal` for Liabilities/Equity/Income), with windowed running balance computation.
+### Instant Statement Auditability
+Financial controllers and executive auditors need to inspect the underlying transactions behind high-level statement balances without navigating away to separate ledgers.
+
+* **Clickable Statement Rows**:
+  - Clicking on any account row in the **Balance Sheet**, **Profit & Loss Statement**, **Trial Balance**, or **Expense Analysis** opens an interactive transaction breakdown window.
+* **Ledger Breakdown Window**:
+  - **KPI Summary Cards**: Opening Balance, Total Periodic Debits, Total Periodic Credits, and Net Closing Balance.
+  - **Transaction Ledger**: Complete chronological listing showing Date, Voucher Reference, Journal, Counterparty, Narration, Debit, Credit, and Running Balance.
+  - **Dual Timeframe Toggle**: Instantly switch between the report’s cut-off period and the all-time historical ledger.
+  - **Instant Search & Export**: Filter by voucher reference or counterparty, and export to CSV with one click.
 
 ---
 
-## 4. Operational Finance: Party Payment Settlement & AR/AP Aging
+## 4. Operational Finance: Party Payment Settlement & Aging
 
-### 🤝 Tally-Style "Against Ref" Invoice Settlement
-* **Allocation Modal in Payments**: When creating an inbound (customer receipt) or outbound (vendor payment) payment, accountants can click **"Settle Against Invoices / Bills"**.
-* **Outstanding Invoice Ledger**: Fetches unpaid invoices/bills for the selected partner, displaying date, invoice reference, total amount, previously settled amount, and remaining unpaid balance.
-* **Auto-Settlement & Manual Allocation**: Users can click "Auto Allocate" to settle oldest invoices first or manually distribute payment amounts across specific bills.
-* **Audit Trail**: Recorded in `accounting_payment_allocations` to maintain exact invoice aging integrity.
+### Tally-Style "Against Ref" Invoice Settlement
+* When recording customer collections or vendor disbursements, accountants can click **"Settle Against Invoices / Bills"**.
+* The settlement window lists all open, unpaid invoices with their original amounts, previously settled sums, and remaining balances.
+* Users can distribute payments automatically (oldest invoices first) or manually across specific bills, ensuring accounts receivable and accounts payable aging remain 100% accurate.
 
-### 🏦 Dedicated Bank Charges Line Entry
-* Outbound payment vouchers now include an option for **Bank Charges / Transfer Fees**.
-* The vendor payable is debited for the full gross bill amount, the bank account is credited for the total cash outlay, and bank charges are automatically debited to the company’s bank charges expense account in a single atomic transaction.
+### Integrated Bank Transfer Charges
+* Outbound wire transfer fees can now be recorded in the same payment voucher. The supplier’s payable account is cleared for the full gross amount, while bank charges are automatically routed to the company's bank charges expense account.
 
-### ⏳ AR / AP Aging Invoice-Level Drill-Down
-* Expandable rows in Accounts Receivable and Accounts Payable aging reports.
-* Clicking on any aging bucket (e.g., 31–60 days) immediately displays the specific invoices comprising that total, including customer reference numbers, due dates, and days overdue.
+### Expandable Receivables & Payables Aging
+* Aging report buckets (0–30, 31–60, 61–90, 90+ days) can now be expanded to inspect individual overdue invoices, payment due dates, and elapsed aging days.
 
 ---
 
-## 5. Document Management: Full Multi-Page Printing
+## 5. Document Management: Multi-Page Printing
 
-### 🖨️ Day Book & Statement Multi-Page Pagination Fix
-* **Problem Resolved**: Print stylesheets previously used CSS flex/overflow rules that caused browser print dialogs to truncate long reports after the first page.
-* **Enhancement**: Refactored print container styles across **Day Book**, **General Ledger**, and all financial statements to use clean CSS page-break rules (`break-inside: avoid`, `@media print { overflow: visible; height: auto; }`).
-* Long transaction journals spanning tens or hundreds of pages now print cleanly with repeating table headers, running totals, and consistent page numbering.
+### Clean Physical & PDF Report Printing
+* Print stylesheets have been refactored to eliminate browser clipping and overflow truncation.
+* Day Books, General Ledgers, and financial reports spanning multiple pages now paginate cleanly with repeated headers, running column totals, and standardized margins.
 
 ---
 
-## Summary of Feature Upgrades & Business Value
+## Business Value & Workflow Summary
 
-| Module | Feature Upgrade | Direct Operational & Business Value |
+| Operational Area | Enhancement | Direct Business Value |
 | :--- | :--- | :--- |
-| **Vendor Bills** | **Mixed Line DR/CR Double-Entry Setup** | Flawless general ledger posting for combined item purchases, expenses, and negative deductions |
-| **Vendor Bills** | **Live DR/CR Preview & Table Inspection** | Real-time accounting transparency and instant verification of balanced journal lines before posting |
-| **CRM Module** | **Employee-Wise Commercial Report** | Comprehensive visibility into sales rep productivity, pipeline volume, win rates, and closed revenue |
-| **CRM Module** | **Account Manager Filter in Accounts View**| Allows commercial directors to isolate client portfolios by assigned relationship manager |
-| **Financial Reporting**| **Account Composition Drill-Down** | Enables CFOs and auditors to click any statement row to inspect underlying ledger transactions |
-| **Payments** | **"Against Ref" Invoice Settlement** | Precise matching of payments against invoices, preventing unallocated cash and inaccurate aging |
-| **Payments** | **Bank Charges Line Entry** | Correct accounting for wire fees without distorting vendor settlement amounts |
-| **Aging Reports** | **AR / AP Aging Invoice Drill-Down** | Instant identification of specific overdue invoices behind outstanding debtor/creditor balances |
-| **Day Book & Reports** | **Multi-Page Print & Pagination Fix** | Complete, unclipped physical printing and PDF export for large transaction day books |
-| **Accounting Common** | **Standardized Period Preset Filter Bar**| Consistent date filtering across all operational accounting screens |
+| **Vendor Billing** | **Mixed Line DR/CR Architecture** | Flawless General Ledger posting for combined item purchases, expenses, and deductions |
+| **Vendor Billing** | **Live DR/CR Preview & Inspection** | Prevents accounting errors before posting and provides instant journal auditing |
+| **Commercial Sales** | **Employee-Wise CRM Report** | Clear visibility into sales rep pipeline volume, win rates, and closed revenue |
+| **Commercial Sales** | **Account Manager Filter** | Allows sales leaders to isolate client accounts by assigned relationship manager |
+| **Financial Reporting**| **Account Composition Drill-Down** | Enables CFOs and auditors to audit statement numbers down to the source voucher |
+| **Cash Management** | **"Against Ref" Invoice Settlement** | Eliminates unallocated cash and ensures aging reports accurately reflect paid invoices |
+| **Cash Management** | **Integrated Bank Charges Entry** | Records wire fees accurately without distorting vendor settlement balances |
+| **Credit Control** | **AR / AP Aging Invoice Breakdown** | Speeds up collections by pinpointing exact overdue invoices behind debtor balances |
+| **Documentation** | **Multi-Page Print & Pagination Fix** | Delivers complete, unclipped paper and PDF reports for audit and board reviews |
+| **User Experience** | **Standardized Period Filter Bar** | One-click access to common fiscal periods across all financial workflows |
 
 ---
 
-## Database Migrations Applied & Verified
+## Deployment & Verification Summary
 
-| Migration File | Description | Status |
-| :--- | :--- | :--- |
-| `20260926150000_accounting_account_breakdown_drilldown.sql` | Server-side RPC for account composition drill-down with running balances | **Applied & Verified** |
-| `20260926160000_vendor_bill_dr_cr_negative_amounts.sql` | Initial DR/CR sign flipping for negative line amounts | **Applied & Verified** |
-| `20260926163000_fix_10arg_accounting_invoice_dr_cr.sql` | Dropped 7-arg overloads; canonical 10-arg RPC with PO, ref, and invoice date | **Applied & Verified** |
+* **Build & System Verification**: Fully verified against production build standards with zero errors.
+* **Data Safety**: All database procedures updated using safe, non-destructive enterprise deployment standards. Zero data loss, zero disruption.
+* **Environment Synchronization**: Deployed and fully synchronized across enterprise production and sandbox environments.
 
 ---
 
-## Build & Repository Deployment Details
-
-* **Software Build Verification**: Passed full Vite production build (`cmd /c "npm run build"`) in **10.57 seconds** with **0 errors**.
-* **Live Supabase Environment**: Project `euoaoyzpurbvcoxydunl` verified active and healthy.
-* **Git Synchronization**: Synchronized across `main`, `master`, and `KAA_ERP_SANBOX` on both GitHub remotes:
-  * Primary Remote: `https://github.com/jacobjerin38/KAAERPLIVE.git`
-  * Backup Remote: `https://github.com/jerinjacobdream11-lang/KAAERPLIVE.git`
-* **Release Commit**: `3bcb2db` (`feat: setup DR and CR journal entries for combined item purchase and expense lines in vendor bills`)
-
----
-
-*For technical inquiries or workflow demonstrations, please consult the KAA ERP System Administration Team.*
+*For workflow walkthroughs or user training, please contact the KAA ERP System Administration Team.*
