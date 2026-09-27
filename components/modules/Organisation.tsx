@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
     Building2, MapPin, LayoutGrid, Users, Settings, Plus, Check, Edit3, X, Shield, User, Database, GitMerge, PlayCircle, StopCircle, ArrowRight, Bell, Clock, Save, Search, Trash2, Sparkles, Radio, BarChart2, Loader2, KeyRound,
-    Banknote, Package, Factory, ShoppingCart, Calendar, Sliders, ShieldCheck, DollarSign, KanbanSquare, FileText, Megaphone, Award, Plane, UserCircle, Briefcase
+    Banknote, Package, Factory, ShoppingCart, Calendar, Sliders, ShieldCheck, DollarSign, KanbanSquare, FileText, Megaphone, Award, Plane, UserCircle, Briefcase,
+    Headphones, MessageSquare, Calculator
 }
     from 'lucide-react';
 import { PollsView } from './organization/PollsView';
@@ -2139,61 +2140,114 @@ const ALL_PERMISSIONS = {
         { id: 'pro.reports.view', label: 'Access PRO Reports' }
     ],
     HRMS: [
-        { id: 'hrms.employees.view', label: 'View Employees' },
-        { id: 'hrms.employees.manage', label: 'Manage Employees' },
-        { id: 'hrms.attendance.view', label: 'View Attendance' },
-        { id: 'hrms.attendance.manage', label: 'Manage Attendance' },
-        { id: 'hrms.leave.view', label: 'View Leaves' },
-        { id: 'hrms.leave.manage', label: 'Manage Leaves' },
-        { id: 'hrms.payroll.manage', label: 'Manage Payroll' },
-        { id: 'hrms.assets.view', label: 'View Assets' },
-        { id: 'hrms.assets.manage', label: 'Manage Assets' },
-        { id: 'hrms.helpdesk.view', label: 'View Helpdesk' },
-        { id: 'hrms.helpdesk.manage', label: 'Manage Helpdesk' },
-        { id: 'hrms.reports.view', label: 'View Reports' },
+        { id: 'hrms.employees.view', label: 'View Employees & Directory' },
+        { id: 'hrms.employees.manage', label: 'Manage Employees (Add/Edit/Archive)' },
+        { id: 'hrms.attendance.view', label: 'View Attendance Logs' },
+        { id: 'hrms.attendance.manage', label: 'Manage Attendance & Overtime' },
+        { id: 'hrms.attendance.correction', label: 'Review Attendance Corrections' },
+        { id: 'hrms.attendance.roster', label: 'Duty Rosters & Shift Planning' },
+        { id: 'hrms.attendance.geofence', label: 'Geofence & Location Coordinates' },
+        { id: 'hrms.leave.view', label: 'View Leaves & Balances' },
+        { id: 'hrms.leave.manage', label: 'Manage Leave Policies & Accruals' },
+        { id: 'hrms.leave.approve', label: 'Approve / Reject Leave Applications' },
+        { id: 'hrms.payroll.view', label: 'View Payroll & Payslips' },
+        { id: 'hrms.payroll.manage', label: 'Manage Payroll Settings' },
+        { id: 'hrms.assets.view', label: 'View Asset Registry' },
+        { id: 'hrms.assets.manage', label: 'Manage & Assign Assets' },
+        { id: 'hrms.approvals.manage', label: 'Manage HR Approvals' },
+        { id: 'hrms.helpdesk.view', label: 'View Helpdesk Tickets' },
+        { id: 'hrms.helpdesk.manage', label: 'Manage & Resolve Tickets' },
+        { id: 'hrms.exit.view', label: 'View Exit & Clearances' },
+        { id: 'hrms.exit.manage', label: 'Final Settlement (FnF) & Exit Processing' },
+        { id: 'hrms.reports.view', label: 'Access HRMS Reports & Analytics' },
+        { id: 'hrms.settings.manage', label: 'Manage HRMS Settings' }
     ],
     ESSP: [
-        { id: 'essp.view', label: 'Access ESSP (Employee Self Service Portal)' },
+        { id: 'essp.view', label: 'Access ESSP (Self Service Portal)' },
         { id: 'essp.profile.manage', label: 'Manage Own Profile & Details' },
         { id: 'essp.leaves.view', label: 'Apply & View Leave Requests' },
         { id: 'essp.attendance.view', label: 'Punch & View Attendance Log' },
-        { id: 'essp.approvals.view', label: 'Access My Approvals Inbox' }
+        { id: 'essp.team_attendance.view', label: 'View Team Attendance (Managers)' },
+        { id: 'essp.approvals.view', label: 'Access My Approvals Inbox' },
+        { id: 'essp.payslips.view', label: 'View & Download Monthly Payslips' },
+        { id: 'essp.assets.view', label: 'View Assigned Company Assets' },
+        { id: 'essp.documents.view', label: 'View & Download Employee Documents' },
+        { id: 'essp.assistant.view', label: 'AI ESSP Assistant & Skills' },
+        { id: 'essp.pro_requests.create', label: 'Submit Government & PRO Requests' },
+        { id: 'essp.resignation.create', label: 'Submit Resignation & Exit Requests' },
+        { id: 'essp.targets.view', label: 'View Targets & Commission Progress' },
+        { id: 'essp.buzz.view', label: 'Announcements, Surveys & Kudos' }
     ],
     CRM: [
-        { id: 'crm.dashboard.view', label: 'View Dashboard' },
+        { id: 'crm.dashboard.view', label: 'View Dashboard & KPIs' },
         { id: 'crm.leads.view', label: 'View Leads' },
-        { id: 'crm.leads.manage', label: 'Manage Leads' },
-        { id: 'crm.deals.view', label: 'View Deals' },
-        { id: 'crm.deals.manage', label: 'Manage Deals' },
-        { id: 'crm.tasks.manage', label: 'Manage Tasks' },
-        { id: 'crm.contacts.manage', label: 'Manage Contacts' },
-        { id: 'crm.pipeline.manage', label: 'Manage Pipeline' },
-        { id: 'crm.settings.manage', label: 'Manage Settings' },
+        { id: 'crm.leads.manage', label: 'Manage Leads & Status' },
+        { id: 'crm.deals.view', label: 'View Deals & Pipeline' },
+        { id: 'crm.deals.manage', label: 'Manage Deals & Opportunities' },
+        { id: 'crm.contacts.view', label: 'View Customer Contacts' },
+        { id: 'crm.contacts.manage', label: 'Manage Contacts & Partners' },
+        { id: 'crm.tasks.view', label: 'View CRM Tasks & Activities' },
+        { id: 'crm.tasks.manage', label: 'Manage Tasks & Reminders' },
+        { id: 'crm.pipeline.manage', label: 'Manage Pipeline Stages' },
+        { id: 'crm.quotations.manage', label: 'Create & Manage Quotations' },
+        { id: 'crm.reports.employee_wise', label: 'Employee-Wise CRM & BD Performance Report' },
+        { id: 'crm.reports.view', label: 'Access CRM Reports & Analytics' },
+        { id: 'crm.finder.manage', label: 'Lead & Website Finder Tool' },
+        { id: 'crm.ai.view', label: 'AI CRM Assistant' },
+        { id: 'crm.settings.manage', label: 'Manage CRM Settings' }
     ],
     SALES: [
-        { id: 'sales.view', label: 'View Sales' },
-        { id: 'sales.manage', label: 'Manage Sales Orders & Quotations' }
+        { id: 'sales.view', label: 'View Sales Dashboard & Orders' },
+        { id: 'sales.manage', label: 'Manage Sales Orders & Invoicing' },
+        { id: 'sales.quotations.manage', label: 'Create & Manage Quotations' },
+        { id: 'sales.customers.view', label: 'View Sales Customers' },
+        { id: 'sales.reports.view', label: 'View Sales Performance Reports' },
+        { id: 'sales.delivery_notes.manage', label: 'Manage Delivery Notes & Dispatch' },
+        { id: 'sales.contracts.manage', label: 'Manage Commercial Contracts & Price Lists' }
     ],
     ORGANISATION: [
-        { id: 'org.structure.view', label: 'View Structure' },
-        { id: 'org.company.manage', label: 'Manage Company' },
-        { id: 'org.masters.manage', label: 'Manage Masters' },
-        { id: 'org.roles.manage', label: 'Manage Roles' },
-        { id: 'org.users.manage', label: 'Manage Users' },
-        { id: 'org.workflows.manage', label: 'Manage Workflows' },
-        { id: 'org.settings.manage', label: 'Manage Settings' },
+        { id: 'org.structure.view', label: 'View Structure & Org Chart' },
+        { id: 'org.company.manage', label: 'Manage Company & Entities' },
+        { id: 'org.masters.manage', label: 'Manage Master Data (Depts, Designations, Locations)' },
+        { id: 'org.roles.manage', label: 'Manage Roles & Permissions' },
+        { id: 'org.users.manage', label: 'Manage User Accounts' },
+        { id: 'org.workflows.manage', label: 'Manage Multi-Level Workflows' },
+        { id: 'org.reminders.manage', label: 'Manage Automated Expiry Reminders' },
+        { id: 'org.surveys.manage', label: 'Manage Polls, Surveys & Kudos' },
+        { id: 'org.settings.manage', label: 'Manage System & AI Settings' }
     ],
     FINANCE: [
         { id: 'finance.dashboard.view', label: 'View Finance Dashboard' },
-        { id: 'finance.payroll.view', label: 'View Payroll' },
-        { id: 'finance.setup.manage', label: 'Manage Finance Setup' },
+        { id: 'finance.reporting.view', label: 'Financial Reports (Balance Sheet, P&L, Trial Balance, Aging)' },
+        { id: 'finance.daybook.view', label: 'Day Book Voucher Register' },
+        { id: 'finance.ledger.view', label: 'General Ledger & Account Drilldown' },
+        { id: 'finance.invoices.view', label: 'View Customer Invoices' },
+        { id: 'finance.invoices.manage', label: 'Create & Manage Invoices' },
+        { id: 'finance.bills.view', label: 'View Vendor Bills' },
+        { id: 'finance.bills.manage', label: 'Create & Manage Vendor Bills (DR/CR Allocations)' },
+        { id: 'finance.payments.view', label: 'View Payments & Receipts' },
+        { id: 'finance.payments.manage', label: 'Record Payments, Receipts & Settlements' },
+        { id: 'finance.journal.view', label: 'View Journal Entries' },
+        { id: 'finance.journal.manage', label: 'Create & Post Journal Entries' },
+        { id: 'finance.banking.view', label: 'Bank Statements, Cash Book & Reconciliation' },
+        { id: 'finance.assets.manage', label: 'Fixed Assets Register & Depreciation' },
+        { id: 'finance.masters.manage', label: 'Chart of Accounts, Partners, Taxes & Fiscal Years' },
+        { id: 'finance.taxes.manage', label: 'Qatar VAT Reports & Tax Rates' },
+        { id: 'finance.setup.manage', label: 'Opening Balances & Currency Setup' },
+        { id: 'finance.budget.manage', label: 'Budget Planning & Variance Analysis' },
+        { id: 'finance.payroll.view', label: 'View Payroll Accounting' },
+        { id: 'finance.payroll.process', label: 'Process Monthly Payroll Runs' },
         { id: 'finance.payroll.manage', label: 'Manage Payroll Settings' },
-        { id: 'finance.invoices.manage', label: 'Manage Invoices' },
-        { id: 'finance.expenses.manage', label: 'Manage Expenses' },
+        { id: 'finance.expenses.manage', label: 'Manage Operational Expenses' }
     ],
     INVENTORY: [
-        { id: 'inventory.view', label: 'View Inventory' },
-        { id: 'inventory.manage', label: 'Manage Inventory' }
+        { id: 'inventory.view', label: 'View Inventory & Item Master' },
+        { id: 'inventory.manage', label: 'Manage Item Catalog & Pricing' },
+        { id: 'inventory.stock_moves.view', label: 'View Stock Movement Ledger' },
+        { id: 'inventory.adjustments.manage', label: 'Stock Adjustments & Physical Count' },
+        { id: 'inventory.warehouse.manage', label: 'Manage Warehouse Layout & Putaway Rules' },
+        { id: 'inventory.reconciliation.manage', label: 'Inventory Valuation & Reconciliation' },
+        { id: 'inventory.barcode.manage', label: 'Barcode Generation & Scanner Operations' }
     ],
     PROJECTS: [
         { id: 'projects.view', label: 'View Projects & Dashboard' },
@@ -2215,39 +2269,61 @@ const ALL_PERMISSIONS = {
         { id: 'projects.proposals.create', label: 'Create Proposals (Tech/Comm)' },
         { id: 'projects.proposals.review', label: 'Review Proposals (First Reviewer/Finance)' },
         { id: 'projects.proposals.approve', label: 'Final Approve Proposals (Dr Ali)' },
-        { id: 'projects.proposals.reassign', label: 'Reassign Proposal Reviewers' },
+        { id: 'projects.proposals.admin_approve', label: 'Direct Admin Proposal Approval' },
+        { id: 'projects.proposals.reassign', label: 'Reassign Proposal Reviewers' }
+    ],
+    'HELP DESK': [
+        { id: 'helpdesk.view', label: 'Access Help Desk Module' },
+        { id: 'helpdesk.tickets.create', label: 'Create Support Tickets' },
+        { id: 'helpdesk.tickets.manage', label: 'Assign, Respond & Resolve Tickets' },
+        { id: 'helpdesk.settings.manage', label: 'Configure Queues, SLA & Ticket Categories' }
+    ],
+    'TEAM CHAT': [
+        { id: 'chat.view', label: 'Access Team Chat & Direct Messages' },
+        { id: 'chat.manage', label: 'Create & Manage Discussion Channels' }
     ],
     DOCUMENTS: [
-        { id: 'documents.view', label: 'View Documents' },
-        { id: 'documents.manage', label: 'Manage Documents' }
+        { id: 'documents.view', label: 'View Documents Repository' },
+        { id: 'documents.manage', label: 'Upload, Categorize & Manage Documents' },
+        { id: 'documents.share', label: 'Share Documents & Manage Permissions' }
     ],
     MANUFACTURING: [
-        { id: 'manufacturing.view', label: 'View Manufacturing' },
-        { id: 'manufacturing.manage', label: 'Manage Manufacturing' }
+        { id: 'manufacturing.view', label: 'View Manufacturing Orders & Work Centers' },
+        { id: 'manufacturing.manage', label: 'Manage Production Orders & Scheduling' },
+        { id: 'manufacturing.bom.manage', label: 'Manage Bill of Materials (BOM) & Routings' }
     ],
     PROCUREMENT: [
-        { id: 'procurement.view', label: 'View Procurement' },
-        { id: 'procurement.manage', label: 'Manage Procurement' }
+        { id: 'procurement.view', label: 'View Purchase Requests & Orders' },
+        { id: 'procurement.manage', label: 'Manage Purchase Orders & Vendor Invoices' },
+        { id: 'procurement.vendors.manage', label: 'Vendor Directory & Evaluation' }
     ],
     MARKETING: [
-        { id: 'marketing.view', label: 'View Marketing' },
-        { id: 'marketing.manage', label: 'Manage Marketing' }
+        { id: 'marketing.view', label: 'View Marketing Campaigns & Analytics' },
+        { id: 'marketing.manage', label: 'Create & Manage Campaigns & Leads' }
     ],
     RECRUITMENT: [
-        { id: 'recruitment.view', label: 'View Recruitment' },
-        { id: 'recruitment.manage', label: 'Manage Recruitment' }
+        { id: 'recruitment.view', label: 'View Recruitment Dashboard & ATS' },
+        { id: 'recruitment.manage', label: 'Manage Full ATS Hiring Lifecycle' },
+        { id: 'recruitment.jobs.manage', label: 'Create & Publish Job Openings' },
+        { id: 'recruitment.candidates.manage', label: 'Manage Candidate Pipeline & Resumes' },
+        { id: 'recruitment.interviews.manage', label: 'Schedule & Score Interviews' },
+        { id: 'recruitment.offers.manage', label: 'Generate Job Offers & Onboarding' }
     ],
     LOANS: [
         { id: 'loans.view', label: 'View Loans & Benefits' },
-        { id: 'loans.manage', label: 'Manage Loans' }
+        { id: 'loans.manage', label: 'Manage & Approve Loans & Advances' },
+        { id: 'loans.benefits.manage', label: 'Manage Benefits & Claims' }
     ],
     PERFORMANCE: [
-        { id: 'performance.view', label: 'View Performance' },
-        { id: 'performance.manage', label: 'Manage Performance' }
+        { id: 'performance.view', label: 'View Performance Dashboard' },
+        { id: 'performance.manage', label: 'Manage Review Cycles & Evaluation Templates' },
+        { id: 'performance.goals.manage', label: 'Set & Track Employee Goals / OKRs' },
+        { id: 'performance.reviews.manage', label: 'Conduct Appraisals & Submit Reviews' }
     ],
     TRAVEL: [
-        { id: 'travel.view', label: 'View Travel & Expenses' },
-        { id: 'travel.manage', label: 'Manage Travel' }
+        { id: 'travel.view', label: 'View Travel Requests & Bookings' },
+        { id: 'travel.manage', label: 'Approve & Manage Travel Bookings' },
+        { id: 'travel.claims.manage', label: 'Review & Settle Travel Expense Claims' }
     ]
 };
 
@@ -2273,7 +2349,7 @@ const RolePermissionEditor = ({ selectedPermissions, onChange }: { selectedPermi
             const newPerms = [...new Set([...selectedPermissions, ...allModuleIds])];
             onChange(newPerms);
         }
-    }
+    };
 
     const getModuleIcon = (module: string) => {
         switch (module) {
@@ -2281,7 +2357,7 @@ const RolePermissionEditor = ({ selectedPermissions, onChange }: { selectedPermi
             case 'CRM': return Briefcase;
             case 'SALES': return ShoppingCart;
             case 'ORGANISATION': return Building2;
-            case 'FINANCE': return DollarSign;
+            case 'FINANCE': return Calculator;
             case 'INVENTORY': return Package;
             case 'MANUFACTURING': return Factory;
             case 'PROCUREMENT': return ShoppingCart;
@@ -2294,6 +2370,8 @@ const RolePermissionEditor = ({ selectedPermissions, onChange }: { selectedPermi
             case 'TRAVEL': return Plane;
             case 'PRO (Mandoob)': case 'PRO': return ShieldCheck;
             case 'ESSP': return UserCircle;
+            case 'HELP DESK': return Headphones;
+            case 'TEAM CHAT': return MessageSquare;
             default: return Shield;
         }
     };
@@ -2304,6 +2382,20 @@ const RolePermissionEditor = ({ selectedPermissions, onChange }: { selectedPermi
         return module.toLowerCase().includes(s) || perms.some(p => p.label.toLowerCase().includes(s) || p.id.toLowerCase().includes(s));
     });
 
+    useEffect(() => {
+        if (filteredModules.length > 0 && !filteredModules.some(([m]) => m === activeModule)) {
+            setActiveModule(filteredModules[0][0]);
+        }
+    }, [filteredModules, activeModule]);
+
+    const activePerms = useMemo(() => {
+        const perms: { id: string; label: string }[] = (ALL_PERMISSIONS as any)[activeModule] || [];
+        if (!permSearch) return perms;
+        const s = permSearch.toLowerCase();
+        if (activeModule.toLowerCase().includes(s)) return perms;
+        return perms.filter(p => p.label.toLowerCase().includes(s) || p.id.toLowerCase().includes(s));
+    }, [activeModule, permSearch]);
+
     return (
         <div className="flex flex-col h-[520px] border border-slate-200 dark:border-zinc-700 rounded-2xl overflow-hidden bg-slate-50 dark:bg-zinc-900">
             {/* Quick Search Header */}
@@ -2311,7 +2403,7 @@ const RolePermissionEditor = ({ selectedPermissions, onChange }: { selectedPermi
                 <Search className="w-4 h-4 text-slate-400" />
                 <input 
                     type="text" 
-                    placeholder="Search permissions or modules (e.g. PRO, Mandoob, Sales, Leave)..." 
+                    placeholder="Search permissions or modules (e.g. Day Book, Ledger, Quotation, Leaves)..." 
                     value={permSearch}
                     onChange={e => setPermSearch(e.target.value)}
                     className="w-full text-xs bg-transparent border-none focus:outline-none text-slate-900 dark:text-white"
@@ -2368,7 +2460,7 @@ const RolePermissionEditor = ({ selectedPermissions, onChange }: { selectedPermi
 
                     <div className="p-4 overflow-y-auto flex-1">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            {((ALL_PERMISSIONS as any)[activeModule] || []).map((perm: any) => (
+                            {activePerms.map((perm: any) => (
                                 <label key={perm.id} className={`flex items-start gap-3 cursor-pointer p-3 rounded-xl border transition-all ${selectedPermissions.includes(perm.id)
                                     ? 'bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800 shadow-sm'
                                     : 'bg-white dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 hover:border-slate-300'}`}>
@@ -2387,6 +2479,11 @@ const RolePermissionEditor = ({ selectedPermissions, onChange }: { selectedPermi
                                     </div>
                                 </label>
                             ))}
+                            {activePerms.length === 0 && (
+                                <div className="col-span-2 py-8 text-center text-xs text-slate-400">
+                                    No permissions match your search query.
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -3148,25 +3245,13 @@ export const Organisation: React.FC = () => {
     };
 
     const GenericUserModal = ({ setShowAddUser, handleSaveUser, roles, editingUser, allEmployees }: any) => {
-        const MODULE_PERMISSIONS = [
-            { label: 'HRMS', perms: ['hrms.employees.view', 'hrms.employees.manage', 'hrms.attendance.view', 'hrms.attendance.manage', 'hrms.leave.view', 'hrms.leave.manage', 'hrms.payroll.manage'] },
-            { label: 'Self Service (ESSP)', perms: ['essp.view', 'essp.profile.manage', 'essp.leaves.view', 'essp.attendance.view', 'essp.approvals.view'] },
-            { label: 'CRM', perms: ['crm.dashboard.view', 'crm.leads.view', 'crm.leads.manage', 'crm.deals.view', 'crm.deals.manage', 'crm.contacts.manage'] },
-            { label: 'Sales', perms: ['sales.view', 'sales.manage'] },
-            { label: 'Organisation', perms: ['org.structure.view', 'org.company.manage', 'org.roles.manage', 'org.users.manage', 'org.masters.manage'] },
-            { label: 'Inventory', perms: ['inventory.view', 'inventory.manage'] },
-            { label: 'Accounting / Finance', perms: ['finance.dashboard.view', 'finance.payroll.manage', 'finance.invoices.manage', 'finance.expenses.manage'] },
-            { label: 'Manufacturing', perms: ['manufacturing.view', 'manufacturing.manage'] },
-            { label: 'Procurement', perms: ['procurement.view', 'procurement.manage'] },
-            { label: 'Projects', perms: ['projects.view', 'projects.manage'] },
-            { label: 'Documents', perms: ['documents.view', 'documents.manage'] },
-            { label: 'Marketing', perms: ['marketing.view', 'marketing.manage'] },
-            { label: 'Recruitment', perms: ['recruitment.view', 'recruitment.manage'] },
-            { label: 'Loans & Benefits', perms: ['loans.view', 'loans.manage'] },
-            { label: 'Performance', perms: ['performance.view', 'performance.manage'] },
-            { label: 'Travel & Expenses', perms: ['travel.view', 'travel.manage'] },
-            { label: 'PRO (Mandoob)', perms: ['pro.view', 'pro.requests.create', 'pro.requests.view', 'pro.tasks.manage', 'pro.renewals.view', 'pro.reports.view'] },
-        ];
+        const MODULE_PERMISSIONS = useMemo(() => 
+            Object.entries(ALL_PERMISSIONS).map(([moduleLabel, perms]) => ({
+                label: moduleLabel,
+                perms: perms.map(p => p.id),
+                items: perms
+            })),
+        []);
         const [grantedPerms, setGrantedPerms] = React.useState<string[]>([]);
         const [showPerms, setShowPerms] = React.useState(false);
         const [userName, setUserName] = React.useState(editingUser?.name || '');
@@ -3254,12 +3339,14 @@ export const Organisation: React.FC = () => {
                                     {MODULE_PERMISSIONS.map(module => (
                                         <div key={module.label}>
                                             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">{module.label}</p>
-                                            <div className="grid grid-cols-1 gap-1 pl-2">
-                                                {module.perms.map(perm => (
-                                                    <label key={perm} className="flex items-center gap-2 cursor-pointer group">
-                                                        <input type="checkbox" checked={grantedPerms.includes(perm)}
-                                                            onChange={() => togglePerm(perm)} className="w-4 h-4 rounded accent-blue-600" />
-                                                        <span className="text-xs text-slate-600 dark:text-slate-300 group-hover:text-blue-500 transition-colors font-mono">{perm}</span>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5 pl-2 mb-2">
+                                                {module.items.map(p => (
+                                                    <label key={p.id} className="flex items-center gap-2 cursor-pointer group">
+                                                        <input type="checkbox" checked={grantedPerms.includes(p.id)}
+                                                            onChange={() => togglePerm(p.id)} className="w-4 h-4 rounded accent-blue-600" />
+                                                        <span className="text-xs text-slate-600 dark:text-slate-300 group-hover:text-blue-500 transition-colors">
+                                                            {p.label} <span className="font-mono text-[10px] text-slate-400">({p.id})</span>
+                                                        </span>
                                                     </label>
                                                 ))}
                                             </div>
