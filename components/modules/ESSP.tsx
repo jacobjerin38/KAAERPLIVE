@@ -635,7 +635,7 @@ export const ESSP: React.FC = () => {
         }
     };
 
-    const Dashboard = () => (
+    const renderDashboard = () => (
         <div className="p-6 md:p-10 h-full overflow-y-auto animate-page-enter">
             {/* Wellness / Welcome Header */}
             <div className="mb-10 flex flex-col md:flex-row justify-between items-end gap-4">
@@ -699,21 +699,36 @@ export const ESSP: React.FC = () => {
                                 {/* Site / Project input when Checked Out */}
                                 {punchStatus === 'Out' && (
                                     <div className="mt-5 pt-4 border-t border-white/10 max-w-lg">
-                                        <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                                        <label htmlFor="essp-punch-site-input" className="flex items-center gap-1.5 text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
                                             <MapPin className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
                                             Site / Project Name <span className="text-slate-400 font-normal lowercase">(optional note)</span>
                                         </label>
-                                        <div className="relative">
+                                        <div className="relative flex items-center">
                                             <input
+                                                id="essp-punch-site-input"
+                                                name="punchSiteOrProject"
                                                 type="text"
                                                 list="essp-sites-projects-list"
                                                 value={punchSiteOrProject}
                                                 onChange={(e) => setPunchSiteOrProject(e.target.value)}
                                                 placeholder="e.g. Ras Laffan Site, Doha Port, Head Office..."
-                                                className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-all backdrop-blur-sm"
+                                                autoComplete="off"
+                                                spellCheck={false}
+                                                disabled={punchLoading}
+                                                className="w-full bg-white/10 border border-white/20 rounded-xl pl-4 pr-10 py-2.5 text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-all backdrop-blur-sm disabled:opacity-50"
                                             />
+                                            {punchSiteOrProject && !punchLoading && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setPunchSiteOrProject('')}
+                                                    className="absolute right-3 p-1 rounded-full text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+                                                    title="Clear note"
+                                                >
+                                                    <X className="w-3.5 h-3.5" />
+                                                </button>
+                                            )}
                                             <datalist id="essp-sites-projects-list">
-                                                {availableSitesAndProjects.map((item, idx) => (
+                                                {availableSitesAndProjects.filter(Boolean).map((item, idx) => (
                                                     <option key={idx} value={item} />
                                                 ))}
                                             </datalist>
@@ -3967,7 +3982,7 @@ export const ESSP: React.FC = () => {
                     activeTab === 'DASHBOARD' ? <DashboardSkeleton /> : <TableSkeleton />
                 ) : (
                     <>
-                        {activeTab === 'DASHBOARD' && <Dashboard />}
+                        {activeTab === 'DASHBOARD' && renderDashboard()}
                         {activeTab === 'ASSISTANT' && <AssistantView />}
                         {activeTab === 'SKILLS' && <SkillsView />}
                         {activeTab === 'APPROVALS' && <MyApprovals />}
