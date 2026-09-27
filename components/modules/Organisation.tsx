@@ -2405,9 +2405,9 @@ const RolePermissionEditor = ({ selectedPermissions, onChange }: { selectedPermi
     }, [activeModule, permSearch]);
 
     return (
-        <div className="flex flex-col h-[520px] border border-slate-200 dark:border-zinc-700 rounded-2xl overflow-hidden bg-slate-50 dark:bg-zinc-900">
+        <div className="flex flex-col h-full flex-1 min-h-0 border border-slate-200 dark:border-zinc-700 rounded-2xl overflow-hidden bg-slate-50 dark:bg-zinc-900">
             {/* Quick Search Header */}
-            <div className="p-3 bg-white dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-700 flex items-center gap-2">
+            <div className="p-2.5 px-3 bg-white dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-700 flex items-center gap-2 shrink-0">
                 <Search className="w-4 h-4 text-slate-400" />
                 <input 
                     type="text" 
@@ -2421,9 +2421,9 @@ const RolePermissionEditor = ({ selectedPermissions, onChange }: { selectedPermi
                 )}
             </div>
 
-            <div className="flex flex-1 overflow-hidden">
+            <div className="flex flex-1 overflow-hidden min-h-0">
                 {/* Sidebar */}
-                <div className="w-1/3 border-r border-slate-200 dark:border-zinc-700 overflow-y-auto bg-white dark:bg-zinc-900 p-2 space-y-1">
+                <div className="w-1/3 min-w-[200px] max-w-[270px] border-r border-slate-200 dark:border-zinc-700 overflow-y-auto bg-white dark:bg-zinc-900 p-2 space-y-1 pb-16">
                     {filteredModules.map(([module, permissions]) => {
                         const count = permissions.filter(p => selectedPermissions.includes(p.id)).length;
                         const total = permissions.length;
@@ -2434,15 +2434,15 @@ const RolePermissionEditor = ({ selectedPermissions, onChange }: { selectedPermi
                                 key={module}
                                 type="button"
                                 onClick={() => setActiveModule(module)}
-                                className={`w-full text-left px-4 py-3 rounded-xl flex items-center justify-between transition-all ${activeModule === module
+                                className={`w-full text-left px-3.5 py-2.5 rounded-xl flex items-center justify-between transition-all ${activeModule === module
                                     ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 shadow-sm ring-1 ring-blue-200 dark:ring-blue-800'
                                     : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-zinc-800'}`}
                             >
-                                <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-2.5 min-w-0">
                                     <Icon className="w-4 h-4 flex-shrink-0" />
-                                    <span className="font-bold text-sm tracking-wide">{module}</span>
+                                    <span className="font-bold text-xs tracking-wide truncate">{module}</span>
                                 </div>
-                                <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${count > 0 ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-zinc-800 text-slate-400'}`}>
+                                <span className={`text-[11px] px-2 py-0.5 rounded-full font-bold shrink-0 ${count > 0 ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-zinc-800 text-slate-400'}`}>
                                     {count}/{total}
                                 </span>
                             </button>
@@ -2451,10 +2451,10 @@ const RolePermissionEditor = ({ selectedPermissions, onChange }: { selectedPermi
                 </div>
 
                 {/* Content Area */}
-                <div className="flex-1 flex flex-col h-full bg-slate-50/50 dark:bg-zinc-800/20">
-                    <div className="p-4 border-b border-slate-200 dark:border-zinc-700 flex justify-between items-center bg-white dark:bg-zinc-900/50">
+                <div className="flex-1 flex flex-col h-full min-h-0 bg-slate-50/50 dark:bg-zinc-800/20">
+                    <div className="p-3 px-4 border-b border-slate-200 dark:border-zinc-700 flex justify-between items-center bg-white dark:bg-zinc-900/50 shrink-0">
                         <div>
-                            <h4 className="font-bold text-slate-900 dark:text-white text-lg">{activeModule} Permissions</h4>
+                            <h4 className="font-bold text-slate-900 dark:text-white text-base">{activeModule} Permissions</h4>
                             <p className="text-xs text-slate-500">Manage access levels for {activeModule} module.</p>
                         </div>
                         <button
@@ -2466,8 +2466,8 @@ const RolePermissionEditor = ({ selectedPermissions, onChange }: { selectedPermi
                         </button>
                     </div>
 
-                    <div className="p-4 overflow-y-auto flex-1">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="p-4 overflow-y-auto flex-1 min-h-0">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pb-24">
                             {activePerms.map((perm: any) => (
                                 <label key={perm.id} className={`flex items-start gap-3 cursor-pointer p-3 rounded-xl border transition-all ${selectedPermissions.includes(perm.id)
                                     ? 'bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800 shadow-sm'
@@ -3201,48 +3201,48 @@ export const Organisation: React.FC = () => {
 
         return (
             <Modal title={editingRole ? "Edit Role & Permissions" : "Add New Role"} onClose={() => { setShowAddRole(false); setEditingRole(null); }} maxWidth="max-w-5xl">
-                <form onSubmit={handleSubmit} className="flex flex-col h-[70vh]">
-                    <div className="flex gap-6 mb-6">
+                <form onSubmit={handleSubmit} className="flex flex-col h-[78vh] min-h-[580px] max-h-[840px]">
+                    <div className="flex gap-4 mb-3 shrink-0">
                         <div className="flex-1">
-                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Role Name</label>
+                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Role Name</label>
                             <input
                                 name="name"
                                 value={roleName}
                                 onChange={e => setRoleName(e.target.value)}
                                 required
                                 placeholder="e.g. HR Manager"
-                                className="w-full p-4 bg-slate-50 dark:bg-zinc-800 rounded-2xl border border-slate-200 dark:border-zinc-700 text-slate-900 dark:text-white font-bold text-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm"
+                                className="w-full p-3 bg-slate-50 dark:bg-zinc-800 rounded-2xl border border-slate-200 dark:border-zinc-700 text-slate-900 dark:text-white font-bold text-base focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm"
                             />
                         </div>
                         <div className="flex-[2]">
-                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Description</label>
+                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Description</label>
                             <input
                                 name="description"
                                 value={roleDescription}
                                 onChange={e => setRoleDescription(e.target.value)}
                                 required
                                 placeholder="Brief description of the role's responsibilities..."
-                                className="w-full p-4 bg-slate-50 dark:bg-zinc-800 rounded-2xl border border-slate-200 dark:border-zinc-700 text-slate-900 dark:text-white transition-all shadow-sm"
+                                className="w-full p-3 bg-slate-50 dark:bg-zinc-800 rounded-2xl border border-slate-200 dark:border-zinc-700 text-slate-900 dark:text-white text-sm transition-all shadow-sm"
                             />
                         </div>
                     </div>
 
-                    <div className="flex-1 overflow-hidden flex flex-col bg-white dark:bg-zinc-900/50 rounded-2xl border border-slate-200 dark:border-zinc-800 p-1">
-                        <div className="flex justify-between items-center px-4 py-3 border-b border-slate-100 dark:border-zinc-800">
+                    <div className="flex-1 min-h-0 overflow-hidden flex flex-col bg-white dark:bg-zinc-900/50 rounded-2xl border border-slate-200 dark:border-zinc-800 p-1">
+                        <div className="flex justify-between items-center px-4 py-2.5 border-b border-slate-100 dark:border-zinc-800 shrink-0">
                             <div className="flex items-center gap-2">
                                 <Shield className="w-4 h-4 text-slate-400" />
                                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Access Control</label>
                             </div>
                             <span className="text-xs font-bold text-blue-600 bg-blue-50 dark:bg-blue-900/30 dark:text-blue-400 px-2.5 py-1 rounded-lg border border-blue-100 dark:border-blue-800">{permissions.length} Permissions Selected</span>
                         </div>
-                        <div className="flex-1 overflow-hidden p-1">
+                        <div className="flex-1 min-h-0 overflow-hidden flex flex-col p-0.5">
                             <RolePermissionEditor selectedPermissions={permissions} onChange={setPermissions} />
                         </div>
                     </div>
 
-                    <div className="pt-6 mt-4 border-t border-slate-100 dark:border-zinc-800 flex justify-end gap-3">
-                        <button type="button" onClick={() => setShowAddRole(false)} className="px-6 py-3 rounded-xl font-bold text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-all">Cancel</button>
-                        <button className="px-8 py-3 bg-blue-600 text-white rounded-xl font-bold transition-all hover:bg-blue-700 active:scale-95 shadow-lg shadow-blue-500/20 flex items-center gap-2">
+                    <div className="pt-4 mt-3 border-t border-slate-100 dark:border-zinc-800 flex justify-end gap-3 shrink-0">
+                        <button type="button" onClick={() => setShowAddRole(false)} className="px-6 py-2.5 rounded-xl font-bold text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-all">Cancel</button>
+                        <button className="px-8 py-2.5 bg-blue-600 text-white rounded-xl font-bold transition-all hover:bg-blue-700 active:scale-95 shadow-lg shadow-blue-500/20 flex items-center gap-2">
                             <Check className="w-4 h-4" />
                             {editingRole ? 'Update Role Configuration' : 'Create Role'}
                         </button>
