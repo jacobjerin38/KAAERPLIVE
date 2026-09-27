@@ -10,8 +10,8 @@ interface LeadsViewProps {
 }
 
 export default function LeadsView({ companyId, onConvert }: LeadsViewProps) {
-    const { user, userRole } = useAuth();
-    const isAdmin = checkIsAdmin(userRole);
+    const { user, userRole, hasPermission } = useAuth();
+    const isAdmin = checkIsAdmin(userRole) || hasPermission('*') || hasPermission('crm.admin') || hasPermission('crm.manage_all');
     const [leads, setLeads] = useState<Lead[]>([]);
     const [salesReps, setSalesReps] = useState<{ id: string; name: string; profileId?: string }[]>([]);
     const [selectedOwnerFilter, setSelectedOwnerFilter] = useState<string>('ALL');
@@ -22,10 +22,17 @@ export default function LeadsView({ companyId, onConvert }: LeadsViewProps) {
     const [activeLead, setActiveLead] = useState<Partial<Lead>>({});
 
     useEffect(() => {
-        if (isAdmin && companyId) {
-            getSalesReps(companyId).then(setSalesReps);
+        if (companyId) {
+            if (isAdmin) {
+                getSalesReps(companyId).then(setSalesReps);
+            } else if (user?.id) {
+                getSalesReps(companyId).then(reps => {
+                    const myRep = reps.filter(r => r.profileId === user.id || r.id === user.id);
+                    setSalesReps(myRep.length > 0 ? myRep : [{ id: user.id, name: user.email || 'My Sales Profile', profileId: user.id }]);
+                });
+            }
         }
-    }, [isAdmin, companyId]);
+    }, [isAdmin, companyId, user?.id]);
 
     useEffect(() => {
         loadLeads();
@@ -315,11 +322,12 @@ export default function LeadsView({ companyId, onConvert }: LeadsViewProps) {
                                         <label className="text-xs font-medium text-slate-500">Lead Owner / Sales Rep</label>
                                         <div className="relative">
                                             <select
-                                                value={activeLead.lead_owner_id || ''}
+                                                value={activeLead.lead_owner_id || (!isAdmin ? (user?.id || '') : '')}
+                                                disabled={!isAdmin}
                                                 onChange={e => setActiveLead({ ...activeLead, lead_owner_id: e.target.value || null as any })}
-                                                className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm appearance-none cursor-pointer"
+                                                className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm appearance-none cursor-pointer disabled:opacity-75"
                                             >
-                                                <option value="">Unassigned</option>
+                                                {isAdmin && <option value="">Unassigned</option>}
                                                 {salesReps.map(rep => (
                                                     <option key={rep.id} value={rep.profileId || rep.id}>{rep.name}</option>
                                                 ))}

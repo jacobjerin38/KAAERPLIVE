@@ -19,8 +19,8 @@ export default function CustomersView({
     companyId: string;
     initialTab?: 'CUSTOMERS' | 'WORK_ORDERS_REPORT';
 }) {
-    const { user, userRole } = useAuth();
-    const isAdmin = checkIsAdmin(userRole);
+    const { user, userRole, hasPermission } = useAuth();
+    const isAdmin = checkIsAdmin(userRole) || hasPermission('*') || hasPermission('crm.admin') || hasPermission('crm.manage_all');
 
     // View Switching: 'CUSTOMERS' or 'WORK_ORDERS_REPORT'
     const [activeViewTab, setActiveViewTab] = useState<'CUSTOMERS' | 'WORK_ORDERS_REPORT'>(initialTab || 'CUSTOMERS');
@@ -62,9 +62,16 @@ export default function CustomersView({
 
     useEffect(() => {
         if (companyId) {
-            getSalesReps(companyId).then(setSalesReps);
+            if (isAdmin) {
+                getSalesReps(companyId).then(setSalesReps);
+            } else if (user?.id) {
+                getSalesReps(companyId).then(reps => {
+                    const myRep = reps.filter(r => r.profileId === user.id || r.id === user.id);
+                    setSalesReps(myRep.length > 0 ? myRep : [{ id: user.id, name: user.email || 'My Sales Profile', profileId: user.id }]);
+                });
+            }
         }
-    }, [companyId]);
+    }, [companyId, isAdmin, user?.id]);
 
     useEffect(() => {
         loadCustomers();
@@ -81,7 +88,7 @@ export default function CustomersView({
     const loadAllWOs = async (silent = false) => {
         if (!companyId) return;
         if (!silent && workOrders.length === 0) setWoLoading(true);
-        const data = await getAllWorkOrders(companyId);
+        const data = await getAllWorkOrders(companyId, user?.id, userRole);
         setWorkOrders(data);
         setWoLoading(false);
     };
@@ -744,7 +751,7 @@ export default function CustomersView({
                     </div>
 
                     {/* Employee Quick Summary Chips */}
-                    {employeeSummary.length > 0 && (
+                    {isAdmin && employeeSummary.length > 1 && (
                         <div className="flex items-center gap-2 overflow-x-auto pb-1 mb-2">
                             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap flex items-center gap-1">
                                 <Users size={12} /> By Rep:
@@ -820,19 +827,26 @@ export default function CustomersView({
                             </div>
 
                             {/* Rep / Employee Filter */}
-                            <div className="flex items-center gap-1.5 text-xs">
-                                <span className="text-slate-400 font-medium">Rep / Employee:</span>
-                                <select
-                                    value={selectedWoRepFilter}
-                                    onChange={e => setSelectedWoRepFilter(e.target.value)}
-                                    className="px-2.5 py-1.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-200"
-                                >
-                                    <option value="ALL">All Reps ({salesReps.length})</option>
-                                    {salesReps.map(r => (
-                                        <option key={r.id} value={r.id}>{r.name}</option>
-                                    ))}
-                                </select>
-                            </div>
+                            {isAdmin ? (
+                                <div className="flex items-center gap-1.5 text-xs">
+                                    <span className="text-slate-400 font-medium">Rep / Employee:</span>
+                                    <select
+                                        value={selectedWoRepFilter}
+                                        onChange={e => setSelectedWoRepFilter(e.target.value)}
+                                        className="px-2.5 py-1.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-200"
+                                    >
+                                        <option value="ALL">All Reps ({salesReps.length})</option>
+                                        {salesReps.map(r => (
+                                            <option key={r.id} value={r.id}>{r.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            ) : (
+                                <div className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 rounded-lg font-bold">
+                                    <Lock size={12} />
+                                    <span>My Orders (Private View)</span>
+                                </div>
+                            )}
 
                             {/* Status Filter */}
                             <div className="flex items-center gap-1.5 text-xs">
@@ -1082,11 +1096,12 @@ export default function CustomersView({
                                                 <label className="text-xs font-medium text-slate-500">Account Owner / Sales Rep</label>
                                                 <div className="relative">
                                                     <select
-                                                        value={activeCustomer.owner_id || ''}
+                                                        value={activeCustomer.owner_id || (!isAdmin ? (user?.id || '') : '')}
+                                                        disabled={!isAdmin}
                                                         onChange={e => setActiveCustomer({ ...activeCustomer, owner_id: e.target.value || null as any })}
-                                                        className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-xs appearance-none text-slate-800 dark:text-slate-200 cursor-pointer"
+                                                        className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-xs appearance-none text-slate-800 dark:text-slate-200 cursor-pointer disabled:opacity-75"
                                                     >
-                                                        <option value="">Unassigned</option>
+                                                        {isAdmin && <option value="">Unassigned</option>}
                                                         {salesReps.map(rep => (
                                                             <option key={rep.id} value={rep.profileId || rep.id}>{rep.name}</option>
                                                         ))}
@@ -1396,7 +1411,8 @@ export default function CustomersView({
                                     Assigned Representative / Employee
                                 </label>
                                 <select
-                                    value={activeWO.employee_id || activeWO.assigned_to || ''}
+                                    value={activeWO.employee_id || activeWO.assigned_to || (salesReps[0]?.id || '')}
+                                    disabled={!isAdmin}
                                     onChange={e => {
                                         const repId = e.target.value;
                                         const rep = salesReps.find(r => r.id === repId);
@@ -1406,9 +1422,9 @@ export default function CustomersView({
                                             assigned_to: rep?.profileId || (repId || undefined)
                                         });
                                     }}
-                                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-75"
                                 >
-                                    <option value="">Default to Client Owner / Unassigned</option>
+                                    {isAdmin && <option value="">Default to Client Owner / Unassigned</option>}
                                     {salesReps.map(r => (
                                         <option key={r.id} value={r.id}>{r.name}</option>
                                     ))}

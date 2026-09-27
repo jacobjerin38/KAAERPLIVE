@@ -9,6 +9,7 @@ import {
     Package, Menu, UploadCloud, Trash2, ExternalLink, Paperclip, CheckCircle2, Download, Copy, Eye, Lock
 } from 'lucide-react';
 import { ReportsListView } from './reports/ReportsListView';
+import { CrmReportsView } from '../crm/CrmReportsView';
 import { LiveView } from '../crm/LiveView';
 import { WebsiteFinderView } from '../crm/WebsiteFinder';
 import LeadsView from '../crm/LeadsView';
@@ -185,7 +186,7 @@ export const CRM: React.FC = () => {
     const fetchCRMData = async (companyId: string, employeeIdOverride?: string, silent = false) => {
         if (!silent && deals.length === 0) setLoading(true);
         try {
-            const isAdmin = checkIsAdmin(userRole);
+            const isAdmin = checkIsAdmin(userRole) || (hasPermission ? (hasPermission('*') || hasPermission('crm.admin') || hasPermission('crm.view_all')) : false);
             const empId = employeeIdOverride || currentEmployee?.id;
             
             // 1. Opportunities Query (with customer and stage)
@@ -1476,7 +1477,7 @@ export const CRM: React.FC = () => {
                         {activeTab === 'WORKFLOWS' && <ProposalWorkflow companyId={companyId || ''} />}
                         {activeTab === 'ASSISTANT' && <AssistantView />}
                         {activeTab === 'UPDATES' && <UpdatesView />}
-                        {activeTab === 'REPORTS' && <ReportsListView moduleFilter="CRM" companyId={companyId} />}
+                        {activeTab === 'REPORTS' && <CrmReportsView companyId={companyId || ''} />}
                         {activeTab === 'LIVE' && <LiveView />}
                     </>
                 )}

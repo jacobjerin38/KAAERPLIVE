@@ -45,8 +45,11 @@ export const getTaskPriorities = async (): Promise<CRMTaskPriority[]> => {
 
 // ACCESS CONTROL HELPERS
 export const checkIsAdmin = (role?: string | null): boolean => {
-  const r = (role || '').toLowerCase().trim();
-  return ['admin', 'super admin', 'managing director', 'manager', 'general manager'].includes(r);
+  if (!role) return false;
+  const r = role.toLowerCase().trim();
+  if (['admin', 'super admin', 'managing director', 'general manager', 'ceo', 'coo', 'cto', 'owner', 'director', 'general_manager'].includes(r)) return true;
+  if (r.includes('admin') || r.includes('director') || r.includes('manager') || r.includes('head') || r.includes('lead')) return true;
+  return false;
 };
 
 export const getLinkedEmployeeId = async (profileId: string): Promise<string | undefined> => {
@@ -226,8 +229,7 @@ export const getLeads = async (
     const empId = await getLinkedEmployeeId(effectiveUserId);
     const conditions = [
       `created_by.eq.${effectiveUserId}`,
-      `lead_owner_id.eq.${effectiveUserId}`,
-      `lead_owner_id.is.null`
+      `lead_owner_id.eq.${effectiveUserId}`
     ];
     if (empId) {
       conditions.push(`lead_owner_id.eq.${empId}`);
@@ -378,8 +380,7 @@ export const getCustomers = async (
     const empId = await getLinkedEmployeeId(effectiveUserId);
     const conditions = [
       `created_by.eq.${effectiveUserId}`,
-      `owner_id.eq.${effectiveUserId}`,
-      `owner_id.is.null`
+      `owner_id.eq.${effectiveUserId}`
     ];
     if (empId) {
       conditions.push(`owner_id.eq.${empId}`);
@@ -522,14 +523,72 @@ export const getCustomerWorkOrders = async (customerId: string): Promise<CRMCust
   return workOrders;
 };
 
-export const getAllWorkOrders = async (companyId: string): Promise<CRMCustomerWorkOrder[]> => {
-  const { data, error } = await (supabase as any).from('crm_customer_work_orders')
+export const getAllWorkOrders = async (
+  companyId: string,
+  userId?: string,
+  userRole?: string | null
+): Promise<CRMCustomerWorkOrder[]> => {
+  let effectiveUserId = userId;
+  let effectiveUserRole = userRole;
+
+  if (!effectiveUserId && effectiveUserId !== '') {
+    const { data: { user } } = await supabase.auth.getUser();
+    effectiveUserId = user?.id;
+  }
+  if (effectiveUserRole === undefined && effectiveUserId) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', effectiveUserId)
+      .maybeSingle();
+    effectiveUserRole = profile?.role || null;
+  }
+
+  const isAdmin = checkIsAdmin(effectiveUserRole);
+
+  let query = (supabase as any).from('crm_customer_work_orders')
     .select(`
       *,
       customer:crm_customers(id, name, contract_number, contract_title, owner_id)
     `)
-    .eq('company_id', companyId)
-    .order('created_at', { ascending: false });
+    .eq('company_id', companyId);
+
+  if (!isAdmin && effectiveUserId) {
+    const empId = await getLinkedEmployeeId(effectiveUserId);
+    const conditions = [
+      `created_by.eq.${effectiveUserId}`,
+      `assigned_to.eq.${effectiveUserId}`
+    ];
+    if (empId) {
+      conditions.push(`employee_id.eq.${empId}`);
+      conditions.push(`assigned_to.eq.${empId}`);
+      conditions.push(`created_by.eq.${empId}`);
+    }
+
+    // Also include work orders for customers owned by this rep
+    try {
+      let custQuery = supabase.from('crm_customers').select('id').eq('company_id', companyId);
+      const custCond = [`owner_id.eq.${effectiveUserId}`, `created_by.eq.${effectiveUserId}`];
+      if (empId) {
+        custCond.push(`owner_id.eq.${empId}`);
+        custCond.push(`created_by.eq.${empId}`);
+      }
+      custQuery = custQuery.or(custCond.join(','));
+      const { data: ownedCusts } = await custQuery;
+      if (ownedCusts && ownedCusts.length > 0) {
+        const custIds = ownedCusts.map((c: any) => c.id).filter(Boolean);
+        if (custIds.length > 0) {
+          conditions.push(`customer_id.in.(${custIds.join(',')})`);
+        }
+      }
+    } catch (e) {
+      console.warn('Could not query owned customer IDs for work orders:', e);
+    }
+
+    query = query.or(conditions.join(','));
+  }
+
+  const { data, error } = await query.order('created_at', { ascending: false });
 
   if (error) {
     console.error('Error fetching all work orders:', error);
@@ -608,22 +667,25 @@ export const deleteCustomerWorkOrder = async (id: string): Promise<boolean> => {
 export const getOpportunities = async (
   userId?: string,
   userRole?: string | null,
-  filterOwnerId?: string
+  filterOwnerId?: string,
+  companyId?: string
 ): Promise<Opportunity[]> => {
   let effectiveUserId = userId;
   let effectiveUserRole = userRole;
+  let effectiveCompanyId = companyId;
 
   if (!effectiveUserId && effectiveUserId !== '') {
     const { data: { user } } = await supabase.auth.getUser();
     effectiveUserId = user?.id;
   }
-  if (effectiveUserRole === undefined && effectiveUserId) {
+  if ((effectiveUserRole === undefined || !effectiveCompanyId) && effectiveUserId) {
     const { data: profile } = await supabase
       .from('profiles')
-      .select('role')
+      .select('role, company_id')
       .eq('id', effectiveUserId)
       .maybeSingle();
-    effectiveUserRole = profile?.role || null;
+    if (effectiveUserRole === undefined) effectiveUserRole = profile?.role || null;
+    if (!effectiveCompanyId) effectiveCompanyId = profile?.company_id || undefined;
   }
 
   const isAdmin = checkIsAdmin(effectiveUserRole);
@@ -634,6 +696,10 @@ export const getOpportunities = async (
         customer:crm_customers(*),
         stage:org_crm_stages(*)
     `);
+
+  if (effectiveCompanyId) {
+    query = query.eq('company_id', effectiveCompanyId);
+  }
 
   if (isAdmin) {
     if (filterOwnerId && filterOwnerId !== 'ALL') {
@@ -824,13 +890,26 @@ export const convertOpportunityToCustomer = async (
 };
 
 // DEALS (Legacy / To be migrated)
-export const getDeals = async (userId?: string, userRole?: string | null): Promise<Deal[]> => {
+export const getDeals = async (userId?: string, userRole?: string | null, companyId?: string): Promise<Deal[]> => {
   try {
+    const isAdmin = checkIsAdmin(userRole);
+    let legacyQuery = (supabase as any).from('crm_deals').select('*');
+    if (companyId) {
+      legacyQuery = legacyQuery.eq('company_id', companyId);
+    }
+    if (!isAdmin && userId) {
+      const empId = await getLinkedEmployeeId(userId);
+      const cond = [`created_by.eq.${userId}`, `owner_id.eq.${userId}`];
+      if (empId) {
+        cond.push(`created_by.eq.${empId}`, `owner_id.eq.${empId}`);
+      }
+      legacyQuery = legacyQuery.or(cond.join(','));
+    }
+
     const [opps, legacyDealsRes] = await Promise.all([
-      getOpportunities(userId, userRole),
+      getOpportunities(userId, userRole, undefined, companyId),
       (async () => {
-        let query = (supabase as any).from('crm_deals').select('*');
-        const { data } = await query.order('created_at', { ascending: false });
+        const { data } = await legacyQuery.order('created_at', { ascending: false });
         return data || [];
       })()
     ]);
@@ -948,13 +1027,27 @@ export const updateDealStage = async (id: number, stage_id: string, company_id?:
 };
 
 // CONTACTS
-export const getContacts = async (): Promise<Contact[]> => {
-  const { data, error } = await (supabase as any).from('crm_contacts')
+export const getContacts = async (companyId?: string, userId?: string, userRole?: string | null): Promise<Contact[]> => {
+  let query = (supabase as any).from('crm_contacts')
     .select(`
         *,
         assignee:employees(*)
-    `)
-    .order('created_at', { ascending: false });
+    `);
+
+  if (companyId) {
+    query = query.eq('company_id', companyId);
+  }
+  const isAdmin = checkIsAdmin(userRole);
+  if (!isAdmin && userId) {
+    const empId = await getLinkedEmployeeId(userId);
+    const cond = [`created_by.eq.${userId}`, `assigned_to.eq.${userId}`];
+    if (empId) {
+      cond.push(`created_by.eq.${empId}`, `assigned_to.eq.${empId}`);
+    }
+    query = query.or(cond.join(','));
+  }
+
+  const { data, error } = await query.order('created_at', { ascending: false });
 
   if (error) {
     console.error('Error fetching contacts:', error);
@@ -1269,10 +1362,22 @@ export const importItems = async (itemsList: Partial<CRMItem>[]): Promise<boolea
 };
 
 // --- QUOTATIONS ---
-export const getQuotations = async (): Promise<CRMQuotation[]> => {
-  const { data, error } = await (supabase as any).from('crm_quotations')
-    .select('*, customer:crm_customers(*)')
-    .order('created_at', { ascending: false });
+export const getQuotations = async (companyId?: string, userId?: string, userRole?: string | null): Promise<CRMQuotation[]> => {
+  let query = (supabase as any).from('crm_quotations')
+    .select('*, customer:crm_customers(*)');
+  if (companyId) {
+    query = query.eq('company_id', companyId);
+  }
+  const isAdmin = checkIsAdmin(userRole);
+  if (!isAdmin && userId) {
+    const empId = await getLinkedEmployeeId(userId);
+    const cond = [`created_by.eq.${userId}`, `owner_id.eq.${userId}`];
+    if (empId) {
+      cond.push(`created_by.eq.${empId}`, `owner_id.eq.${empId}`);
+    }
+    query = query.or(cond.join(','));
+  }
+  const { data, error } = await query.order('created_at', { ascending: false });
   if (error) { console.error('Error fetching quotations:', error); return []; }
   return data || [];
 };
@@ -1329,10 +1434,22 @@ export const saveQuotationLines = async (quotationId: string, lines: CRMQuotatio
 };
 
 // --- SALES INVOICES ---
-export const getSalesInvoices = async (): Promise<CRMSalesInvoice[]> => {
-  const { data, error } = await (supabase as any).from('crm_sales_invoices')
-    .select('*, customer:crm_customers(*)')
-    .order('created_at', { ascending: false });
+export const getSalesInvoices = async (companyId?: string, userId?: string, userRole?: string | null): Promise<CRMSalesInvoice[]> => {
+  let query = (supabase as any).from('crm_sales_invoices')
+    .select('*, customer:crm_customers(*)');
+  if (companyId) {
+    query = query.eq('company_id', companyId);
+  }
+  const isAdmin = checkIsAdmin(userRole);
+  if (!isAdmin && userId) {
+    const empId = await getLinkedEmployeeId(userId);
+    const cond = [`created_by.eq.${userId}`, `owner_id.eq.${userId}`];
+    if (empId) {
+      cond.push(`created_by.eq.${empId}`, `owner_id.eq.${empId}`);
+    }
+    query = query.or(cond.join(','));
+  }
+  const { data, error } = await query.order('created_at', { ascending: false });
   if (error) { console.error('Error fetching invoices:', error); return []; }
   return data || [];
 };
@@ -1376,10 +1493,22 @@ export const saveSalesInvoiceLines = async (invoiceId: string, lines: CRMSalesIn
 };
 
 // --- DELIVERY NOTES ---
-export const getDeliveryNotes = async (): Promise<CRMDeliveryNote[]> => {
-  const { data, error } = await (supabase as any).from('crm_delivery_notes')
-    .select('*, customer:crm_customers(*)')
-    .order('created_at', { ascending: false });
+export const getDeliveryNotes = async (companyId?: string, userId?: string, userRole?: string | null): Promise<CRMDeliveryNote[]> => {
+  let query = (supabase as any).from('crm_delivery_notes')
+    .select('*, customer:crm_customers(*)');
+  if (companyId) {
+    query = query.eq('company_id', companyId);
+  }
+  const isAdmin = checkIsAdmin(userRole);
+  if (!isAdmin && userId) {
+    const empId = await getLinkedEmployeeId(userId);
+    const cond = [`created_by.eq.${userId}`, `owner_id.eq.${userId}`];
+    if (empId) {
+      cond.push(`created_by.eq.${empId}`, `owner_id.eq.${empId}`);
+    }
+    query = query.or(cond.join(','));
+  }
+  const { data, error } = await query.order('created_at', { ascending: false });
   if (error) { console.error('Error fetching delivery notes:', error); return []; }
   return data || [];
 };

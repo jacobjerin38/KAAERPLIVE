@@ -5,9 +5,9 @@ import {
     Users, User, Briefcase, FileCheck, DollarSign, TrendingUp,
     Download, Printer, Search, Filter, Calendar, CheckCircle2,
     Clock, AlertCircle, ChevronDown, ChevronRight, Eye, RefreshCw,
-    Building2, Award, ArrowUpRight, BarChart2
+    Building2, Award, ArrowUpRight, BarChart2, Lock, Shield
 } from 'lucide-react';
-import { getPersonResolver, getSalesReps } from '../services';
+import { getPersonResolver, getSalesReps, checkIsAdmin, getLinkedEmployeeId } from '../services';
 import { formatLocalDate } from '../../../lib/dateFormat';
 
 interface EmployeeWiseCrmReportProps {
@@ -46,8 +46,9 @@ interface EmployeeMetrics {
 }
 
 export const EmployeeWiseCrmReport: React.FC<EmployeeWiseCrmReportProps> = ({ companyId: propCompanyId }) => {
-    const { currentCompanyId } = useAuth();
+    const { user, userRole, hasPermission, currentCompanyId } = useAuth();
     const companyId = propCompanyId || currentCompanyId || '';
+    const isAdmin = checkIsAdmin(userRole) || hasPermission('*') || hasPermission('crm.admin') || hasPermission('crm.manage_all');
 
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -72,35 +73,79 @@ export const EmployeeWiseCrmReport: React.FC<EmployeeWiseCrmReportProps> = ({ co
         if (companyId) {
             fetchReportData();
         }
-    }, [companyId]);
+    }, [companyId, user?.id, userRole]);
 
     const fetchReportData = async (isSilent = false) => {
         if (!isSilent) setLoading(true);
         else setRefreshing(true);
 
         try {
+            let myEmpId: string | undefined;
+            if (user?.id) {
+                myEmpId = await getLinkedEmployeeId(user.id);
+            }
+
             // 1. Fetch Employees
-            const { data: emps } = await supabase
+            let empsQuery = supabase
                 .from('employees')
                 .select('id, name, employee_code, designation, department, profile_id, status')
                 .eq('company_id', companyId)
                 .neq('status', 'Resigned')
                 .order('name');
 
+            if (!isAdmin && user?.id) {
+                if (myEmpId) {
+                    empsQuery = empsQuery.or(`id.eq.${myEmpId},profile_id.eq.${user.id}`);
+                } else {
+                    empsQuery = empsQuery.eq('profile_id', user.id);
+                }
+            }
+
+            const { data: emps } = await empsQuery;
+
             // 2. Fetch Profiles for fallback
-            const { data: profs } = await supabase
+            let profsQuery = supabase
                 .from('profiles')
                 .select('id, full_name, email')
                 .order('full_name');
 
+            if (!isAdmin && user?.id) {
+                profsQuery = profsQuery.eq('id', user.id);
+            }
+            const { data: profs } = await profsQuery;
+
+            let finalEmps = emps || [];
+            if (!isAdmin && finalEmps.length === 0 && user?.id) {
+                const selfProf = profs?.find(p => p.id === user.id);
+                finalEmps = [{
+                    id: myEmpId || user.id,
+                    name: selfProf?.full_name || user.email || 'My Sales Profile',
+                    employee_code: 'ME',
+                    designation: userRole || 'Sales Representative',
+                    department: 'Sales & BD',
+                    profile_id: user.id,
+                    status: 'Active'
+                }];
+            }
+
             // 3. Fetch Customers
-            const { data: custs } = await supabase
+            let custsQuery = supabase
                 .from('crm_customers')
                 .select('id, name, contract_number, contract_title, owner_id, created_by, status, created_at')
                 .eq('company_id', companyId);
 
+            if (!isAdmin && user?.id) {
+                const custCond = [`created_by.eq.${user.id}`, `owner_id.eq.${user.id}`];
+                if (myEmpId) {
+                    custCond.push(`owner_id.eq.${myEmpId}`);
+                    custCond.push(`created_by.eq.${myEmpId}`);
+                }
+                custsQuery = custsQuery.or(custCond.join(','));
+            }
+            const { data: custs } = await custsQuery;
+
             // 4. Fetch Work Orders
-            const { data: wos } = await supabase
+            let wosQuery = supabase
                 .from('crm_customer_work_orders')
                 .select(`
                     id, customer_id, wo_number, contract_ref, description, amount, currency,
@@ -110,8 +155,25 @@ export const EmployeeWiseCrmReport: React.FC<EmployeeWiseCrmReportProps> = ({ co
                 `)
                 .eq('company_id', companyId);
 
+            if (!isAdmin && user?.id) {
+                const woCond = [`created_by.eq.${user.id}`, `assigned_to.eq.${user.id}`];
+                if (myEmpId) {
+                    woCond.push(`employee_id.eq.${myEmpId}`);
+                    woCond.push(`assigned_to.eq.${myEmpId}`);
+                    woCond.push(`created_by.eq.${myEmpId}`);
+                }
+                if (custs && custs.length > 0) {
+                    const myCustIds = custs.map(c => c.id).filter(Boolean);
+                    if (myCustIds.length > 0) {
+                        woCond.push(`customer_id.in.(${myCustIds.join(',')})`);
+                    }
+                }
+                wosQuery = wosQuery.or(woCond.join(','));
+            }
+            const { data: wos } = await wosQuery;
+
             // 5. Fetch Opportunities
-            const { data: opps } = await supabase
+            let oppsQuery = supabase
                 .from('crm_opportunities')
                 .select(`
                     id, title, amount, currency, status, probability, owner_id, created_by,
@@ -120,13 +182,33 @@ export const EmployeeWiseCrmReport: React.FC<EmployeeWiseCrmReportProps> = ({ co
                 `)
                 .eq('company_id', companyId);
 
+            if (!isAdmin && user?.id) {
+                const oppCond = [`created_by.eq.${user.id}`, `owner_id.eq.${user.id}`];
+                if (myEmpId) {
+                    oppCond.push(`owner_id.eq.${myEmpId}`);
+                    oppCond.push(`created_by.eq.${myEmpId}`);
+                }
+                oppsQuery = oppsQuery.or(oppCond.join(','));
+            }
+            const { data: opps } = await oppsQuery;
+
             // 6. Fetch Leads
-            const { data: leads } = await supabase
+            let leadsQuery = supabase
                 .from('crm_leads')
                 .select('id, first_name, last_name, organization_name, lead_owner_id, created_by, status, created_at')
                 .eq('company_id', companyId);
 
-            setEmployees(emps || []);
+            if (!isAdmin && user?.id) {
+                const leadCond = [`created_by.eq.${user.id}`, `lead_owner_id.eq.${user.id}`];
+                if (myEmpId) {
+                    leadCond.push(`lead_owner_id.eq.${myEmpId}`);
+                    leadCond.push(`created_by.eq.${myEmpId}`);
+                }
+                leadsQuery = leadsQuery.or(leadCond.join(','));
+            }
+            const { data: leads } = await leadsQuery;
+
+            setEmployees(finalEmps);
             setAllCustomers(custs || []);
             setAllWorkOrders(wos || []);
             setAllOpportunities(opps || []);
@@ -207,35 +289,38 @@ export const EmployeeWiseCrmReport: React.FC<EmployeeWiseCrmReportProps> = ({ co
             }
         });
 
-        // Add an Unassigned pool for items not linked to an employee
-        const unassignedRecord: EmployeeMetrics = {
-            id: 'UNASSIGNED',
-            name: 'Unassigned / Direct',
-            employee_code: '—',
-            designation: 'Unallocated',
-            department: 'Corporate Pool',
-            totalCustomers: 0,
-            customersList: [],
-            totalWorkOrders: 0,
-            inProgressWOs: 0,
-            completedWOs: 0,
-            totalWOValueQAR: 0,
-            workOrdersList: [],
-            totalOpportunities: 0,
-            wonOpportunities: 0,
-            lostOpportunities: 0,
-            openOpportunities: 0,
-            pipelineValueQAR: 0,
-            wonValueQAR: 0,
-            opportunitiesList: [],
-            totalLeads: 0,
-            convertedLeads: 0,
-            leadsList: []
-        };
-        map.set('UNASSIGNED', unassignedRecord);
+        // Add an Unassigned pool for items not linked to an employee ONLY if admin/manager
+        let unassignedRecord: EmployeeMetrics | null = null;
+        if (isAdmin) {
+            unassignedRecord = {
+                id: 'UNASSIGNED',
+                name: 'Unassigned / Direct',
+                employee_code: '—',
+                designation: 'Unallocated',
+                department: 'Corporate Pool',
+                totalCustomers: 0,
+                customersList: [],
+                totalWorkOrders: 0,
+                inProgressWOs: 0,
+                completedWOs: 0,
+                totalWOValueQAR: 0,
+                workOrdersList: [],
+                totalOpportunities: 0,
+                wonOpportunities: 0,
+                lostOpportunities: 0,
+                openOpportunities: 0,
+                pipelineValueQAR: 0,
+                wonValueQAR: 0,
+                opportunitiesList: [],
+                totalLeads: 0,
+                convertedLeads: 0,
+                leadsList: []
+            };
+            map.set('UNASSIGNED', unassignedRecord);
+        }
 
         // Helper to match an ID to a record
-        const findRecord = (id?: string | null): EmployeeMetrics => {
+        const findRecord = (id?: string | null): EmployeeMetrics | null => {
             if (!id) return unassignedRecord;
             return map.get(id) || unassignedRecord;
         };
@@ -244,8 +329,10 @@ export const EmployeeWiseCrmReport: React.FC<EmployeeWiseCrmReportProps> = ({ co
         allCustomers.forEach(c => {
             if (!isWithinPeriod(c.created_at)) return;
             const rec = findRecord(c.owner_id || c.created_by);
-            rec.totalCustomers++;
-            rec.customersList.push(c);
+            if (rec) {
+                rec.totalCustomers++;
+                rec.customersList.push(c);
+            }
         });
 
         // 2. Process Work Orders
@@ -254,57 +341,63 @@ export const EmployeeWiseCrmReport: React.FC<EmployeeWiseCrmReportProps> = ({ co
             // Assignee priority: explicit employee_id -> explicit assigned_to -> customer.owner_id -> created_by
             const repId = wo.employee_id || wo.assigned_to || wo.customer?.owner_id || wo.created_by;
             const rec = findRecord(repId);
+            if (rec) {
+                rec.totalWorkOrders++;
+                if (wo.status === 'In Progress' || wo.status === 'Pending') rec.inProgressWOs++;
+                if (wo.status === 'Completed' || wo.status === 'Billed') rec.completedWOs++;
 
-            rec.totalWorkOrders++;
-            if (wo.status === 'In Progress' || wo.status === 'Pending') rec.inProgressWOs++;
-            if (wo.status === 'Completed' || wo.status === 'Billed') rec.completedWOs++;
-
-            const rawAmt = Number(wo.amount) || 0;
-            const amtQAR = wo.currency === 'USD' ? rawAmt * 3.64 : rawAmt;
-            rec.totalWOValueQAR += amtQAR;
-            rec.workOrdersList.push({ ...wo, amountQAR: amtQAR });
+                const rawAmt = Number(wo.amount) || 0;
+                const amtQAR = wo.currency === 'USD' ? rawAmt * 3.64 : rawAmt;
+                rec.totalWOValueQAR += amtQAR;
+                rec.workOrdersList.push({ ...wo, amountQAR: amtQAR });
+            }
         });
 
         // 3. Process Opportunities
         allOpportunities.forEach(opp => {
             if (!isWithinPeriod(opp.created_at)) return;
             const rec = findRecord(opp.owner_id || opp.created_by);
-            rec.totalOpportunities++;
+            if (rec) {
+                rec.totalOpportunities++;
 
-            const rawAmt = Number(opp.amount) || 0;
-            const amtQAR = opp.currency === 'USD' ? rawAmt * 3.64 : rawAmt;
-            rec.pipelineValueQAR += amtQAR;
+                const rawAmt = Number(opp.amount) || 0;
+                const amtQAR = opp.currency === 'USD' ? rawAmt * 3.64 : rawAmt;
+                rec.pipelineValueQAR += amtQAR;
 
-            const st = (opp.status || '').toLowerCase();
-            if (st === 'won') {
-                rec.wonOpportunities++;
-                rec.wonValueQAR += amtQAR;
-            } else if (st === 'lost') {
-                rec.lostOpportunities++;
-            } else {
-                rec.openOpportunities++;
+                const st = (opp.status || '').toLowerCase();
+                if (st === 'won') {
+                    rec.wonOpportunities++;
+                    rec.wonValueQAR += amtQAR;
+                } else if (st === 'lost') {
+                    rec.lostOpportunities++;
+                } else {
+                    rec.openOpportunities++;
+                }
+                rec.opportunitiesList.push({ ...opp, amountQAR: amtQAR });
             }
-            rec.opportunitiesList.push({ ...opp, amountQAR: amtQAR });
         });
 
         // 4. Process Leads
         allLeads.forEach(lead => {
             if (!isWithinPeriod(lead.created_at)) return;
             const rec = findRecord(lead.lead_owner_id || lead.created_by);
-            rec.totalLeads++;
-            const st = (lead.status || '').toLowerCase();
-            if (st === 'converted' || st === 'won' || st === 'customer') {
-                rec.convertedLeads++;
+            if (rec) {
+                rec.totalLeads++;
+                const st = (lead.status || '').toLowerCase();
+                if (st === 'converted' || st === 'won' || st === 'customer') {
+                    rec.convertedLeads++;
+                }
+                rec.leadsList.push(lead);
             }
-            rec.leadsList.push(lead);
         });
 
         // Deduplicate records (since both emp.id and emp.profile_id point to the same object)
         const uniqueSet = new Set<EmployeeMetrics>();
         Array.from(map.values()).forEach(item => {
-            // Keep unassigned only if it has items
+            if (!item) return;
+            // Keep unassigned only if it has items and user is admin
             if (item.id === 'UNASSIGNED') {
-                if (item.totalCustomers > 0 || item.totalWorkOrders > 0 || item.totalOpportunities > 0 || item.totalLeads > 0) {
+                if (isAdmin && (item.totalCustomers > 0 || item.totalWorkOrders > 0 || item.totalOpportunities > 0 || item.totalLeads > 0)) {
                     uniqueSet.add(item);
                 }
             } else {
@@ -313,7 +406,7 @@ export const EmployeeWiseCrmReport: React.FC<EmployeeWiseCrmReportProps> = ({ co
         });
 
         return Array.from(uniqueSet).sort((a, b) => b.totalWOValueQAR - a.totalWOValueQAR || b.totalOpportunities - a.totalOpportunities || a.name.localeCompare(b.name));
-    }, [employees, allCustomers, allWorkOrders, allOpportunities, allLeads, periodFilter, startDate, endDate]);
+    }, [employees, allCustomers, allWorkOrders, allOpportunities, allLeads, periodFilter, startDate, endDate, isAdmin]);
 
     // Filter by search & selected employee dropdown
     const filteredMetrics = useMemo(() => {
@@ -455,13 +548,18 @@ export const EmployeeWiseCrmReport: React.FC<EmployeeWiseCrmReportProps> = ({ co
                     </div>
                     <div>
                         <div className="flex items-center gap-2">
-                            <h2 className="text-xl md:text-2xl font-black tracking-tight text-white">Employee-Wise CRM & Sales Report</h2>
-                            <span className="px-2.5 py-0.5 text-xs font-bold bg-white/20 rounded-full text-indigo-200">
-                                Corporate Performance
+                            <h2 className="text-xl md:text-2xl font-black tracking-tight text-white">
+                                {isAdmin ? 'Employee-Wise CRM & Sales Report' : 'My Sales & BD Performance Report'}
+                            </h2>
+                            <span className={`px-2.5 py-0.5 text-xs font-bold rounded-full ${isAdmin ? 'bg-white/20 text-indigo-200' : 'bg-emerald-500/30 text-emerald-200 border border-emerald-400/30 flex items-center gap-1'}`}>
+                                {!isAdmin && <Lock size={11} />}
+                                {isAdmin ? 'Corporate Performance' : 'Private Performance View'}
                             </span>
                         </div>
                         <p className="text-xs md:text-sm text-blue-200 mt-1">
-                            Breakdown of Call-Off Contracts, Work Orders, Pipeline Deals, and Client Accounts per Employee
+                            {isAdmin
+                                ? 'Breakdown of Call-Off Contracts, Work Orders, Pipeline Deals, and Client Accounts across all sales reps'
+                                : 'Breakdown of your assigned Call-Off Contracts, Work Orders, Pipeline Deals, and Client Accounts'}
                         </p>
                     </div>
                 </div>
@@ -515,22 +613,31 @@ export const EmployeeWiseCrmReport: React.FC<EmployeeWiseCrmReportProps> = ({ co
                         )}
                     </div>
 
-                    {/* Employee Selector Dropdown */}
-                    <div className="flex items-center gap-2 text-xs">
-                        <span className="text-slate-500 font-bold uppercase tracking-wider text-[11px]">Employee:</span>
-                        <select
-                            value={selectedEmployeeFilter}
-                            onChange={e => setSelectedEmployeeFilter(e.target.value)}
-                            className="px-3 py-2 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer"
-                        >
-                            <option value="ALL">All Employees ({employeeMetrics.length})</option>
-                            {employeeMetrics.map(m => (
-                                <option key={m.id} value={m.id}>
-                                    {m.name} {m.employee_code ? `(${m.employee_code})` : ''}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
+                    {/* Employee Selector Dropdown or Private View Badge */}
+                    {isAdmin ? (
+                        <div className="flex items-center gap-2 text-xs">
+                            <span className="text-slate-500 font-bold uppercase tracking-wider text-[11px]">Employee:</span>
+                            <select
+                                value={selectedEmployeeFilter}
+                                onChange={e => setSelectedEmployeeFilter(e.target.value)}
+                                className="px-3 py-2 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer"
+                            >
+                                <option value="ALL">All Employees ({employeeMetrics.length})</option>
+                                {employeeMetrics.map(m => (
+                                    <option key={m.id} value={m.id}>
+                                        {m.name} {m.employee_code ? `(${m.employee_code})` : ''}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    ) : (
+                        <div className="flex items-center gap-2 text-xs">
+                            <span className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 rounded-xl font-bold">
+                                <Lock size={12} />
+                                <span>Private View: {employeeMetrics[0]?.name || 'My Sales Only'}</span>
+                            </span>
+                        </div>
+                    )}
 
                     {/* Period Selector */}
                     <div className="flex items-center gap-2 text-xs">
