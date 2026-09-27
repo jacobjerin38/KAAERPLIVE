@@ -363,13 +363,13 @@ export const FinancialReports: React.FC = () => {
                         <div 
                             key={idx} 
                             onClick={() => handleAccountClick(acc)}
-                            className="flex justify-between items-center text-sm py-1.5 px-2 hover:bg-indigo-50/70 dark:hover:bg-indigo-950/30 rounded-lg cursor-pointer transition-all group border border-transparent hover:border-indigo-150 dark:hover:border-indigo-900/50"
-                            title={`Click to view breakdown of ${acc.name}`}
+                            className="flex justify-between items-center text-sm py-2 px-2.5 hover:bg-indigo-50/80 dark:hover:bg-indigo-950/40 rounded-xl cursor-pointer transition-all group border border-transparent hover:border-indigo-200 dark:hover:border-indigo-800/60 active:scale-[0.99]"
+                            title={`Click to view breakdown & composition of ${acc.name}`}
                         >
                             <div className="flex flex-col">
                                 <span className="font-medium text-slate-700 dark:text-slate-300 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors flex items-center gap-1.5">
                                     {acc.name}
-                                    <ArrowUpRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-indigo-500 shrink-0" />
+                                    <ArrowUpRight className="w-3.5 h-3.5 text-indigo-400 group-hover:text-indigo-600 opacity-40 group-hover:opacity-100 transition-all group-hover:translate-x-0.5 group-hover:-translate-y-0.5 shrink-0" />
                                 </span>
                                 <span className="text-[10px] text-slate-400 font-mono">{acc.code}</span>
                             </div>
@@ -403,13 +403,13 @@ export const FinancialReports: React.FC = () => {
                             <div 
                                 key={idx} 
                                 onClick={() => handleAccountClick(item)}
-                                className="flex justify-between items-center text-sm py-2 px-2 hover:bg-indigo-50/70 dark:hover:bg-indigo-950/30 rounded-lg transition-all cursor-pointer group border border-transparent hover:border-indigo-150 dark:hover:border-indigo-900/50"
-                                title={`Click to view breakdown of ${item.name}`}
+                                className="flex justify-between items-center text-sm py-2 px-2.5 hover:bg-indigo-50/80 dark:hover:bg-indigo-950/40 rounded-xl transition-all cursor-pointer group border border-transparent hover:border-indigo-200 dark:hover:border-indigo-800/60 active:scale-[0.99]"
+                                title={`Click to view breakdown & composition of ${item.name}`}
                             >
                                 <div>
                                     <p className="font-bold text-slate-700 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors flex items-center gap-1.5">
                                         {item.name}
-                                        <ArrowUpRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-indigo-500 shrink-0" />
+                                        <ArrowUpRight className="w-3.5 h-3.5 text-indigo-400 group-hover:text-indigo-600 opacity-40 group-hover:opacity-100 transition-all group-hover:translate-x-0.5 group-hover:-translate-y-0.5 shrink-0" />
                                     </p>
                                     <p className="text-[10px] text-slate-400 font-mono">{item.code} • {item.subtype}</p>
                                 </div>
@@ -567,9 +567,9 @@ export const FinancialReports: React.FC = () => {
                         </div>
 
                         {(activeReport === 'bs' || activeReport === 'pl' || activeReport === 'tb' || activeReport === 'ea') && (
-                            <div className="flex items-center justify-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 text-xs font-semibold w-fit mx-auto border border-indigo-100 dark:border-indigo-900/40 shadow-2xs no-print">
-                                <Layers className="w-3.5 h-3.5" />
-                                <span>Click any account row to view its transaction breakdown & composition</span>
+                            <div className="flex items-center justify-center gap-2 px-4 py-2 rounded-2xl bg-indigo-50/80 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 text-xs font-bold w-fit mx-auto border border-indigo-200/80 dark:border-indigo-800/60 shadow-xs no-print">
+                                <Layers className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                                <span>Interactive Reporting: Click any account (e.g. Fixed Deposits, Cash in Bank, Sundry Creditors) to view its composition & ledger breakdown</span>
                             </div>
                         )}
 
@@ -677,7 +677,7 @@ export const FinancialReports: React.FC = () => {
                                                 <td className="px-6 py-4">
                                                     <p className="font-bold text-slate-700 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors flex items-center gap-1.5">
                                                         {row.name}
-                                                        <ArrowUpRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-indigo-500 shrink-0" />
+                                                        <ArrowUpRight className="w-3.5 h-3.5 text-indigo-400 group-hover:text-indigo-600 opacity-40 group-hover:opacity-100 transition-all group-hover:translate-x-0.5 group-hover:-translate-y-0.5 shrink-0" />
                                                     </p>
                                                     <p className="text-[10px] text-slate-400 font-mono">{row.code} • {row.type}</p>
                                                 </td>
@@ -1097,7 +1097,7 @@ export const FinancialReports: React.FC = () => {
                                                 <td className="px-6 py-4 text-slate-600 dark:text-slate-400">
                                                     <div className="flex items-center gap-1.5 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
                                                         <span>{row.account_code} — {row.account_name}</span>
-                                                        <ArrowUpRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-indigo-500 shrink-0" />
+                                                        <ArrowUpRight className="w-3.5 h-3.5 text-indigo-400 group-hover:text-indigo-600 opacity-40 group-hover:opacity-100 transition-all group-hover:translate-x-0.5 group-hover:-translate-y-0.5 shrink-0" />
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4 text-right font-mono font-bold text-rose-600 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">{formatCurrency(Number(row.amount))}</td>
