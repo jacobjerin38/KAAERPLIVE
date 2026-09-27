@@ -2190,8 +2190,9 @@ const ALL_PERMISSIONS = {
         { id: 'crm.tasks.manage', label: 'Manage Tasks & Reminders' },
         { id: 'crm.pipeline.manage', label: 'Manage Pipeline Stages' },
         { id: 'crm.quotations.manage', label: 'Create & Manage Quotations' },
+        { id: 'crm.reports.view', label: 'Access CRM Reports Hub' },
         { id: 'crm.reports.employee_wise', label: 'Employee-Wise CRM & BD Performance Report' },
-        { id: 'crm.reports.view', label: 'Access CRM Reports & Analytics' },
+        { id: 'crm.reports.builder', label: 'Custom Report Builder (CRM)' },
         { id: 'crm.finder.manage', label: 'Lead & Website Finder Tool' },
         { id: 'crm.ai.view', label: 'AI CRM Assistant' },
         { id: 'crm.settings.manage', label: 'Manage CRM Settings' }
@@ -2324,6 +2325,12 @@ const ALL_PERMISSIONS = {
         { id: 'travel.view', label: 'View Travel Requests & Bookings' },
         { id: 'travel.manage', label: 'Approve & Manage Travel Bookings' },
         { id: 'travel.claims.manage', label: 'Review & Settle Travel Expense Claims' }
+    ],
+    'REPORT BUILDER': [
+        { id: 'reports.builder.view', label: 'Access Universal Report Builder' },
+        { id: 'reports.builder.create', label: 'Create & Save Custom Reports' },
+        { id: 'reports.builder.export', label: 'Export Reports (Excel, CSV, PDF)' },
+        { id: 'reports.builder.delete', label: 'Delete & Manage Custom Reports' }
     ]
 };
 
@@ -2372,6 +2379,7 @@ const RolePermissionEditor = ({ selectedPermissions, onChange }: { selectedPermi
             case 'ESSP': return UserCircle;
             case 'HELP DESK': return Headphones;
             case 'TEAM CHAT': return MessageSquare;
+            case 'REPORT BUILDER': return BarChart2;
             default: return Shield;
         }
     };

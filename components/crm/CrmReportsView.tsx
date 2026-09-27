@@ -13,6 +13,7 @@ interface CrmReportsViewProps {
 export const CrmReportsView: React.FC<CrmReportsViewProps> = ({ companyId }) => {
     const { userRole, hasPermission } = useAuth();
     const isAdmin = checkIsAdmin(userRole) || hasPermission('*') || hasPermission('crm.admin') || hasPermission('crm.manage_all');
+    const canUseBuilder = isAdmin || hasPermission('crm.reports.builder') || hasPermission('reports.builder.view') || hasPermission('reports.builder.create');
     const [subTab, setSubTab] = useState<'EMPLOYEE_PERFORMANCE' | 'WORK_ORDERS' | 'CUSTOM_BUILDER'>('EMPLOYEE_PERFORMANCE');
 
     return (
@@ -74,17 +75,19 @@ export const CrmReportsView: React.FC<CrmReportsViewProps> = ({ companyId }) => 
                         <span>Call-Off Work Orders & PO Register</span>
                     </button>
 
-                    <button
-                        onClick={() => setSubTab('CUSTOM_BUILDER')}
-                        className={`flex items-center gap-2 px-4 py-3 text-xs font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
-                            subTab === 'CUSTOM_BUILDER'
-                                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
-                                : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-                        }`}
-                    >
-                        <BarChart3 size={15} />
-                        <span>Custom Reports Builder</span>
-                    </button>
+                    {canUseBuilder && (
+                        <button
+                            onClick={() => setSubTab('CUSTOM_BUILDER')}
+                            className={`flex items-center gap-2 px-4 py-3 text-xs font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+                                subTab === 'CUSTOM_BUILDER'
+                                    ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                                    : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                            }`}
+                        >
+                            <BarChart3 size={15} />
+                            <span>Custom Reports Builder</span>
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -100,7 +103,7 @@ export const CrmReportsView: React.FC<CrmReportsViewProps> = ({ companyId }) => 
                     </div>
                 )}
 
-                {subTab === 'CUSTOM_BUILDER' && (
+                {subTab === 'CUSTOM_BUILDER' && canUseBuilder && (
                     <div className="h-full bg-white dark:bg-zinc-900 rounded-3xl border border-slate-200 dark:border-zinc-800 shadow-sm overflow-hidden flex flex-col">
                         <ReportsListView moduleFilter="CRM" companyId={companyId} />
                     </div>

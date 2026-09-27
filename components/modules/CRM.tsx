@@ -637,10 +637,16 @@ export const CRM: React.FC = () => {
             { id: 'WORKFLOWS', icon: Workflow, label: 'Workflows', permission: 'crm.leads.view' },
             { id: 'ASSISTANT', icon: Sparkles, label: 'Assistant', permission: 'crm.ai.view' },
             { id: 'UPDATES', icon: Bell, label: 'Updates', permission: 'crm.dashboard.view' },
-            { id: 'REPORTS', icon: BarChart3, label: 'Reports', permission: 'crm.dashboard.view' },
+            { id: 'REPORTS', icon: BarChart3, label: 'Reports', permission: 'crm.reports.view' },
             { id: 'LIVE', icon: Mic, label: 'Live Mode', permission: 'crm.deals.view' },
             { id: 'WEBSITE_FINDER', icon: Search, label: 'Site Finder', permission: 'crm.leads.manage' }
-        ].filter(item => hasPermission(item.permission) || hasPermission('*')), [hasPermission]);
+        ].filter(item => {
+            if (hasPermission('*') || checkIsAdmin(userRole)) return true;
+            if (item.id === 'REPORTS') {
+                return hasPermission('crm.reports.view') || hasPermission('crm.reports.employee_wise') || hasPermission('crm.reports.builder') || hasPermission('reports.builder.view') || hasPermission('crm.dashboard.view');
+            }
+            return hasPermission(item.permission);
+        }), [hasPermission, userRole]);
 
         const handleTabClick = (id: string) => {
             setActiveTab(id as CRMViewMode);
