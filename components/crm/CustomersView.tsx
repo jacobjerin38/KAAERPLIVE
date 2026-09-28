@@ -115,21 +115,38 @@ export default function CustomersView({
 
         setSaving(true);
         try {
+            const customerPayload: Partial<Customer> = {
+                name: activeCustomer.name.trim(),
+                customer_type: activeCustomer.customer_type || 'Company',
+                lifecycle_stage: activeCustomer.lifecycle_stage || 'Customer',
+                status: activeCustomer.status || 'Active',
+                start_date: activeCustomer.start_date || null as any,
+                owner_id: activeCustomer.owner_id || null as any,
+                industry: activeCustomer.industry?.trim() || null as any,
+                tax_id: activeCustomer.tax_id?.trim() || null as any,
+                website: activeCustomer.website?.trim() || null as any,
+                primary_email: activeCustomer.primary_email?.trim() || null as any,
+                primary_phone: activeCustomer.primary_phone?.trim() || null as any,
+                billing_address_line_1: activeCustomer.billing_address_line_1?.trim() || null as any,
+                billing_address_line_2: activeCustomer.billing_address_line_2?.trim() || null as any,
+                billing_city: activeCustomer.billing_city?.trim() || null as any,
+                billing_state: activeCustomer.billing_state?.trim() || null as any,
+                billing_country: activeCustomer.billing_country?.trim() || 'Qatar',
+                billing_zip_code: activeCustomer.billing_zip_code?.trim() || null as any,
+                remarks: activeCustomer.remarks?.trim() || null as any,
+                contract_number: activeCustomer.contract_number?.trim() || null as any,
+                contract_type: activeCustomer.contract_type?.trim() || 'Call-Off / Work Order Basis',
+                contract_title: activeCustomer.contract_title?.trim() || null as any,
+            };
+
             if (activeCustomer.id) {
-                await updateCustomer(activeCustomer.id, {
-                    ...activeCustomer,
-                    name: activeCustomer.name.trim(),
-                    owner_id: activeCustomer.owner_id || null
-                });
+                await updateCustomer(activeCustomer.id, customerPayload);
             } else {
                 await createCustomer({
-                    ...activeCustomer,
-                    name: activeCustomer.name.trim(),
-                    status: activeCustomer.status || 'Active',
-                    owner_id: activeCustomer.owner_id || user?.id,
-                    created_by: user?.id,
+                    ...customerPayload,
                     company_id: companyId,
-                    contract_type: activeCustomer.contract_type || 'Call-Off / Work Order Basis'
+                    created_by: user?.id,
+                    owner_id: activeCustomer.owner_id || user?.id
                 });
             }
             setShowModal(false);

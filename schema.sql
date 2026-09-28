@@ -5430,6 +5430,12 @@ CREATE TABLE IF NOT EXISTS public.crm_customers (
     tax_id text,
     owner_id uuid,
     status text DEFAULT 'Active'::text,
+    created_by uuid,
+    start_date date,
+    remarks text,
+    contract_number text,
+    contract_title text,
+    contract_type text DEFAULT 'Call-Off / Work Order Basis'::text,
     created_at timestamp with time zone NOT NULL DEFAULT timezone('utc'::text, now()),
     updated_at timestamp with time zone NOT NULL DEFAULT timezone('utc'::text, now()),
     CONSTRAINT crm_customers_pkey PRIMARY KEY (id)

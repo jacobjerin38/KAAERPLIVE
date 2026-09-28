@@ -412,6 +412,48 @@ export const getCustomers = async (
   return customers;
 };
 
+const ALLOWED_CUSTOMER_FIELDS = [
+  'name',
+  'customer_type',
+  'lifecycle_stage',
+  'primary_email',
+  'primary_phone',
+  'billing_address_line_1',
+  'billing_address_line_2',
+  'billing_city',
+  'billing_state',
+  'billing_country',
+  'billing_zip_code',
+  'website',
+  'industry',
+  'tax_id',
+  'owner_id',
+  'created_by',
+  'status',
+  'start_date',
+  'remarks',
+  'contract_number',
+  'contract_title',
+  'contract_type'
+];
+
+function sanitizeCustomerData(data: Partial<Customer>): Record<string, any> {
+  const clean: Record<string, any> = {};
+  for (const field of ALLOWED_CUSTOMER_FIELDS) {
+    if (field in data) {
+      const val = (data as any)[field];
+      if (val === undefined || val === '') {
+        clean[field] = null;
+      } else if (typeof val === 'string') {
+        clean[field] = val.trim();
+      } else {
+        clean[field] = val;
+      }
+    }
+  }
+  return clean;
+}
+
 export const createCustomer = async (customer: Partial<Customer>): Promise<Customer | null> => {
   if (!customer.name || !customer.name.trim()) {
     throw new Error('Customer Name is required.');
@@ -439,14 +481,15 @@ export const createCustomer = async (customer: Partial<Customer>): Promise<Custo
     throw new Error('Company context is required to create a CRM customer.');
   }
 
+  const cleanFields = sanitizeCustomerData(customer);
   const payload = {
-    ...customer,
+    ...cleanFields,
     name: customer.name.trim(),
     company_id: effectiveCompanyId,
-    owner_id: customer.owner_id || effectiveUserId,
-    created_by: customer.created_by || effectiveUserId,
-    status: customer.status || 'Active',
-    customer_type: customer.customer_type || 'Company',
+    owner_id: cleanFields.owner_id || effectiveUserId,
+    created_by: cleanFields.created_by || effectiveUserId,
+    status: cleanFields.status || 'Active',
+    customer_type: cleanFields.customer_type || 'Company',
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   };
@@ -458,7 +501,7 @@ export const createCustomer = async (customer: Partial<Customer>): Promise<Custo
 
   if (error) {
     console.error('Error creating customer:', error);
-    throw error;
+    throw new Error(error.message || 'Failed to create customer');
   }
 
   if (data) {
@@ -476,16 +519,31 @@ export const createCustomer = async (customer: Partial<Customer>): Promise<Custo
 };
 
 export const updateCustomer = async (id: string, updates: Partial<Customer>): Promise<Customer | null> => {
+  const cleanUpdates = sanitizeCustomerData(updates);
+  cleanUpdates.updated_at = new Date().toISOString();
+
   const { data, error } = await (supabase as any).from('crm_customers')
-    .update(updates)
+    .update(cleanUpdates)
     .eq('id', id)
     .select()
-    .maybeSingle();
+    .single();
 
   if (error) {
     console.error('Error updating customer:', error);
-    return null;
+    throw new Error(error.message || 'Failed to update customer');
   }
+
+  if (data) {
+    await logActivity({
+      company_id: data.company_id,
+      entity_type: 'customer',
+      entity_id: data.id,
+      action: 'updated',
+      description: `Updated customer "${data.name}"`,
+      performed_by: data.owner_id || data.created_by
+    });
+  }
+
   return data;
 };
 
