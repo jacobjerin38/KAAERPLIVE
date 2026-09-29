@@ -2192,10 +2192,16 @@ const ALL_PERMISSIONS = {
         { id: 'crm.quotations.manage', label: 'Create & Manage Quotations' },
         { id: 'crm.reports.view', label: 'Access CRM Reports Hub' },
         { id: 'crm.reports.employee_wise', label: 'Employee-Wise CRM & BD Performance Report' },
-        { id: 'crm.reports.builder', label: 'Custom Report Builder (CRM)' },
+        { id: 'crm.reports.builder', label: 'Report Builder (CRM Custom Reports)' },
         { id: 'crm.finder.manage', label: 'Lead & Website Finder Tool' },
         { id: 'crm.ai.view', label: 'AI CRM Assistant' },
         { id: 'crm.settings.manage', label: 'Manage CRM Settings' }
+    ],
+    'REPORT BUILDER': [
+        { id: 'reports.builder.view', label: 'Access Universal Report Builder' },
+        { id: 'reports.builder.create', label: 'Create & Save Custom Reports' },
+        { id: 'reports.builder.export', label: 'Export Reports (Excel, CSV, PDF)' },
+        { id: 'reports.builder.delete', label: 'Delete & Manage Custom Reports' }
     ],
     SALES: [
         { id: 'sales.view', label: 'View Sales Dashboard & Orders' },
@@ -2230,7 +2236,9 @@ const ALL_PERMISSIONS = {
         { id: 'finance.payments.manage', label: 'Record Payments, Receipts & Settlements' },
         { id: 'finance.journal.view', label: 'View Journal Entries' },
         { id: 'finance.journal.manage', label: 'Create & Post Journal Entries' },
-        { id: 'finance.banking.view', label: 'Bank Statements, Cash Book & Reconciliation' },
+        { id: 'finance.reconciliation.manage', label: 'JV & General Ledger Reconciliation (Reconcile & Unreconcile)' },
+        { id: 'finance.banking.view', label: 'Bank Statements, Cash Book & Bank Reconciliation' },
+        { id: 'finance.reports.builder', label: 'Financial Report Builder & Custom Extracts' },
         { id: 'finance.assets.manage', label: 'Fixed Assets Register & Depreciation' },
         { id: 'finance.masters.manage', label: 'Chart of Accounts, Partners, Taxes & Fiscal Years' },
         { id: 'finance.taxes.manage', label: 'Qatar VAT Reports & Tax Rates' },
@@ -2325,12 +2333,6 @@ const ALL_PERMISSIONS = {
         { id: 'travel.view', label: 'View Travel Requests & Bookings' },
         { id: 'travel.manage', label: 'Approve & Manage Travel Bookings' },
         { id: 'travel.claims.manage', label: 'Review & Settle Travel Expense Claims' }
-    ],
-    'REPORT BUILDER': [
-        { id: 'reports.builder.view', label: 'Access Universal Report Builder' },
-        { id: 'reports.builder.create', label: 'Create & Save Custom Reports' },
-        { id: 'reports.builder.export', label: 'Export Reports (Excel, CSV, PDF)' },
-        { id: 'reports.builder.delete', label: 'Delete & Manage Custom Reports' }
     ]
 };
 
@@ -2411,7 +2413,7 @@ const RolePermissionEditor = ({ selectedPermissions, onChange }: { selectedPermi
                 <Search className="w-4 h-4 text-slate-400" />
                 <input 
                     type="text" 
-                    placeholder="Search permissions or modules (e.g. Day Book, Ledger, Quotation, Leaves)..." 
+                    placeholder="Search permissions or modules (e.g. Report Builder, JV Reconciliation, Day Book, Ledger)..." 
                     value={permSearch}
                     onChange={e => setPermSearch(e.target.value)}
                     className="w-full text-xs bg-transparent border-none focus:outline-none text-slate-900 dark:text-white"

@@ -12,7 +12,11 @@ import { formatLocalDate } from '../../../lib/dateFormat';
 import { PeriodFilter, PeriodPreset, getDatesForPreset } from '../common/PeriodFilter';
 
 
-export const FinancialReports: React.FC = () => {
+export interface FinancialReportsProps {
+    onNavigateToEntry?: (voucher: any) => void;
+}
+
+export const FinancialReports: React.FC<FinancialReportsProps> = ({ onNavigateToEntry }) => {
     const { currentCompanyId } = useAuth();
     const [activeReport, setActiveReport] = useState<'bs' | 'pl' | 'tb' | 'sl' | 'pl_report' | 'ea' | 'aging' | 'vat'>('bs');
     const [loading, setLoading] = useState(false);
@@ -1363,7 +1367,36 @@ export const FinancialReports: React.FC = () => {
                                                                     </td>
                                                                     <td className="px-3.5 py-2.5 font-mono font-bold text-indigo-600 dark:text-indigo-400 whitespace-nowrap">
                                                                         <div className="flex items-center gap-1.5">
-                                                                            <span>{tx.voucher_ref || '—'}</span>
+                                                                            {onNavigateToEntry && tx.voucher_ref && tx.voucher_ref !== '—' ? (
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => {
+                                                                                        const ref = (tx.voucher_ref || '').trim();
+                                                                                        const upperRef = ref.toUpperCase();
+                                                                                        const vType = 
+                                                                                            tx.move_type === 'in_invoice' ? 'Purchase' :
+                                                                                            tx.move_type === 'out_invoice' ? 'Sales' :
+                                                                                            (upperRef.startsWith('PBV') || upperRef.startsWith('PCV') || upperRef.startsWith('PRV') || upperRef.startsWith('BRV') || upperRef.startsWith('CRV')) ? 'Payment' :
+                                                                                            'Journal';
+
+                                                                                        setIsBreakdownModalOpen(false);
+                                                                                        setSelectedAccountBreakdown(null);
+                                                                                        onNavigateToEntry({
+                                                                                            id: tx.entry_id,
+                                                                                            reference: ref,
+                                                                                            voucherType: vType,
+                                                                                            move_type: tx.move_type
+                                                                                        });
+                                                                                    }}
+                                                                                    className="inline-flex items-center gap-1 text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-200 hover:underline cursor-pointer group text-left transition-colors"
+                                                                                    title={`Click to open ${tx.voucher_ref} in edit view`}
+                                                                                >
+                                                                                    <span>{tx.voucher_ref}</span>
+                                                                                    <ExternalLink className="w-3 h-3 opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+                                                                                </button>
+                                                                            ) : (
+                                                                                <span>{tx.voucher_ref || '—'}</span>
+                                                                            )}
                                                                             {tx.move_type && (
                                                                                 <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
                                                                                     tx.move_type === 'in_invoice' ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300' :

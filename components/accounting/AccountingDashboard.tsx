@@ -26,6 +26,11 @@ import { FinanceDashboard } from './FinanceDashboard';
 import { FixedAssets } from './operations/FixedAssets';
 import { AccountingMasters } from '../modules/organisation/AccountingMasters';
 import OpeningBalances from './operations/OpeningBalances';
+import { JVReconciliation } from './operations/JVReconciliation';
+import { useAuth } from '../../contexts/AuthContext';
+
+const checkIsAdmin = (role: string | null | undefined): boolean =>
+    ['admin', 'super admin', 'administrator'].includes(role?.toLowerCase() || '');
 
 interface DayBookNavigationTarget {
     tab: 'customers' | 'vendors' | 'payments' | 'journal';
@@ -37,7 +42,10 @@ interface DayBookNavigationTarget {
 }
 
 export const AccountingDashboard: React.FC = () => {
-    const [activeTab, setActiveTab] = useState<'overview' | 'customers' | 'vendors' | 'payments' | 'daybook' | 'journal' | 'banking' | 'assets' | 'reporting' | 'masters' | 'opening_balances' | 'settings'>('overview');
+    const { userRole, hasPermission } = useAuth();
+    const canReconcile = checkIsAdmin(userRole) || hasPermission('*') || hasPermission('finance.*') || hasPermission('finance.reconciliation.manage');
+
+    const [activeTab, setActiveTab] = useState<'overview' | 'customers' | 'vendors' | 'payments' | 'daybook' | 'journal' | 'reconciliation' | 'banking' | 'assets' | 'reporting' | 'masters' | 'opening_balances' | 'settings'>('overview');
     const [subTab, setSubTab] = useState('invoices');
     const [targetNav, setTargetNav] = useState<DayBookNavigationTarget | null>(null);
 
@@ -110,7 +118,21 @@ export const AccountingDashboard: React.FC = () => {
 
                 {/* Tabs */}
                 <div className="flex flex-wrap gap-0.5 bg-slate-100 dark:bg-zinc-800 p-1 rounded-lg overflow-x-auto max-w-full">
-                    {['overview', 'customers', 'vendors', 'payments', 'daybook', 'journal', 'banking', 'assets', 'reporting', 'masters', 'opening_balances', 'settings'].map(tab => (
+                    {([
+                        'overview',
+                        'customers',
+                        'vendors',
+                        'payments',
+                        'daybook',
+                        'journal',
+                        ...(canReconcile ? ['reconciliation' as const] : []),
+                        'banking',
+                        'assets',
+                        'reporting',
+                        'masters',
+                        'opening_balances',
+                        'settings'
+                    ]).map(tab => (
                         <button
                             key={tab}
                             onClick={() => { 
@@ -120,17 +142,26 @@ export const AccountingDashboard: React.FC = () => {
                                 else if (tab === 'banking') setSubTab('statements');
                                 else if (tab === 'reporting') setSubTab('financial');
                                 else if (tab === 'masters') setSubTab('all_masters');
+                                else if (tab === 'journal') setSubTab('entries');
                                 else setSubTab('');
                             }}
                             className={`px-2 py-1 md:px-3 md:py-1.5 rounded-md text-xs md:text-sm font-bold capitalize transition-all whitespace-nowrap ${activeTab === tab
                                 ? 'bg-white dark:bg-zinc-700 text-violet-600 dark:text-violet-400 shadow-sm'
                                 : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
                         >
-                            {tab === 'overview' ? '📊 Overview' : tab === 'daybook' ? '📅 Day Book' : tab === 'assets' ? '🏢 Assets' : tab === 'masters' ? '📚 Masters' : tab === 'opening_balances' ? '📥 Opening Balances' : tab}
+                            {tab === 'overview' ? '📊 Overview' : tab === 'daybook' ? '📅 Day Book' : tab === 'reconciliation' ? '⚖️ JV Reconciliation' : tab === 'assets' ? '🏢 Assets' : tab === 'masters' ? '📚 Masters' : tab === 'opening_balances' ? '📥 Opening Balances' : tab}
                         </button>
                     ))}
                 </div>
             </div>
+
+            {/* Sub-Header for Journal */}
+            {activeTab === 'journal' && canReconcile && (
+                <div className="px-6 py-2 border-b border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900/50 flex gap-4 no-print">
+                    <button onClick={() => setSubTab('entries')} className={`text-sm font-medium ${subTab !== 'reconciliation' ? 'text-blue-600 font-bold' : 'text-slate-500'}`}>Journal Entries</button>
+                    <button onClick={() => setSubTab('reconciliation')} className={`text-sm font-medium ${subTab === 'reconciliation' ? 'text-blue-600 font-bold' : 'text-slate-500'}`}>⚖️ JV Reconciliation</button>
+                </div>
+            )}
 
             {/* Sub-Header for Customers */}
             {activeTab === 'customers' && (
@@ -236,22 +267,29 @@ export const AccountingDashboard: React.FC = () => {
                     <DayBook onNavigateToEntry={handleNavigateFromDayBook} />
                 )}
 
-                {activeTab === 'journal' && (
+                {activeTab === 'journal' && subTab !== 'reconciliation' && (
                     <JournalEntries
                         initialSearch={targetNav?.tab === 'journal' ? targetNav.reference : undefined}
                         initialId={targetNav?.tab === 'journal' ? targetNav.id : undefined}
                         onClearInitial={() => setTargetNav(null)}
                     />
                 )}
+                {activeTab === 'journal' && subTab === 'reconciliation' && (
+                    <JVReconciliation onNavigateToEntry={handleNavigateFromDayBook} />
+                )}
+
+                {activeTab === 'reconciliation' && (
+                    <JVReconciliation onNavigateToEntry={handleNavigateFromDayBook} />
+                )}
                 
                 {activeTab === 'banking' && subTab === 'statements' && <BankStatements />}
                 {activeTab === 'banking' && subTab === 'cashbook' && <CashBook />}
 
-                {activeTab === 'reporting' && subTab === 'financial' && <FinancialReports />}
+                {activeTab === 'reporting' && subTab === 'financial' && <FinancialReports onNavigateToEntry={handleNavigateFromDayBook} />}
                 {activeTab === 'reporting' && subTab === 'daybook' && (
                     <DayBook onNavigateToEntry={handleNavigateFromDayBook} />
                 )}
-                {activeTab === 'reporting' && subTab === 'ledger' && <GeneralLedger />}
+                {activeTab === 'reporting' && subTab === 'ledger' && <GeneralLedger onNavigateToEntry={handleNavigateFromDayBook} />}
                 {activeTab === 'reporting' && subTab === 'daily_sales' && <DailySalesReport />}
                 {activeTab === 'reporting' && subTab === 'expenses' && <ExpenseReport />}
                 {activeTab === 'reporting' && subTab === 'budget' && <BudgetAnalysis />}

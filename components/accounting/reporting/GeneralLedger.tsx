@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
-import { BookOpen, Filter, Download } from 'lucide-react';
+import { BookOpen, Filter, Download, ExternalLink } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { PrintButton } from '../../ui/PrintButton';
 import { formatLocalDate } from '../../../lib/dateFormat';
@@ -8,12 +8,22 @@ import { PeriodFilter, PeriodPreset, getDatesForPreset } from '../common/PeriodF
 
 
 interface GLEntry {
-    date: string; journal_name: string; reference: string;
-    description: string; debit: number; credit: number;
+    entry_id?: string;
+    date: string;
+    journal_name: string;
+    reference: string;
+    description: string;
+    debit: number;
+    credit: number;
     partner_name: string;
+    move_type?: string;
 }
 
-export const GeneralLedger: React.FC = () => {
+export interface GeneralLedgerProps {
+    onNavigateToEntry?: (voucher: any) => void;
+}
+
+export const GeneralLedger: React.FC<GeneralLedgerProps> = ({ onNavigateToEntry }) => {
     const { currentCompanyId } = useAuth();
     const [accounts, setAccounts] = useState<any[]>([]);
     const [selectedAccount, setSelectedAccount] = useState('');
@@ -79,7 +89,7 @@ export const GeneralLedger: React.FC = () => {
                 .from('accounting_journal_lines')
                 .select(`
                     entry_id, name, debit, credit,
-                    entry:accounting_journal_entries!entry_id(date, reference, notes),
+                    entry:accounting_journal_entries!entry_id(id, date, reference, notes, move_type),
                     journal:accounting_journals!accounting_journal_lines_entry_id_fkey(name),
                     partner:accounting_partners(name)
                 `)
@@ -116,13 +126,15 @@ export const GeneralLedger: React.FC = () => {
             filteredData.sort((a: any, b: any) => new Date(a.entry.date).getTime() - new Date(b.entry.date).getTime());
 
             setEntries(filteredData.map((d: any) => ({
+                entry_id: d.entry?.id || d.entry_id,
                 date: d.entry?.date || '',
                 journal_name: d.journal?.name || '',
                 reference: d.entry?.reference || '',
                 description: d.name || d.entry?.notes || '',
                 debit: Number(d.debit) || 0,
                 credit: Number(d.credit) || 0,
-                partner_name: d.partner?.name || ''
+                partner_name: d.partner?.name || '',
+                move_type: d.entry?.move_type
             })));
         } catch (err: any) {
             console.error('GL fetch error:', err);
@@ -281,7 +293,35 @@ export const GeneralLedger: React.FC = () => {
                                 <tr key={i} className="hover:bg-slate-50/50 dark:hover:bg-zinc-800/30 transition-colors">
                                     <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{r.date}</td>
                                     <td className="px-4 py-3 text-xs font-bold text-slate-400 uppercase">{r.journal_name}</td>
-                                    <td className="px-4 py-3 font-mono text-xs text-slate-600 dark:text-slate-400">{r.reference || '—'}</td>
+                                    <td className="px-4 py-3 font-mono text-xs text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                                        {onNavigateToEntry && r.reference && r.reference !== '—' && r.entry_id ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const ref = (r.reference || '').trim();
+                                                    const upperRef = ref.toUpperCase();
+                                                    const vType = 
+                                                        r.move_type === 'in_invoice' ? 'Purchase' :
+                                                        r.move_type === 'out_invoice' ? 'Sales' :
+                                                        (upperRef.startsWith('PBV') || upperRef.startsWith('PCV') || upperRef.startsWith('PRV') || upperRef.startsWith('BRV') || upperRef.startsWith('CRV')) ? 'Payment' :
+                                                        'Journal';
+                                                    onNavigateToEntry({
+                                                        id: r.entry_id,
+                                                        reference: ref,
+                                                        voucherType: vType,
+                                                        move_type: r.move_type
+                                                    });
+                                                }}
+                                                className="inline-flex items-center gap-1 text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-200 hover:underline cursor-pointer group text-left transition-colors font-bold"
+                                                title={`Click to open ${r.reference} in edit view`}
+                                            >
+                                                <span>{r.reference}</span>
+                                                <ExternalLink className="w-3 h-3 opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+                                            </button>
+                                        ) : (
+                                            <span>{r.reference || '—'}</span>
+                                        )}
+                                    </td>
                                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{r.partner_name || '—'}</td>
                                     <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{r.description || '—'}</td>
                                     <td className="px-4 py-3 text-right font-mono text-emerald-600">{r.debit > 0 ? fmt(r.debit) : '—'}</td>
