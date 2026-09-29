@@ -5,7 +5,7 @@
 ALTER TABLE public.accounting_journal_lines
 ADD COLUMN IF NOT EXISTS is_reconciled BOOLEAN NOT NULL DEFAULT false,
 ADD COLUMN IF NOT EXISTS reconciled_at TIMESTAMPTZ,
-ADD COLUMN IF NOT EXISTS reconciled_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+ADD COLUMN IF NOT EXISTS reconciled_by UUID,
 ADD COLUMN IF NOT EXISTS reconciliation_ref TEXT,
 ADD COLUMN IF NOT EXISTS reconciliation_notes TEXT;
 
