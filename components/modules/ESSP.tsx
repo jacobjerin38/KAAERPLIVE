@@ -2043,6 +2043,20 @@ export const ESSP: React.FC = () => {
             setLoading(false);
         };
 
+        const fmtTime = (val: string | null) => {
+            if (!val) return '--:--';
+            try {
+                return new Date(val).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+            } catch {
+                if (val.includes(':')) {
+                    const [h, m] = val.split(':');
+                    const hour = parseInt(h);
+                    return `${hour % 12 || 12}:${m} ${hour >= 12 ? 'PM' : 'AM'}`;
+                }
+                return val;
+            }
+        };
+
         return (
             <div className="p-8 h-full overflow-y-auto animate-page-enter">
                 <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4">
@@ -2084,12 +2098,12 @@ export const ESSP: React.FC = () => {
                                 <div className="flex gap-4 text-xs font-mono text-slate-500">
                                     <div className="flex flex-col">
                                         <span className="uppercase text-[10px] tracking-wider mb-0.5">In</span>
-                                        <span className="font-bold text-slate-700 dark:text-slate-300">{rec.attendance.check_in || '--:--'}</span>
+                                        <span className="font-bold text-slate-700 dark:text-slate-300">{fmtTime(rec.attendance.check_in)}</span>
                                     </div>
                                     <div className="w-px bg-slate-200 dark:bg-zinc-700"></div>
                                     <div className="flex flex-col">
                                         <span className="uppercase text-[10px] tracking-wider mb-0.5">Out</span>
-                                        <span className="font-bold text-slate-700 dark:text-slate-300">{rec.attendance.check_out || '--:--'}</span>
+                                        <span className="font-bold text-slate-700 dark:text-slate-300">{fmtTime(rec.attendance.check_out)}</span>
                                     </div>
                                 </div>
 
