@@ -299,7 +299,7 @@ export const DailyTab: React.FC<{ employees: Employee[]; companyId: string }> = 
     // Punch Modal
     const [showPunchModal, setShowPunchModal] = useState(false);
     const [punchTarget, setPunchTarget] = useState<any>(null);
-    const [punchForm, setPunchForm] = useState({ checkIn: '', checkOut: '', status: 'Present', reason: '' });
+    const [punchForm, setPunchForm] = useState({ checkIn: '', checkOut: '', status: 'Present', reason: '', isOvernight: false });
     const [saving, setSaving] = useState(false);
 
     // Roster data for shift display
@@ -350,12 +350,17 @@ export const DailyTab: React.FC<{ employees: Employee[]; companyId: string }> = 
             alert('This day is processed. Unprocess the day first to edit records.');
             return;
         }
+        const isOvernight = emp.attendance?.check_in && emp.attendance?.check_out
+            ? new Date(emp.attendance.check_out).getTime() < new Date(emp.attendance.check_in).getTime() ||
+              new Date(emp.attendance.check_out).getDate() !== new Date(emp.attendance.check_in).getDate()
+            : false;
         setPunchTarget(emp);
         setPunchForm({
             checkIn: emp.attendance?.check_in ? new Date(emp.attendance.check_in).toTimeString().slice(0, 5) : '',
             checkOut: emp.attendance?.check_out ? new Date(emp.attendance.check_out).toTimeString().slice(0, 5) : '',
             status: emp.attendance?.status || 'Present',
-            reason: ''
+            reason: '',
+            isOvernight
         });
         setShowPunchModal(true);
     };
@@ -369,8 +374,35 @@ export const DailyTab: React.FC<{ employees: Employee[]; companyId: string }> = 
         setSaving(true);
 
         const checkInTs = punchForm.checkIn ? new Date(`${selectedDate}T${punchForm.checkIn}:00`).toISOString() : null;
-        const checkOutTs = punchForm.checkOut ? new Date(`${selectedDate}T${punchForm.checkOut}:00`).toISOString() : null;
-        const duration = calcDuration(checkInTs, checkOutTs);
+        let checkOutDate = selectedDate;
+        if (punchForm.isOvernight) {
+            const nextD = new Date(`${selectedDate}T00:00:00`);
+            nextD.setDate(nextD.getDate() + 1);
+            checkOutDate = nextD.toISOString().split('T')[0];
+        }
+        const checkOutTs = punchForm.checkOut ? new Date(`${checkOutDate}T${punchForm.checkOut}:00`).toISOString() : null;
+
+        // Validation against invalid chronology
+        if (checkInTs && checkOutTs && checkOutTs < checkInTs) {
+            const [outH, outM] = punchForm.checkOut.split(':').map(Number);
+            let suggestion = '';
+            if (outH < 12) {
+                const pmH = outH + 12;
+                suggestion = `\n\nDid you mean ${String(pmH).padStart(2, '0')}:${String(outM).padStart(2, '0')} (${outH}:${String(outM).padStart(2, '0')} PM)? Please use 24-hour format.`;
+            } else {
+                suggestion = '\n\nIf this was an overnight shift that ended the next morning, please check "Overnight shift (checkout is next day)".';
+            }
+            alert(`Check-out time (${punchForm.checkOut}) cannot be earlier than check-in time (${punchForm.checkIn}).${suggestion}`);
+            setSaving(false);
+            return;
+        }
+
+        let duration = 0;
+        if (checkInTs && checkOutTs) {
+            const diffMs = new Date(checkOutTs).getTime() - new Date(checkInTs).getTime();
+            duration = Math.max(0, parseFloat((diffMs / (1000 * 60 * 60)).toFixed(2)));
+        }
+
         const { data: { user } } = await supabase.auth.getUser();
 
         // Get shift_id from roster if available
@@ -682,6 +714,42 @@ export const DailyTab: React.FC<{ employees: Employee[]; companyId: string }> = 
                                         className="w-full p-3 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl font-mono text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none text-slate-900 dark:text-white" />
                                 </div>
                             </div>
+
+                            {/* Chronology Warning & 1-Click Fix */}
+                            {punchForm.checkIn && punchForm.checkOut && !punchForm.isOvernight && punchForm.checkOut < punchForm.checkIn && (
+                                <div className="p-3.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl flex flex-col gap-2 text-xs text-amber-900 dark:text-amber-200">
+                                    <div className="flex items-center gap-1.5 font-bold text-amber-700 dark:text-amber-400">
+                                        <AlertTriangle className="w-4 h-4 shrink-0" />
+                                        <span>Check-out ({punchForm.checkOut}) is earlier than Check-in ({punchForm.checkIn})</span>
+                                    </div>
+                                    {parseInt(punchForm.checkOut.split(':')[0]) < 12 && (
+                                        <div className="flex items-center justify-between gap-2 pt-1 border-t border-amber-200 dark:border-amber-800/50">
+                                            <span>Did you mean <strong>{String(parseInt(punchForm.checkOut.split(':')[0]) + 12).padStart(2, '0')}:{punchForm.checkOut.split(':')[1]} ({parseInt(punchForm.checkOut.split(':')[0])}:{punchForm.checkOut.split(':')[1]} PM)</strong>?</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const h = parseInt(punchForm.checkOut.split(':')[0]) + 12;
+                                                    const m = punchForm.checkOut.split(':')[1];
+                                                    setPunchForm({ ...punchForm, checkOut: `${String(h).padStart(2, '0')}:${m}` });
+                                                }}
+                                                className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-[11px] shadow-sm shrink-0"
+                                            >
+                                                Set {String(parseInt(punchForm.checkOut.split(':')[0]) + 12).padStart(2, '0')}:{punchForm.checkOut.split(':')[1]}
+                                            </button>
+                                        </div>
+                                    )}
+                                    <label className="flex items-center gap-2 mt-1 cursor-pointer select-none text-[11px] font-medium text-amber-800 dark:text-amber-300">
+                                        <input
+                                            type="checkbox"
+                                            checked={punchForm.isOvernight}
+                                            onChange={e => setPunchForm({ ...punchForm, isOvernight: e.target.checked })}
+                                            className="rounded border-amber-400 text-indigo-600"
+                                        />
+                                        <span>Overnight shift (Check-out ends next morning)</span>
+                                    </label>
+                                </div>
+                            )}
+
                             <div className="space-y-2">
                                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Status</label>
                                 <select value={punchForm.status} onChange={e => setPunchForm({ ...punchForm, status: e.target.value })}
@@ -732,7 +800,7 @@ export const MonthlyTab: React.FC<{ employees: Employee[]; companyId: string; co
 
     // Edit Modal
     const [editDay, setEditDay] = useState<number | null>(null);
-    const [editForm, setEditForm] = useState({ checkIn: '', checkOut: '', status: 'Present', reason: '' });
+    const [editForm, setEditForm] = useState({ checkIn: '', checkOut: '', status: 'Present', reason: '', isOvernight: false });
     const [saving, setSaving] = useState(false);
 
     const fetchMonth = useCallback(async () => {
@@ -834,12 +902,17 @@ export const MonthlyTab: React.FC<{ employees: Employee[]; companyId: string; co
         const dateStr = `${currentMonth}-${String(dayData.day).padStart(2, '0')}`;
         if (isFutureDate(dateStr)) { alert('Cannot edit future dates.'); return; }
         if (dayData.record?.is_processed) { alert('This record is processed. Unprocess the day first.'); return; }
+        const isOvernight = dayData.record?.check_in && dayData.record?.check_out
+            ? new Date(dayData.record.check_out).getTime() < new Date(dayData.record.check_in).getTime() ||
+              new Date(dayData.record.check_out).getDate() !== new Date(dayData.record.check_in).getDate()
+            : false;
         setEditDay(dayData.day);
         setEditForm({
             checkIn: dayData.record?.check_in ? new Date(dayData.record.check_in).toTimeString().slice(0, 5) : '',
             checkOut: dayData.record?.check_out ? new Date(dayData.record.check_out).toTimeString().slice(0, 5) : '',
             status: dayData.record?.status || (dayData.isOffDay ? 'Weekend' : 'Present'),
-            reason: ''
+            reason: '',
+            isOvernight
         });
     };
 
@@ -853,8 +926,35 @@ export const MonthlyTab: React.FC<{ employees: Employee[]; companyId: string; co
 
         const dateStr = `${currentMonth}-${String(editDay).padStart(2, '0')}`;
         const checkInTs = editForm.checkIn ? new Date(`${dateStr}T${editForm.checkIn}:00`).toISOString() : null;
-        const checkOutTs = editForm.checkOut ? new Date(`${dateStr}T${editForm.checkOut}:00`).toISOString() : null;
-        const duration = calcDuration(checkInTs, checkOutTs);
+        let checkOutDate = dateStr;
+        if (editForm.isOvernight) {
+            const nextD = new Date(`${dateStr}T00:00:00`);
+            nextD.setDate(nextD.getDate() + 1);
+            checkOutDate = nextD.toISOString().split('T')[0];
+        }
+        const checkOutTs = editForm.checkOut ? new Date(`${checkOutDate}T${editForm.checkOut}:00`).toISOString() : null;
+
+        // Validation against invalid chronology
+        if (checkInTs && checkOutTs && checkOutTs < checkInTs) {
+            const [outH, outM] = editForm.checkOut.split(':').map(Number);
+            let suggestion = '';
+            if (outH < 12) {
+                const pmH = outH + 12;
+                suggestion = `\n\nDid you mean ${String(pmH).padStart(2, '0')}:${String(outM).padStart(2, '0')} (${outH}:${String(outM).padStart(2, '0')} PM)? Please use 24-hour format.`;
+            } else {
+                suggestion = '\n\nIf this was an overnight shift that ended the next morning, please check "Overnight shift (checkout is next day)".';
+            }
+            alert(`Check-out time (${editForm.checkOut}) cannot be earlier than check-in time (${editForm.checkIn}).${suggestion}`);
+            setSaving(false);
+            return;
+        }
+
+        let duration = 0;
+        if (checkInTs && checkOutTs) {
+            const diffMs = new Date(checkOutTs).getTime() - new Date(checkInTs).getTime();
+            duration = Math.max(0, parseFloat((diffMs / (1000 * 60 * 60)).toFixed(2)));
+        }
+
         const { data: { user } } = await supabase.auth.getUser();
 
         const existing = records.find(r => r.date === dateStr);
@@ -1258,6 +1358,42 @@ export const MonthlyTab: React.FC<{ employees: Employee[]; companyId: string; co
                                         className="w-full p-3 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl font-mono text-sm outline-none text-slate-900 dark:text-white" />
                                 </div>
                             </div>
+
+                            {/* Chronology Warning & 1-Click Fix */}
+                            {editForm.checkIn && editForm.checkOut && !editForm.isOvernight && editForm.checkOut < editForm.checkIn && (
+                                <div className="p-3.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl flex flex-col gap-2 text-xs text-amber-900 dark:text-amber-200">
+                                    <div className="flex items-center gap-1.5 font-bold text-amber-700 dark:text-amber-400">
+                                        <AlertTriangle className="w-4 h-4 shrink-0" />
+                                        <span>Check-out ({editForm.checkOut}) is earlier than Check-in ({editForm.checkIn})</span>
+                                    </div>
+                                    {parseInt(editForm.checkOut.split(':')[0]) < 12 && (
+                                        <div className="flex items-center justify-between gap-2 pt-1 border-t border-amber-200 dark:border-amber-800/50">
+                                            <span>Did you mean <strong>{String(parseInt(editForm.checkOut.split(':')[0]) + 12).padStart(2, '0')}:{editForm.checkOut.split(':')[1]} ({parseInt(editForm.checkOut.split(':')[0])}:{editForm.checkOut.split(':')[1]} PM)</strong>?</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const h = parseInt(editForm.checkOut.split(':')[0]) + 12;
+                                                    const m = editForm.checkOut.split(':')[1];
+                                                    setEditForm({ ...editForm, checkOut: `${String(h).padStart(2, '0')}:${m}` });
+                                                }}
+                                                className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-[11px] shadow-sm shrink-0"
+                                            >
+                                                Set {String(parseInt(editForm.checkOut.split(':')[0]) + 12).padStart(2, '0')}:{editForm.checkOut.split(':')[1]}
+                                            </button>
+                                        </div>
+                                    )}
+                                    <label className="flex items-center gap-2 mt-1 cursor-pointer select-none text-[11px] font-medium text-amber-800 dark:text-amber-300">
+                                        <input
+                                            type="checkbox"
+                                            checked={editForm.isOvernight}
+                                            onChange={e => setEditForm({ ...editForm, isOvernight: e.target.checked })}
+                                            className="rounded border-amber-400 text-indigo-600"
+                                        />
+                                        <span>Overnight shift (Check-out ends next morning)</span>
+                                    </label>
+                                </div>
+                            )}
+
                             <div className="space-y-2">
                                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Status</label>
                                 <select value={editForm.status} onChange={e => setEditForm({ ...editForm, status: e.target.value })}
