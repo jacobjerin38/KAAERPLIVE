@@ -25,6 +25,7 @@ export default function OpportunitiesView({ companyId, onConvert }: Opportunitie
     const [converting, setConverting] = useState(false);
     const [showLossModal, setShowLossModal] = useState(false);
     const [lossReason, setLossReason] = useState('');
+    const [savingOpp, setSavingOpp] = useState(false);
 
     // Quick Add CRM Customer states
     const [showQuickCustomerModal, setShowQuickCustomerModal] = useState(false);
@@ -135,35 +136,60 @@ export default function OpportunitiesView({ companyId, onConvert }: Opportunitie
             return;
         }
 
+        const targetStage = stages.find(s => s.id === activeOpp.stage_id);
+        const stageName = (targetStage?.name || '').toLowerCase();
+        let currentStatus = activeOpp.status || 'Open';
+        if (stageName === 'won') {
+            currentStatus = 'Won';
+        } else if (stageName === 'lost') {
+            currentStatus = 'Lost';
+        }
+
         const payload = {
             ...activeOpp,
+            status: currentStatus,
             currency: activeOpp.currency || 'QAR',
             title: activeOpp.title.trim(),
             stage_id: activeOpp.stage_id || stages[0]?.id,
             owner_id: activeOpp.owner_id || null
         };
 
-        if (activeOpp.id) {
-            await updateOpportunity(activeOpp.id, payload);
-        } else {
-            await createOpportunity({
-                ...payload,
-                status: 'Open',
-                owner_id: activeOpp.owner_id || user?.id,
-                created_by: user?.id,
-                company_id: companyId
-            });
+        setSavingOpp(true);
+        try {
+            if (activeOpp.id) {
+                const res = await updateOpportunity(activeOpp.id, payload);
+                if (!res) throw new Error("Could not update opportunity. Check permissions.");
+            } else {
+                const res = await createOpportunity({
+                    ...payload,
+                    status: currentStatus,
+                    owner_id: activeOpp.owner_id || user?.id,
+                    created_by: user?.id,
+                    company_id: companyId
+                });
+                if (!res) throw new Error("Could not create opportunity. Check permissions.");
+            }
+            setShowModal(false);
+            await loadData(true);
+        } catch (err: any) {
+            console.error("Save opportunity error:", err);
+            alert("Failed to save opportunity: " + (err.message || 'Unknown error occurred.'));
+        } finally {
+            setSavingOpp(false);
         }
-        setShowModal(false);
-        await loadData(true);
     };
 
     const handleMarkAsWon = async () => {
         if (!activeOpp.id) return;
         setConverting(true);
         try {
+            const wonStage = stages.find(s => s.name?.toLowerCase() === 'won');
             const result = await convertOpportunityToCustomer(
-                activeOpp as Opportunity,
+                {
+                    ...activeOpp,
+                    stage_id: wonStage?.id || activeOpp.stage_id,
+                    status: 'Won'
+                } as Opportunity,
                 companyId,
                 user?.id
             );
@@ -174,23 +200,30 @@ export default function OpportunitiesView({ companyId, onConvert }: Opportunitie
             } else {
                 alert("Conversion failed. Please try again.");
             }
-        } catch (err) {
+        } catch (err: any) {
             console.error('Won conversion error:', err);
-            alert("An error occurred.");
+            alert("An error occurred: " + (err.message || ''));
+        } finally {
+            setConverting(false);
         }
-        setConverting(false);
     };
 
     const handleMarkAsLost = async () => {
         if (!activeOpp.id) return;
-        await updateOpportunity(activeOpp.id, {
-            status: 'Lost',
-            loss_reason: lossReason,
-        } as any);
-        setShowLossModal(false);
-        setShowModal(false);
-        setLossReason('');
-        await loadData(true);
+        try {
+            const lostStage = stages.find(s => s.name?.toLowerCase() === 'lost');
+            await updateOpportunity(activeOpp.id, {
+                status: 'Lost',
+                ...(lostStage ? { stage_id: lostStage.id } : {})
+            });
+            setShowLossModal(false);
+            setShowModal(false);
+            setLossReason('');
+            await loadData(true);
+        } catch (err: any) {
+            console.error("Error marking opportunity as lost:", err);
+            alert("Failed to mark as lost: " + (err.message || ''));
+        }
     };
 
     const onDragStart = (e: React.DragEvent, oppId: string) => {
@@ -207,13 +240,39 @@ export default function OpportunitiesView({ companyId, onConvert }: Opportunitie
         e.preventDefault();
         if (!draggedOppId) return;
 
+        const targetStage = stages.find(s => s.id === stageId);
+        const stageName = (targetStage?.name || '').toLowerCase();
+        let newStatus: string | undefined = undefined;
+        if (stageName === 'won') {
+            newStatus = 'Won';
+        } else if (stageName === 'lost') {
+            newStatus = 'Lost';
+        } else {
+            const currentOpp = opportunities.find(o => o.id === draggedOppId);
+            if (currentOpp && (currentOpp.status === 'Won' || currentOpp.status === 'Lost')) {
+                newStatus = 'Open';
+            }
+        }
+
         const updatedOpps = opportunities.map(o =>
-            o.id === draggedOppId ? { ...o, stage_id: stageId } : o
+            o.id === draggedOppId ? {
+                ...o,
+                stage_id: stageId,
+                stage: targetStage || o.stage,
+                ...(newStatus ? { status: newStatus } : {})
+            } : o
         );
         setOpportunities(updatedOpps);
         setDraggedOppId(null);
 
-        await updateOpportunity(draggedOppId, { stage_id: stageId });
+        const updatePayload: any = { stage_id: stageId };
+        if (newStatus) updatePayload.status = newStatus;
+        try {
+            await updateOpportunity(draggedOppId, updatePayload);
+        } catch (err: any) {
+            console.error("Failed to update opportunity stage:", err);
+            await loadData(true);
+        }
     };
 
     const getStatusBadge = (status: string) => {
@@ -479,12 +538,25 @@ export default function OpportunitiesView({ companyId, onConvert }: Opportunitie
                                     <Input label="Series" disabled value={activeOpp.series || "Generated on Save"} />
                                     <Input label="Opportunity Type" value={activeOpp.type || 'Sales'} onChange={(v: string) => setActiveOpp({ ...activeOpp, type: v })} />
 
-                                    <div className="space-y-1">
+                                     <div className="space-y-1">
                                         <label className="text-xs font-medium text-slate-500">Sales Stage</label>
                                         <div className="relative">
                                             <select
                                                 value={activeOpp.stage_id || ''}
-                                                onChange={e => setActiveOpp({ ...activeOpp, stage_id: e.target.value })}
+                                                onChange={e => {
+                                                    const nextStageId = e.target.value;
+                                                    const targetStage = stages.find(s => s.id === nextStageId);
+                                                    const stageName = (targetStage?.name || '').toLowerCase();
+                                                    let nextStatus = activeOpp.status || 'Open';
+                                                    if (stageName === 'won') {
+                                                        nextStatus = 'Won';
+                                                    } else if (stageName === 'lost') {
+                                                        nextStatus = 'Lost';
+                                                    } else if (activeOpp.status === 'Won' || activeOpp.status === 'Lost') {
+                                                        nextStatus = 'Open';
+                                                    }
+                                                    setActiveOpp({ ...activeOpp, stage_id: nextStageId, status: nextStatus });
+                                                }}
                                                 className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm appearance-none"
                                             >
                                                 {stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -631,8 +703,11 @@ export default function OpportunitiesView({ companyId, onConvert }: Opportunitie
                             </div>
                             {/* Right: Save/Cancel */}
                             <div className="flex gap-3">
-                                <button type="button" onClick={() => setShowModal(false)} className="px-5 py-2.5 text-slate-700 hover:bg-slate-200/50 rounded-xl transition-colors font-medium text-sm">Cancel</button>
-                                <button type="button" onClick={handleSave} className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shadow-md shadow-indigo-600/20 font-medium text-sm">Save Opportunity</button>
+                                <button type="button" onClick={() => setShowModal(false)} disabled={savingOpp} className="px-5 py-2.5 text-slate-700 hover:bg-slate-200/50 rounded-xl transition-colors font-medium text-sm disabled:opacity-50">Cancel</button>
+                                <button type="button" onClick={handleSave} disabled={savingOpp} className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shadow-md shadow-indigo-600/20 font-medium text-sm flex items-center gap-2 disabled:opacity-50">
+                                    {savingOpp && <Loader2 size={16} className="animate-spin" />}
+                                    <span>{savingOpp ? 'Saving...' : 'Save Opportunity'}</span>
+                                </button>
                             </div>
                         </div>
                     </div>

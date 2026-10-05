@@ -335,7 +335,7 @@ export const CRM: React.FC = () => {
                 currency: opp.currency || 'QAR',
                 stage_id: opp.stage_id,
                 stage: opp.stage,
-                status: opp.status === 'Won' || opp.stage?.name === 'Won' ? 'WON' : opp.status === 'Lost' || opp.stage?.name === 'Lost' ? 'LOST' : 'OPEN',
+                status: (opp.status === 'Won' || opp.stage?.name === 'Won' || opp.stage_id === '10000000-0000-0000-0000-000000000004') ? 'WON' : (opp.status === 'Lost' || opp.stage?.name === 'Lost' || opp.stage_id === '10000000-0000-0000-0000-000000000005') ? 'LOST' : 'OPEN',
                 expected_close_date: opp.expected_closing_date,
                 created_at: opp.created_at,
                 created_by: opp.created_by,
@@ -372,7 +372,7 @@ export const CRM: React.FC = () => {
 
             // Calculate Stats accurately from real opportunities & customers
             const totalPipeline = mappedDeals.reduce((acc: number, d: any) => acc + (d.value || 0), 0);
-            const wonDeals = mappedDeals.filter((d: any) => d.status === 'WON' || d.stage?.name === 'Won');
+            const wonDeals = mappedDeals.filter((d: any) => d.status === 'WON' || d.stage?.name === 'Won' || d.stage_id === '10000000-0000-0000-0000-000000000004');
             const activeDeals = mappedDeals.filter((d: any) => d.status === 'OPEN');
             const totalContacts = (customersData || []).length + (leadsData || []).length;
             const conversionRate = mappedDeals.length ? (wonDeals.length / mappedDeals.length) * 100 : 0;

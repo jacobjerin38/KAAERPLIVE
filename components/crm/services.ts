@@ -799,9 +799,53 @@ export const getOpportunities = async (
   return opps;
 };
 
+const sanitizeOpportunityPayload = (payload: any) => {
+  const allowed = [
+    'company_id',
+    'title',
+    'series',
+    'customer_id',
+    'lead_id',
+    'stage_id',
+    'status',
+    'probability',
+    'type',
+    'source_id',
+    'expected_closing_date',
+    'currency',
+    'amount',
+    'owner_id',
+    'created_by'
+  ];
+  const cleaned: Record<string, any> = {};
+  for (const key of allowed) {
+    if (key in payload && payload[key] !== undefined) {
+      cleaned[key] = payload[key];
+    }
+  }
+  if ('amount' in cleaned) {
+    cleaned.amount = (cleaned.amount !== null && cleaned.amount !== '' && !isNaN(Number(cleaned.amount))) ? Number(cleaned.amount) : 0;
+  }
+  if ('probability' in cleaned) {
+    cleaned.probability = (cleaned.probability !== null && cleaned.probability !== '' && !isNaN(Number(cleaned.probability))) ? Number(cleaned.probability) : 0;
+  }
+  if ('expected_closing_date' in cleaned && !cleaned.expected_closing_date) {
+    cleaned.expected_closing_date = null;
+  }
+  if ('customer_id' in cleaned && !cleaned.customer_id) cleaned.customer_id = null;
+  if ('lead_id' in cleaned && !cleaned.lead_id) cleaned.lead_id = null;
+  if ('stage_id' in cleaned && !cleaned.stage_id) cleaned.stage_id = null;
+  if ('owner_id' in cleaned && !cleaned.owner_id) cleaned.owner_id = null;
+  if ('source_id' in cleaned && !cleaned.source_id) cleaned.source_id = null;
+
+  cleaned.updated_at = new Date().toISOString();
+  return cleaned;
+};
+
 export const createOpportunity = async (opp: Partial<Opportunity>): Promise<Opportunity | null> => {
+  const cleaned = sanitizeOpportunityPayload(opp);
   const { data, error } = await (supabase as any).from('crm_opportunities')
-    .insert([opp])
+    .insert([cleaned])
     .select(`
       *,
       customer:crm_customers(*),
@@ -811,7 +855,7 @@ export const createOpportunity = async (opp: Partial<Opportunity>): Promise<Oppo
 
   if (error) {
     console.error('Error creating opportunity:', error);
-    return null;
+    throw error;
   }
 
   if (data) {
@@ -829,8 +873,9 @@ export const createOpportunity = async (opp: Partial<Opportunity>): Promise<Oppo
 };
 
 export const updateOpportunity = async (id: string, updates: Partial<Opportunity>): Promise<Opportunity | null> => {
+  const cleaned = sanitizeOpportunityPayload(updates);
   const { data, error } = await (supabase as any).from('crm_opportunities')
-    .update(updates)
+    .update(cleaned)
     .eq('id', id)
     .select(`
       *,
@@ -841,16 +886,16 @@ export const updateOpportunity = async (id: string, updates: Partial<Opportunity
 
   if (error) {
     console.error('Error updating opportunity:', error);
-    return null;
+    throw error;
   }
 
   if (data) {
     let action = 'updated';
     let desc = `Updated opportunity "${data.title}"`;
-    if (updates.status === 'Won' || data.status === 'Won') {
+    if (cleaned.status === 'Won' || data.status === 'Won') {
       action = 'won';
       desc = `Closed won opportunity "${data.title}"${data.customer?.name ? ` for ${data.customer.name}` : ''} (${data.currency || 'QAR'} ${Number(data.amount || 0).toLocaleString()})`;
-    } else if (updates.status === 'Lost' || data.status === 'Lost') {
+    } else if (cleaned.status === 'Lost' || data.status === 'Lost') {
       action = 'lost';
       desc = `Marked opportunity "${data.title}" as lost`;
     }
@@ -931,9 +976,11 @@ export const convertOpportunityToCustomer = async (
   if (!newCust) return null;
 
   // 2. Mark Opportunity as Won and link to customer
+  const wonStageId = (opp as any).stage_id;
   await updateOpportunity(opp.id, {
     status: 'Won',
     customer_id: newCust.id,
+    ...(wonStageId ? { stage_id: wonStageId } : {})
   } as any);
 
   // 3. If this opp was from a lead, update the lead too

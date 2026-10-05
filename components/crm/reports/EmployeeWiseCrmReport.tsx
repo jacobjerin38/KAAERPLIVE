@@ -365,10 +365,12 @@ export const EmployeeWiseCrmReport: React.FC<EmployeeWiseCrmReportProps> = ({ co
                 rec.pipelineValueQAR += amtQAR;
 
                 const st = (opp.status || '').toLowerCase();
-                if (st === 'won') {
+                const isWon = st === 'won' || opp.stage?.name?.toLowerCase() === 'won' || opp.stage_id === '10000000-0000-0000-0000-000000000004';
+                const isLost = st === 'lost' || opp.stage?.name?.toLowerCase() === 'lost' || opp.stage_id === '10000000-0000-0000-0000-000000000005';
+                if (isWon) {
                     rec.wonOpportunities++;
                     rec.wonValueQAR += amtQAR;
-                } else if (st === 'lost') {
+                } else if (isLost) {
                     rec.lostOpportunities++;
                 } else {
                     rec.openOpportunities++;
@@ -1006,12 +1008,18 @@ export const EmployeeWiseCrmReport: React.FC<EmployeeWiseCrmReportProps> = ({ co
                                                                                             </td>
                                                                                             <td className="py-2 px-3 text-center font-bold">{opp.probability || 0}%</td>
                                                                                             <td className="py-2 px-3 text-center">
-                                                                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                                                                                    opp.status === 'Won' ? 'bg-emerald-100 text-emerald-800' :
-                                                                                                    opp.status === 'Lost' ? 'bg-rose-100 text-rose-800' : 'bg-blue-100 text-blue-800'
-                                                                                                }`}>
-                                                                                                    {opp.status || 'Open'}
-                                                                                                </span>
+                                                                                                {(() => {
+                                                                                                    const isWonOpp = opp.status === 'Won' || opp.stage?.name?.toLowerCase() === 'won' || opp.stage_id === '10000000-0000-0000-0000-000000000004';
+                                                                                                    const isLostOpp = opp.status === 'Lost' || opp.stage?.name?.toLowerCase() === 'lost' || opp.stage_id === '10000000-0000-0000-0000-000000000005';
+                                                                                                    return (
+                                                                                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                                                                                            isWonOpp ? 'bg-emerald-100 text-emerald-800' :
+                                                                                                            isLostOpp ? 'bg-rose-100 text-rose-800' : 'bg-blue-100 text-blue-800'
+                                                                                                        }`}>
+                                                                                                            {isWonOpp ? 'Won' : isLostOpp ? 'Lost' : (opp.status || 'Open')}
+                                                                                                        </span>
+                                                                                                    );
+                                                                                                })()}
                                                                                             </td>
                                                                                             <td className="py-2 px-3 text-right text-slate-500">
                                                                                                 {opp.expected_closing_date ? formatLocalDate(opp.expected_closing_date) : '—'}
