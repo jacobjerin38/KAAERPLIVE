@@ -223,6 +223,7 @@ export const ESSP: React.FC = () => {
     const [availableSitesAndProjects, setAvailableSitesAndProjects] = useState<string[]>([]);
     const [leaveTypes, setLeaveTypes] = useState<any[]>([]);
     const [punchDuration, setPunchDuration] = useState<string>('--:--');
+    const [todayCompletedRecord, setTodayCompletedRecord] = useState<any | null>(null);
 
     const [attendanceLog, setAttendanceLog] = useState<any[]>([]);
     const [leaveBalance, setLeaveBalance] = useState(0);
@@ -250,16 +251,30 @@ export const ESSP: React.FC = () => {
 
         const activePunch = activePunches && activePunches.length > 0 ? activePunches[0] : null;
 
+        // Check if today already has a recorded shift
+        const todayStr = new Date().toISOString().split('T')[0];
+        const { data: todayShiftData } = await supabase.from('attendance')
+            .select('*')
+            .eq('employee_id', empId)
+            .eq('date', todayStr)
+            .maybeSingle();
+
         if (activePunch && activePunch.check_in) {
             setPunchStatus('In');
             setLastAttendanceId(activePunch.id);
             setActivePunchTime(activePunch.check_in);
             setActivePunchNote(activePunch.notes || null);
+            setTodayCompletedRecord(null);
         } else {
             setPunchStatus('Out');
             setLastAttendanceId(null);
             setActivePunchTime(null);
             setActivePunchNote(null);
+            if (todayShiftData && todayShiftData.check_in && todayShiftData.check_out) {
+                setTodayCompletedRecord(todayShiftData);
+            } else {
+                setTodayCompletedRecord(null);
+            }
         }
 
         // 2. Attendance Log (Recent 3)
@@ -519,17 +534,40 @@ export const ESSP: React.FC = () => {
                 setActivePunchNote(null);
                 alert("Night shift check-out recorded successfully!");
             } else {
-                // Standard PUNCH IN
+                // Standard PUNCH IN or RE-PUNCH
+                if (todayCompletedRecord && (Number(todayCompletedRecord.total_hours) >= 4.0 || Number(todayCompletedRecord.duration) >= 4.0)) {
+                    const confirmRepunch = confirm(`You have already completed your shift today (${todayCompletedRecord.total_hours || todayCompletedRecord.duration || 0} hrs). Do you want to punch in again for an additional session or overtime?`);
+                    if (!confirmRepunch) {
+                        setPunchLoading(false);
+                        return;
+                    }
+                }
+
                 const siteOrProjectNote = punchSiteOrProject.trim();
-                const insertPayload = {
+                let combinedNotes = siteOrProjectNote || null;
+                if (todayCompletedRecord?.notes && siteOrProjectNote) {
+                    if (!todayCompletedRecord.notes.includes(siteOrProjectNote)) {
+                        combinedNotes = `${todayCompletedRecord.notes} | ${siteOrProjectNote}`;
+                    } else {
+                        combinedNotes = todayCompletedRecord.notes;
+                    }
+                } else if (todayCompletedRecord?.notes && !siteOrProjectNote) {
+                    combinedNotes = todayCompletedRecord.notes;
+                }
+
+                const insertPayload: any = {
                     employee_id: currentEmployee.id,
                     company_id: currentEmployee.company_id,
                     date: today,
                     check_in: isoNow,
+                    check_out: null, // Explicitly clear check_out for new active session
+                    check_out_location: null,
+                    check_out_lat: null,
+                    check_out_lng: null,
                     check_in_lat: coords ? coords.lat : null,
                     check_in_lng: coords ? coords.lng : null,
                     check_in_location: locStr,
-                    notes: siteOrProjectNote || null,
+                    notes: combinedNotes,
                     punch_method: 'ONLINE',
                     status: 'Present',
                     total_hours: 0,
@@ -540,13 +578,14 @@ export const ESSP: React.FC = () => {
 
                 if (error) {
                     console.error("Punch In Error:", error);
-                    alert("Failed to punch in. Please try again.");
+                    alert("Failed to punch in: " + (error.message || error.details || "Please try again."));
                 } else {
                     setPunchStatus('In');
                     setLastAttendanceId(data.id);
                     setActivePunchTime(isoNow);
-                    setActivePunchNote(siteOrProjectNote || null);
+                    setActivePunchNote(combinedNotes || null);
                     setPunchSiteOrProject('');
+                    setTodayCompletedRecord(null);
                 }
             }
         } else {
@@ -685,16 +724,30 @@ export const ESSP: React.FC = () => {
                         <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
                             <div className="flex-1 w-full">
                                 <div className="flex items-center gap-3 mb-4">
-                                    <span className={`w-3 h-3 rounded-full ${punchStatus === 'In' ? 'bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.6)]' : 'bg-rose-500'}`}></span>
+                                    <span className={`w-3 h-3 rounded-full ${
+                                        punchStatus === 'In'
+                                            ? 'bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.6)]'
+                                            : todayCompletedRecord
+                                                ? 'bg-indigo-400 shadow-[0_0_12px_rgba(129,140,248,0.6)]'
+                                                : 'bg-rose-500'
+                                    }`}></span>
                                     <span className="text-sm font-bold uppercase tracking-widest text-slate-400">Current Status</span>
                                 </div>
-                                <h2 className="text-5xl font-black tracking-tight mb-2">{punchStatus === 'In' ? 'Checked In' : 'Checked Out'}</h2>
+                                <h2 className="text-5xl font-black tracking-tight mb-2">
+                                    {punchStatus === 'In'
+                                        ? 'Checked In'
+                                        : todayCompletedRecord
+                                            ? 'Shift Completed'
+                                            : 'Checked Out'}
+                                </h2>
                                 <p className="text-slate-400 font-medium">
                                     {punchStatus === 'In'
                                         ? (activePunchTime
                                             ? `Checked in at ${new Date(activePunchTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
                                             : 'You are currently active.')
-                                        : 'Your session has ended. Ready to punch in.'}
+                                        : todayCompletedRecord
+                                            ? `Completed at ${new Date(todayCompletedRecord.check_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • Worked ${todayCompletedRecord.total_hours || todayCompletedRecord.duration || 0} hrs today`
+                                            : 'Your session has ended. Ready to punch in.'}
                                 </p>
 
                                 {/* Active Site / Project badge when Checked In */}
@@ -705,12 +758,20 @@ export const ESSP: React.FC = () => {
                                     </div>
                                 )}
 
+                                {/* Logged sites badge when Shift Completed */}
+                                {punchStatus === 'Out' && todayCompletedRecord && todayCompletedRecord.notes && (
+                                    <div className="mt-3.5 inline-flex items-center gap-2 px-3.5 py-1.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-xs font-semibold text-indigo-300">
+                                        <MapPin className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                                        <span>Logged Sites: <strong className="text-white font-bold">{todayCompletedRecord.notes}</strong></span>
+                                    </div>
+                                )}
+
                                 {/* Site / Project input when Checked Out */}
                                 {punchStatus === 'Out' && (
                                     <div className="mt-5 pt-4 border-t border-white/10 max-w-lg">
                                         <label htmlFor="essp-punch-site-input" className="flex items-center gap-1.5 text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
                                             <MapPin className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                                            Site / Project Name <span className="text-slate-400 font-normal lowercase">(optional note)</span>
+                                            Site / Project Name <span className="text-slate-400 font-normal lowercase">{todayCompletedRecord ? '(for additional shift/site)' : '(optional note)'}</span>
                                         </label>
                                         <div className="relative flex items-center">
                                             <input
@@ -750,12 +811,18 @@ export const ESSP: React.FC = () => {
                                 onClick={handlePunch}
                                 disabled={punchLoading}
                                 className={`w-full md:w-auto px-10 py-5 rounded-2xl font-bold text-lg transition-transform active:scale-95 flex items-center justify-center gap-3 shrink-0 ${punchStatus === 'Out'
-                                    ? 'bg-white text-slate-900 hover:bg-slate-50 shadow-xl'
+                                    ? todayCompletedRecord
+                                        ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-xl shadow-indigo-900/30'
+                                        : 'bg-white text-slate-900 hover:bg-slate-50 shadow-xl'
                                     : 'bg-rose-500 text-white hover:bg-rose-600 shadow-lg shadow-rose-900/50'
                                     }`}
                             >
                                 <Fingerprint className="w-6 h-6" />
-                                {punchLoading ? 'Processing...' : punchStatus === 'Out' ? 'Punch In' : 'Punch Out'}
+                                {punchLoading
+                                    ? 'Processing...'
+                                    : punchStatus === 'Out'
+                                        ? (todayCompletedRecord ? 'Punch In (New Shift)' : 'Punch In')
+                                        : 'Punch Out'}
                             </button>
                         </div>
                     </div>
