@@ -626,11 +626,20 @@ export const ESSP: React.FC = () => {
 
             // Recompute shift rules, OT hours, and metrics in the background
             if (currentEmployee?.company_id && data[0]?.date) {
-                (supabase as any).rpc('rpc_recalculate_attendance_shift_rules', {
-                    p_company_id: currentEmployee.company_id,
-                    p_start_date: data[0].date,
-                    p_end_date: data[0].date
-                }).catch((e: any) => console.warn("Background shift rules recalc error:", e));
+                (async () => {
+                    try {
+                        const { error: recalcErr } = await (supabase as any).rpc('rpc_recalculate_attendance_shift_rules', {
+                            p_company_id: currentEmployee.company_id,
+                            p_start_date: data[0].date,
+                            p_end_date: data[0].date
+                        });
+                        if (recalcErr) {
+                            console.warn("Background shift rules recalc error:", recalcErr);
+                        }
+                    } catch (e: any) {
+                        console.warn("Background shift rules recalc error:", e);
+                    }
+                })();
             }
         }
     };
