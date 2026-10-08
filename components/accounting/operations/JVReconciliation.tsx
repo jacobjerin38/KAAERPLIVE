@@ -207,8 +207,10 @@ export const JVReconciliation: React.FC<JVReconciliationProps> = ({ onNavigateTo
                 .from('accounting_journal_lines')
                 .select(`
                     id, entry_id, name, debit, credit, is_reconciled, reconciled_at, reconciled_by, reconciliation_ref, reconciliation_notes,
-                    entry:accounting_journal_entries!entry_id(id, date, reference, notes, move_type, state),
-                    journal:accounting_journals!accounting_journal_lines_entry_id_fkey(name, code),
+                    entry:accounting_journal_entries!entry_id(
+                        id, date, reference, notes, move_type, state,
+                        journal:accounting_journals(name, code)
+                    ),
                     partner:accounting_partners(id, name)
                 `)
                 .eq('company_id', currentCompanyId)
@@ -249,8 +251,8 @@ export const JVReconciliation: React.FC<JVReconciliationProps> = ({ onNavigateTo
                     reconciled_by: d.reconciled_by,
                     reconciliation_ref: d.reconciliation_ref,
                     reconciliation_notes: d.reconciliation_notes,
-                    journal_code: d.journal?.code,
-                    journal_name: d.journal?.name
+                    journal_code: d.entry?.journal?.code,
+                    journal_name: d.entry?.journal?.name
                 }));
 
             mapped.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());

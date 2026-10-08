@@ -89,8 +89,10 @@ export const GeneralLedger: React.FC<GeneralLedgerProps> = ({ onNavigateToEntry 
                 .from('accounting_journal_lines')
                 .select(`
                     entry_id, name, debit, credit,
-                    entry:accounting_journal_entries!entry_id(id, date, reference, notes, move_type),
-                    journal:accounting_journals!accounting_journal_lines_entry_id_fkey(name),
+                    entry:accounting_journal_entries!entry_id(
+                        id, date, reference, notes, move_type,
+                        journal:accounting_journals(name)
+                    ),
                     partner:accounting_partners(name)
                 `)
                 .eq('company_id', currentCompanyId)
@@ -128,7 +130,7 @@ export const GeneralLedger: React.FC<GeneralLedgerProps> = ({ onNavigateToEntry 
             setEntries(filteredData.map((d: any) => ({
                 entry_id: d.entry?.id || d.entry_id,
                 date: d.entry?.date || '',
-                journal_name: d.journal?.name || '',
+                journal_name: d.entry?.journal?.name || '',
                 reference: d.entry?.reference || '',
                 description: d.name || d.entry?.notes || '',
                 debit: Number(d.debit) || 0,
