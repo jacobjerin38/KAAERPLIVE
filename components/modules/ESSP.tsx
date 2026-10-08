@@ -238,26 +238,69 @@ export const ESSP: React.FC = () => {
     }, [currentEmployee]);
 
     const refreshDashboard = async (empId: string, companyId: string) => {
-        // 1. Attendance Status: look for active session within a sane 16-hour shift window
         const sixteenHoursAgo = new Date(Date.now() - 16 * 60 * 60 * 1000).toISOString();
-        const { data: activePunches } = await supabase.from('attendance')
-            .select('*')
-            .eq('employee_id', empId)
-            .is('check_out', null)
-            .not('check_in', 'is', null)
-            .gte('check_in', sixteenHoursAgo) // Sane active session window (supports night shifts up to 16h)
-            .order('check_in', { ascending: false })
-            .limit(1);
-
-        const activePunch = activePunches && activePunches.length > 0 ? activePunches[0] : null;
-
-        // Check if today already has a recorded shift
         const todayStr = new Date().toISOString().split('T')[0];
-        const { data: todayShiftData } = await supabase.from('attendance')
-            .select('*')
-            .eq('employee_id', empId)
-            .eq('date', todayStr)
-            .maybeSingle();
+
+        // 1. Fetch all essential dashboard data concurrently in a single batch
+        const [
+            activePunchesRes,
+            todayShiftRes,
+            recentLogsRes,
+            ltRes,
+            empBalRes,
+            payRes,
+            annRes
+        ] = await Promise.all([
+            // Active session (uses new partial index idx_attendance_emp_active_checkin)
+            supabase.from('attendance')
+                .select('*')
+                .eq('employee_id', empId)
+                .is('check_out', null)
+                .not('check_in', 'is', null)
+                .gte('check_in', sixteenHoursAgo)
+                .order('check_in', { ascending: false })
+                .limit(1),
+
+            // Today's shift (uses idx_attendance_employee_date)
+            supabase.from('attendance')
+                .select('*')
+                .eq('employee_id', empId)
+                .eq('date', todayStr)
+                .maybeSingle(),
+
+            // Recent 3 attendance logs
+            supabase.from('attendance')
+                .select('*')
+                .eq('employee_id', empId)
+                .order('date', { ascending: false })
+                .limit(3),
+
+            // Leave types (uses idx_org_leave_types_comp_id)
+            companyId
+                ? supabase.from('org_leave_types').select('*').eq('company_id', companyId)
+                : Promise.resolve({ data: null }),
+
+            // Employee leave balances (uses idx_employee_leave_balances_employee_id)
+            supabase.from('employee_leave_balances')
+                .select('*')
+                .eq('employee_id', empId),
+
+            // Last pay record
+            supabase.from('payroll_records')
+                .select('net_pay')
+                .eq('employee_id', empId)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle(),
+
+            // Announcements (uses idx_announcements_comp_created)
+            companyId
+                ? supabase.from('announcements').select('*').eq('company_id', companyId).order('created_at', { ascending: false }).limit(5)
+                : Promise.resolve({ data: null })
+        ]);
+
+        const activePunch = activePunchesRes.data && activePunchesRes.data.length > 0 ? activePunchesRes.data[0] : null;
+        const todayShiftData = todayShiftRes.data;
 
         if (activePunch && activePunch.check_in) {
             setPunchStatus('In');
@@ -277,24 +320,14 @@ export const ESSP: React.FC = () => {
             }
         }
 
-        // 2. Attendance Log (Recent 3)
-        const { data: recentLogs } = await supabase.from('attendance')
-            .select('*').eq('employee_id', empId).order('date', { ascending: false }).limit(3);
-        if (recentLogs) setAttendanceLog(recentLogs);
+        if (recentLogsRes.data) setAttendanceLog(recentLogsRes.data);
 
-        // 3. Leave Balance (Real DB query from employee_leave_balances & org_leave_types)
-        if (companyId) {
-            const { data: ltData } = await supabase.from('org_leave_types')
-                .select('*').eq('company_id', companyId);
-            if (ltData && ltData.length > 0) {
-                setLeaveTypes(ltData);
-            }
+        const ltData = ltRes.data;
+        if (ltData && ltData.length > 0) {
+            setLeaveTypes(ltData);
         }
 
-        const { data: empBalData } = await supabase.from('employee_leave_balances')
-            .select('*')
-            .eq('employee_id', empId);
-
+        const empBalData = empBalRes.data;
         if (empBalData && empBalData.length > 0) {
             const totalRemaining = empBalData.reduce((sum: number, b: any) => {
                 const rem = b.remaining != null ? Number(b.remaining) : ((Number(b.total_balance) || 0) - (Number(b.used) || 0));
@@ -303,8 +336,8 @@ export const ESSP: React.FC = () => {
             setLeaveBalance(totalRemaining);
         } else {
             let totalDefaultBalance = 22;
-            if (leaveTypes && leaveTypes.length > 0) {
-                totalDefaultBalance = leaveTypes.reduce((sum: number, lt: any) => sum + (lt.default_balance || 0), 0);
+            if (ltData && ltData.length > 0) {
+                totalDefaultBalance = ltData.reduce((sum: number, lt: any) => sum + (lt.default_balance || 0), 0);
             }
             const currentYear = new Date().getFullYear();
             const { data: approvedLeaves } = await supabase.from('leaves')
@@ -330,44 +363,29 @@ export const ESSP: React.FC = () => {
             setLeaveBalance(Math.max(0, totalDefaultBalance - approvedDays));
         }
 
-        // 4. Last Pay (Locked/Paid only)
-        // Using 'payroll_records' as per types.ts
-        const { data: pay } = await supabase.from('payroll_records')
-            .select('net_pay')
-            .eq('employee_id', empId)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
+        if (payRes.data) setLastSalary(payRes.data.net_pay);
+        if (annRes.data) setAnnouncements(annRes.data);
 
-        if (pay) setLastSalary(pay.net_pay);
-
-        // 5. Announcements
-        const { data: ann } = await supabase.from('announcements') // Reverted to original
-            .select('*')
-            .eq('company_id', companyId)
-            .order('created_at', { ascending: false })
-            .limit(5);
-
-        if (ann) setAnnouncements(ann);
-
-        // 6. Active Projects & Locations for Site/Project Autocomplete Suggestions
-        if (companyId) {
-            try {
-                const [projRes, locRes] = await Promise.all([
-                    (supabase as any).from('pm_projects').select('name').eq('company_id', companyId).neq('status', 'Completed').limit(50),
-                    (supabase as any).from('locations').select('name').eq('company_id', companyId).limit(50)
-                ]);
-                const siteSet = new Set<string>();
-                if (projRes?.data) {
-                    projRes.data.forEach((p: any) => { if (p.name?.trim()) siteSet.add(p.name.trim()); });
+        // Fetch site and project suggestions asynchronously in background (non-blocking)
+        if (companyId && availableSitesAndProjects.length === 0) {
+            (async () => {
+                try {
+                    const [projRes, locRes] = await Promise.all([
+                        (supabase as any).from('pm_projects').select('name').eq('company_id', companyId).neq('status', 'Completed').limit(50),
+                        (supabase as any).from('locations').select('name').eq('company_id', companyId).limit(50)
+                    ]);
+                    const siteSet = new Set<string>();
+                    if (projRes?.data) {
+                        projRes.data.forEach((p: any) => { if (p.name?.trim()) siteSet.add(p.name.trim()); });
+                    }
+                    if (locRes?.data) {
+                        locRes.data.forEach((l: any) => { if (l.name?.trim()) siteSet.add(l.name.trim()); });
+                    }
+                    setAvailableSitesAndProjects(Array.from(siteSet));
+                } catch (e) {
+                    console.warn("Could not load project/site suggestions:", e);
                 }
-                if (locRes?.data) {
-                    locRes.data.forEach((l: any) => { if (l.name?.trim()) siteSet.add(l.name.trim()); });
-                }
-                setAvailableSitesAndProjects(Array.from(siteSet));
-            } catch (e) {
-                console.warn("Could not load project/site suggestions:", e);
-            }
+            })();
         }
     };
 

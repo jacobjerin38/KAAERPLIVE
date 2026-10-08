@@ -108,9 +108,12 @@ export const getPersonResolver = async (companyId?: string): Promise<(idOrEmail?
       .select('id, name, profile_id, email, office_email, personal_email');
     if (companyId) empQuery = empQuery.eq('company_id', companyId);
 
+    let profQuery = supabase.from('profiles').select('id, full_name, email, employee_id');
+    if (companyId) profQuery = (profQuery as any).eq('company_id', companyId);
+
     const [{ data: emps }, { data: profs }] = await Promise.all([
       empQuery,
-      supabase.from('profiles').select('id, full_name, email, employee_id')
+      profQuery
     ]);
 
     const map = new Map<string, ResolvedPerson>();

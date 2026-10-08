@@ -11,6 +11,7 @@ interface AuthContextType {
     currentCompanyId: string | null;
     selectCompany: (companyId: string) => void;
     userRole: string | null;
+    userEmployeeId: string | null;
     permissions: string[];
     hasPermission: (permission: string) => boolean;
 }
@@ -23,6 +24,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [loading, setLoading] = useState(true);
     const [currentCompanyId, setCurrentCompanyId] = useState<string | null>(null);
     const [userRole, setUserRole] = useState<string | null>(null);
+    const [userEmployeeId, setUserEmployeeId] = useState<string | null>(null);
     const [permissions, setPermissions] = useState<string[]>([]);
 
     const fetchUserRoleAndPermissions = async (userId: string, roleNameOverride?: string) => {
@@ -32,9 +34,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             if (!roleName) {
                 const { data: profile, error: profileError } = await supabase
                     .from('profiles')
-                    .select('role, company_id')
+                    .select('role, company_id, employee_id')
                     .eq('id', userId)
                     .maybeSingle();
+
+                if (profile?.employee_id) {
+                    setUserEmployeeId(profile.employee_id);
+                }
 
                 if (profileError || !profile) {
                     console.warn('Could not fetch profile, defaulting to Employee role:', profileError?.message);
@@ -125,6 +131,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 localStorage.removeItem('app.current_company');
                 setCurrentCompanyId(null);
                 setUserRole(null);
+                setUserEmployeeId(null);
                 setPermissions([]);
             } else {
                 fetchUserRoleAndPermissions(session.user.id);
@@ -214,6 +221,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         localStorage.removeItem('app.current_company');
         setCurrentCompanyId(null);
         setUserRole(null);
+        setUserEmployeeId(null);
         setPermissions([]);
         // Clear header
         // @ts-ignore
@@ -242,7 +250,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
 
     return (
-        <AuthContext.Provider value={{ session, user, loading, signOut, currentCompanyId, selectCompany, userRole, permissions, hasPermission }}>
+        <AuthContext.Provider value={{ session, user, loading, signOut, currentCompanyId, selectCompany, userRole, userEmployeeId, permissions, hasPermission }}>
             {children}
         </AuthContext.Provider>
     );

@@ -76,7 +76,7 @@ const ErrorWidget: React.FC<{ name: string }> = ({ name }) => (
 export const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const { toggleSearch, toggleNotifications } = useUI();
-  const { user, hasPermission, currentCompanyId } = useAuth();
+  const { user, userRole, hasPermission, currentCompanyId } = useAuth();
   const [greeting, setGreeting] = useState('');
   const [stats, setStats] = useState<GlobalStats>(INITIAL_STATS);
 
@@ -100,6 +100,14 @@ export const Dashboard: React.FC = () => {
       const promises = [];
 
       // 1. Global RPC / fallback
+      const canViewGlobal = hasPermission('*') || 
+        hasPermission('hrms.employees.view') || 
+        hasPermission('hrms.attendance.view') || 
+        hasPermission('hrms.leave.view') || 
+        hasPermission('finance.dashboard.view') || 
+        hasPermission('finance.payroll.view') || 
+        hasPermission('inventory.view');
+
       const fetchGlobal = async () => {
         try {
           const { data: globalData, error: rpcError } = await supabase
@@ -135,12 +143,16 @@ export const Dashboard: React.FC = () => {
           setErrors(prev => ({ ...prev, global: true }));
         }
       };
-      promises.push(fetchGlobal());
+
+      if (canViewGlobal) {
+        promises.push(fetchGlobal());
+      }
 
       // 2. CRM
+      const canViewCRM = hasPermission('*') || hasPermission('crm.dashboard.view') || hasPermission('crm.deals.view');
       const fetchCRM = async () => {
         try {
-          const allDeals = await getDeals();
+          const allDeals = await getDeals(user?.id, userRole, currentCompanyId);
           const dealCount = allDeals.length;
           const totalValue = allDeals.reduce((sum, deal) => sum + (deal.value || 0), 0);
           const pipelineValue = 'QAR ' + new Intl.NumberFormat('en-US', {
@@ -152,14 +164,23 @@ export const Dashboard: React.FC = () => {
           setErrors(prev => ({ ...prev, crm: true }));
         }
       };
-      promises.push(fetchCRM());
+
+      if (canViewCRM) {
+        promises.push(fetchCRM());
+      }
 
       // 3. Projects & Documents
+      const canViewProjects = hasPermission('*') || hasPermission('projects.view');
+      const canViewDocs = hasPermission('*') || hasPermission('documents.view');
       const fetchProjDocs = async () => {
         try {
           const [projRes, docRes] = await Promise.all([
-            supabase.from('pm_projects').select('*', { count: 'exact', head: true }).eq('company_id', currentCompanyId).neq('status', 'Completed'),
-            supabase.from('doc_documents').select('*', { count: 'exact', head: true }).eq('company_id', currentCompanyId)
+            canViewProjects
+              ? supabase.from('pm_projects').select('*', { count: 'exact', head: true }).eq('company_id', currentCompanyId).neq('status', 'Completed')
+              : Promise.resolve({ count: 0, error: null }),
+            canViewDocs
+              ? supabase.from('doc_documents').select('*', { count: 'exact', head: true }).eq('company_id', currentCompanyId)
+              : Promise.resolve({ count: 0, error: null })
           ]);
           if (projRes.error) throw projRes.error;
           if (docRes.error) throw docRes.error;
@@ -173,9 +194,13 @@ export const Dashboard: React.FC = () => {
           setErrors(prev => ({ ...prev, projDocs: true }));
         }
       };
-      promises.push(fetchProjDocs());
+
+      if (canViewProjects || canViewDocs) {
+        promises.push(fetchProjDocs());
+      }
 
       // 4. Sales Orders
+      const canViewSales = hasPermission('*') || hasPermission('sales.view');
       const fetchSales = async () => {
         try {
           const { data: salesData, error: salesError } = await supabase
@@ -202,9 +227,13 @@ export const Dashboard: React.FC = () => {
           setErrors(prev => ({ ...prev, sales: true }));
         }
       };
-      promises.push(fetchSales());
+
+      if (canViewSales) {
+        promises.push(fetchSales());
+      }
 
       // 5. Help Desk
+      const canViewTickets = hasPermission('*') || hasPermission('hrms.helpdesk.view');
       const fetchTickets = async () => {
         try {
           const { count: openTicketsCount, error: ticketError } = await supabase
@@ -222,7 +251,10 @@ export const Dashboard: React.FC = () => {
           setErrors(prev => ({ ...prev, tickets: true }));
         }
       };
-      promises.push(fetchTickets());
+
+      if (canViewTickets) {
+        promises.push(fetchTickets());
+      }
 
       try {
         await Promise.allSettled(promises);

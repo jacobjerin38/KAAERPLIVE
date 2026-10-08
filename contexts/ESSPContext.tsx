@@ -18,7 +18,7 @@ interface ESSPContextType {
 const ESSPContext = createContext<ESSPContextType | undefined>(undefined);
 
 export const ESSPProvider = ({ children }: { children: React.ReactNode }) => {
-    const { user } = useAuth();
+    const { user, userEmployeeId } = useAuth();
     const [employeeProfile, setEmployeeProfile] = useState<Employee | null>(null);
     const [reportingManager, setReportingManager] = useState<{ name: string, id: string } | null>(null);
     const [roleFlags, setRoleFlags] = useState({ isManager: false, isHR: false, isApprover: false });
@@ -30,17 +30,20 @@ export const ESSPProvider = ({ children }: { children: React.ReactNode }) => {
         } else {
             setLoading(false);
         }
-    }, [user]);
+    }, [user, userEmployeeId]);
 
     const refreshESSPData = async () => {
         if (!user) return;
-        setLoading(true);
+        // Keep loading true only on cold start
+        if (!employeeProfile) setLoading(true);
 
         try {
-            // 0. Check Profile for Link first
-            let linkedEmployeeId = null;
-            const { data: profile } = await supabase.from('profiles').select('employee_id').eq('id', user.id).maybeSingle();
-            if (profile?.employee_id) linkedEmployeeId = profile.employee_id;
+            // 0. Use userEmployeeId if already fetched from AuthContext
+            let linkedEmployeeId = userEmployeeId;
+            if (!linkedEmployeeId) {
+                const { data: profile } = await supabase.from('profiles').select('employee_id').eq('id', user.id).maybeSingle();
+                if (profile?.employee_id) linkedEmployeeId = profile.employee_id;
+            }
 
             // 1. Fetch Employee Profile
             // @ts-ignore
