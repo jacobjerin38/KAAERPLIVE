@@ -77,12 +77,12 @@ export const JournalEntries: React.FC<JournalEntriesProps> = ({ initialSearch, i
         if (!currentCompanyId) return;
         const [jRes, aRes, ccRes, pRes] = await Promise.all([
             supabase.from('accounting_journals').select('*').eq('company_id', currentCompanyId).eq('is_active', true),
-            supabase.from('accounting_chart_of_accounts').select('*').eq('company_id', currentCompanyId).eq('is_active', true).eq('is_group', false).order('code'),
+            supabase.from('accounting_chart_of_accounts').select('*').eq('company_id', currentCompanyId).eq('is_active', true).order('code'),
             supabase.from('accounting_cost_centers').select('*').eq('company_id', currentCompanyId).eq('is_active', true),
             supabase.from('accounting_partners').select('id, name, code, partner_type').eq('company_id', currentCompanyId).order('name')
         ]);
         if (jRes.data) setJournals(jRes.data);
-        if (aRes.data) setAccounts(aRes.data.filter((a: any) => !a.is_group && a.is_active !== false));
+        if (aRes.data) setAccounts(aRes.data.filter((a: any) => a.is_active !== false));
         if (ccRes.data) setCostCenters(ccRes.data);
         if (pRes.data) setPartners(pRes.data);
     };
@@ -677,7 +677,7 @@ export const JournalEntries: React.FC<JournalEntriesProps> = ({ initialSearch, i
                                                     onChange={e => updateLine(idx, 'account_id', e.target.value)}
                                                 >
                                                     <option value="">Select Account</option>
-                                                    {accounts.map(a => <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}
+                                                    {accounts.map(a => <option key={a.id} value={a.id}>{a.code} - {a.name}{a.is_group ? ' (Group)' : ''}</option>)}
                                                 </select>
                                             </td>
                                             <td className="p-2">
