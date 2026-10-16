@@ -7,6 +7,7 @@ import {
     Plus, Trash2, Edit2, Save, RefreshCw, ArrowRight, Shield, Users, Building, 
     Package, DollarSign, Calendar, FileText, Check, Eye, HelpCircle, ChevronDown, CheckCircle
 } from 'lucide-react';
+import { PEC_OPENING_STOCK_ITEMS } from './data/pecOpeningStockData';
 
 interface GLOpeningLine {
     account_code: string;
@@ -41,7 +42,7 @@ interface CreditorLine {
     payment_terms_days?: number;
 }
 
-interface InventoryLine {
+export interface InventoryLine {
     item_code: string;
     item_name: string;
     category: string;
@@ -167,20 +168,46 @@ export default function OpeningBalances({ companyId }: { companyId?: string }) {
         { vendor_name: 'Enertech Qatar Safety Training Centre', opening_balance: 400.00, payment_terms_days: 30 }
     ]);
 
-    // Inventory Opening Stock Lines (Target: QAR 2,818,696.38)
-    const [inventoryLines, setInventoryLines] = useState<InventoryLine[]>([
-        { item_code: '3X-STOPKIT-01', item_name: '3X Engineering Emergency Stopkit 2"-4"', category: 'Trading - 3X Items', uom: 'Kit', quantity: 45, unit_cost: 4850.00, total_value: 218250.00, warehouse: 'Main Store Mesaieed' },
-        { item_code: '3X-REINFORCE-4D', item_name: '3X Reinforcekit 4D Composite Wrap System', category: 'Trading - 3X Items', uom: 'Roll', quantity: 180, unit_cost: 3200.00, total_value: 576000.00, warehouse: 'Main Store Mesaieed' },
-        { item_code: '3X-BOBIPREG-20', item_name: '3X Bobipreg Carbon Fiber Reinforcement', category: 'Trading - 3X Items', uom: 'Roll', quantity: 95, unit_cost: 2900.00, total_value: 275500.00, warehouse: 'Main Store Mesaieed' },
-        { item_code: '3X-ROLLERKIT', item_name: '3X Rollerkit Subsea Pipeline Repair Kit', category: 'Trading - 3X Items', uom: 'Kit', quantity: 24, unit_cost: 7800.00, total_value: 187200.00, warehouse: 'Main Store Mesaieed' },
-        { item_code: 'CH-MECH-SEAL-01', item_name: 'Chesterton Mechanical Seals 280 Single Seal', category: 'Trading - Chesterton', uom: 'Unit', quantity: 38, unit_cost: 6500.00, total_value: 247000.00, warehouse: 'Ras Laffan Hub' },
-        { item_code: 'CH-MECH-SEAL-02', item_name: 'Chesterton Split Cartridge Seals 442', category: 'Trading - Chesterton', uom: 'Unit', quantity: 32, unit_cost: 8900.00, total_value: 284800.00, warehouse: 'Ras Laffan Hub' },
-        { item_code: 'CH-ARC-COAT-S2', item_name: 'Chesterton ARC S2 Ceramic Composite Coating', category: 'Trading - Chesterton', uom: 'Bucket', quantity: 140, unit_cost: 2150.00, total_value: 301000.00, warehouse: 'Ras Laffan Hub' },
-        { item_code: 'CH-LUBRICANT-725', item_name: 'Chesterton 725 Heavy Duty Greases & Lubes', category: 'Trading - Chesterton', uom: 'Drum', quantity: 80, unit_cost: 1650.00, total_value: 132000.00, warehouse: 'Ras Laffan Hub' },
-        { item_code: 'GRP-PIPE-FRP-01', item_name: 'GRP / FRP Process Piping Sleeves & Laminates', category: 'Piping Items', uom: 'Meter', quantity: 350, unit_cost: 840.00, total_value: 294000.00, warehouse: 'Mesaieed Workshop' },
-        { item_code: 'PPE-SAFETY-SPEC', item_name: 'Industrial Safety PPE & Chemical Suits', category: 'PPE Items', uom: 'Set', quantity: 450, unit_cost: 410.00, total_value: 184500.00, warehouse: 'General Store' },
-        { item_code: 'MRO-FASTENERS-01', item_name: 'High-Tensile Flange Fasteners & Stud Bolts', category: 'Import Materials', uom: 'Box', quantity: 180, unit_cost: 658.04, total_value: 118446.38, warehouse: 'Main Store Mesaieed' }
-    ]);
+    // Inventory Opening Stock Lines (Tally 1-Aug-2026: QAR 2,769,488.60 - 216 Items)
+    const [inventoryLines, setInventoryLines] = useState<InventoryLine[]>(PEC_OPENING_STOCK_ITEMS as InventoryLine[]);
+
+    // Fetch live opening stock if recorded in database
+    useEffect(() => {
+        const fetchLiveOpeningStock = async () => {
+            try {
+                const { data, error } = await (supabase as any)
+                    .from('inventory_transactions')
+                    .select(`
+                        quantity,
+                        unit_cost,
+                        total_value,
+                        item:item_master(code, name, category, uom),
+                        warehouse:warehouses(name)
+                    `)
+                    .eq('company_id', effectiveCompanyId)
+                    .eq('reference_type', 'OPENING_STOCK')
+                    .order('created_at', { ascending: true });
+
+                if (!error && data && data.length > 0) {
+                    const loaded: InventoryLine[] = data.map((t: any) => ({
+                        item_code: t.item?.code || 'UNKNOWN',
+                        item_name: t.item?.name || 'Stock Item',
+                        category: t.item?.category || 'General',
+                        uom: t.item?.uom || 'PCS',
+                        quantity: Number(t.quantity) || 0,
+                        unit_cost: Number(t.unit_cost) || 0,
+                        total_value: Number(t.total_value) || 0,
+                        warehouse: t.warehouse?.name || 'Main Store Mesaieed'
+                    }));
+                    setInventoryLines(loaded);
+                }
+            } catch (err) {
+                console.warn('Error loading live inventory opening stock:', err);
+            }
+        };
+
+        fetchLiveOpeningStock();
+    }, [effectiveCompanyId]);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -193,6 +220,7 @@ export default function OpeningBalances({ companyId }: { companyId?: string }) {
     const totalDebtorsBalance = debtors.reduce((sum, d) => sum + (Number(d.opening_balance) || 0), 0);
     const totalCreditorsBalance = creditors.reduce((sum, c) => sum + (Number(c.opening_balance) || 0), 0);
     const totalInventoryValue = inventoryLines.reduce((sum, i) => sum + (Number(i.total_value) || 0), 0);
+    const tallyOpeningStock = 2769488.60;
     const glOpeningStock = 2818696.38;
 
     // Excel Upload Handler for any of the 4 categories
@@ -572,6 +600,7 @@ export default function OpeningBalances({ companyId }: { companyId?: string }) {
                     .eq('code', item.item_code)
                     .maybeSingle();
 
+                let itemId = existing?.id;
                 if (existing) {
                     await (supabase as any)
                         .from('item_master')
@@ -585,7 +614,7 @@ export default function OpeningBalances({ companyId }: { companyId?: string }) {
                         })
                         .eq('id', existing.id);
                 } else {
-                    await (supabase as any)
+                    const { data: newItem } = await (supabase as any)
                         .from('item_master')
                         .insert([{
                             company_id: effectiveCompanyId,
@@ -596,11 +625,35 @@ export default function OpeningBalances({ companyId }: { companyId?: string }) {
                             standard_cost: item.unit_cost,
                             is_stockable: true,
                             status: 'Active'
-                        }]);
+                        }])
+                        .select('id')
+                        .single();
+                    itemId = newItem?.id;
+                }
+
+                if (itemId) {
+                    const { data: exTx } = await (supabase as any)
+                        .from('inventory_transactions')
+                        .select('id')
+                        .eq('company_id', effectiveCompanyId)
+                        .eq('item_id', itemId)
+                        .eq('reference_type', 'OPENING_STOCK')
+                        .maybeSingle();
+
+                    if (exTx) {
+                        await (supabase as any)
+                            .from('inventory_transactions')
+                            .update({
+                                quantity: item.quantity,
+                                unit_cost: item.unit_cost,
+                                posting_date: cutoverDate
+                            })
+                            .eq('id', exTx.id);
+                    }
                 }
             }
 
-            setStatusMessage(`Successfully synchronized ${inventoryLines.length} stock items to Inventory Master! Total Value: QAR ${totalInventoryValue.toLocaleString()}`);
+            setStatusMessage(`Successfully synchronized ${inventoryLines.length} stock items to Inventory Master! Total Value: QAR ${totalInventoryValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
             alert(`Synchronized ${inventoryLines.length} stock items to Inventory Master!`);
         } catch (err: any) {
             console.error('Error syncing inventory:', err);
@@ -1085,11 +1138,11 @@ export default function OpeningBalances({ companyId }: { companyId?: string }) {
                             <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                                 <span>Inventory Opening Stock Register</span>
                                 <span className="text-[11px] font-semibold px-2 py-0.5 bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-300 rounded-full">
-                                    Total Value: QAR {totalInventoryValue.toLocaleString()}
+                                    {inventoryLines.length} Items | QAR {totalInventoryValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </span>
                             </h3>
                             <p className="text-xs text-slate-500">
-                                Target Trial Balance Opening Stock: QAR {glOpeningStock.toLocaleString()} | Item Numbers & Unit Cost Provision
+                                Tally Cutover 1-Aug-2026: QAR {tallyOpeningStock.toLocaleString('en-US', { minimumFractionDigits: 2 })} | Main Store Mesaieed | GL Account 1310: QAR {glOpeningStock.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                             </p>
                         </div>
 
