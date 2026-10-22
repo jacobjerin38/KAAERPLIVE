@@ -139,6 +139,7 @@ const AppContent: React.FC = () => {
 
   const getModulePermission = (path: string): string | null => {
     switch (path) {
+      case '/ceo-dashboard': return 'ceo.dashboard.view';
       case '/employees': return 'hrms.employees.view';
       case '/attendance': return 'hrms.attendance.view';
       case '/leave': return 'hrms.leave.view';

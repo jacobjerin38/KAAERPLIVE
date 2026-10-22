@@ -22,7 +22,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => 
     AppView.TRAVEL
   ].includes(currentView)) return null;
 
-  const { signOut } = useAuth();
+  const { signOut, hasPermission } = useAuth();
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -92,6 +92,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => 
           active={currentView === AppView.DASHBOARD}
           onClick={() => onNavigate(AppView.DASHBOARD)}
         />
+        {hasPermission('ceo.dashboard.view') && (
+          <NavItem
+            icon={Crown}
+            label="CEO"
+            active={currentView === AppView.CEO_DASHBOARD}
+            onClick={() => onNavigate(AppView.CEO_DASHBOARD)}
+          />
+        )}
         <NavItem 
           icon={Briefcase} 
           label="Projects" 

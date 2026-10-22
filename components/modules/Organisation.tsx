@@ -2130,6 +2130,11 @@ const GenericRemindersView = ({
 // --- Constants ---
 
 const ALL_PERMISSIONS = {
+    'EXECUTIVE & CEO DASHBOARD': [
+        { id: 'ceo.dashboard.view', label: 'Access CEO Executive Dashboard' },
+        { id: 'ceo.targets.manage', label: 'Manage & Update Employee Targets' },
+        { id: 'ceo.financials.view', label: 'View Executive P&L and Strategic Metrics' }
+    ],
     'PRO (Mandoob)': [
         { id: 'pro.view', label: 'Access PRO (Mandoob) Module' },
         { id: 'pro.requests.create', label: 'Create PRO Requests (HR/CEO)' },

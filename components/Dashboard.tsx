@@ -546,34 +546,36 @@ export const Dashboard: React.FC = () => {
         </div>
 
         {/* CEO Executive Dashboard Banner */}
-        <div className="mb-8 p-6 rounded-3xl bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-indigo-500/10 dark:from-amber-950/40 dark:via-zinc-900 dark:to-indigo-950/40 border border-amber-300/60 dark:border-amber-700/50 shadow-xl shadow-amber-500/5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-slide-up">
-          <div className="flex items-center gap-4">
-            <div className="p-3.5 rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-500 text-white shadow-lg shadow-orange-500/30 flex-shrink-0">
-              <Crown className="w-6 h-6" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-black text-slate-900 dark:text-white">
-                  CEO Executive Intelligence Dashboard
-                </h2>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-400/40">
-                  Live KPIs
-                </span>
+        {hasPermission('ceo.dashboard.view') && (
+          <div className="mb-8 p-6 rounded-3xl bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-indigo-500/10 dark:from-amber-950/40 dark:via-zinc-900 dark:to-indigo-950/40 border border-amber-300/60 dark:border-amber-700/50 shadow-xl shadow-amber-500/5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-slide-up">
+            <div className="flex items-center gap-4">
+              <div className="p-3.5 rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-500 text-white shadow-lg shadow-orange-500/30 flex-shrink-0">
+                <Crown className="w-6 h-6" />
               </div>
-              <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">
-                Active Sales Pipeline (QAR 18.97M), 52 Proposals, 34 Work Orders, Monthly P&L and Employee Target Completion.
-              </p>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-black text-slate-900 dark:text-white">
+                    CEO Executive Intelligence Dashboard
+                  </h2>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-400/40">
+                    Live KPIs
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">
+                  Active Sales Pipeline (QAR 18.97M), 52 Proposals, 34 Work Orders, Monthly P&L and Employee Target Completion.
+                </p>
+              </div>
             </div>
-          </div>
 
-          <button
-            onClick={() => navigate('/ceo-dashboard')}
-            className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white text-xs font-black shadow-lg shadow-orange-500/25 active:scale-95 transition-all flex-shrink-0"
-          >
-            <span>Open CEO Dashboard</span>
-            <ArrowUpRight className="w-4 h-4" />
-          </button>
-        </div>
+            <button
+              onClick={() => navigate('/ceo-dashboard')}
+              className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white text-xs font-black shadow-lg shadow-orange-500/25 active:scale-95 transition-all flex-shrink-0"
+            >
+              <span>Open CEO Dashboard</span>
+              <ArrowUpRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         {/* Bento Grid Layout */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 grid-rows-auto gap-6 pb-20 animate-slide-up" style={{ animationDelay: '0.1s' }}>

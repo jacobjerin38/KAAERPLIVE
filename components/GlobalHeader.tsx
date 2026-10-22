@@ -15,7 +15,7 @@ interface GlobalHeaderProps {
 
 export const GlobalHeader: React.FC<GlobalHeaderProps> = ({ currentView }) => {
     const navigate = useNavigate();
-    const { signOut, currentCompanyId, selectCompany } = useAuth();
+    const { signOut, currentCompanyId, selectCompany, hasPermission } = useAuth();
     const { toggleSearch, toggleNotifications, isNotificationsOpen, isSearchOpen } = useUI();
     const [showMenu, setShowMenu] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -104,14 +104,16 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({ currentView }) => {
             {/* Right: Actions */}
             <div className="flex items-center gap-4 relative" ref={menuRef}>
                 {/* CEO Dashboard Button */}
-                <button
-                    onClick={() => navigate('/ceo-dashboard')}
+                {hasPermission('ceo.dashboard.view') && (
+                    <button
+                        onClick={() => navigate('/ceo-dashboard')}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/10 to-orange-500/10 hover:from-amber-500/20 hover:to-orange-500/20 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-700/50 text-xs font-black transition-all active:scale-95 shadow-sm"
                     title="Open CEO Executive Dashboard"
                 >
                     <Crown className="w-3.5 h-3.5 text-amber-500" />
                     <span className="hidden sm:inline">CEO Dashboard</span>
-                </button>
+                    </button>
+                )}
 
                 {/* Search */}
                 <button
@@ -152,9 +154,11 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({ currentView }) => {
                             <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 truncate">{companyName || (companyLoaded ? 'No Organization' : 'Loading...')}</p>
                         </div>
 
-                        <button onClick={() => { setShowMenu(false); navigate('/ceo-dashboard'); }} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30 transition-colors text-left">
-                              <Crown className="w-4 h-4 text-amber-500" /> CEO Dashboard
-                          </button>
+                        {hasPermission('ceo.dashboard.view') && (
+                              <button onClick={() => { setShowMenu(false); navigate('/ceo-dashboard'); }} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30 transition-colors text-left">
+                                  <Crown className="w-4 h-4 text-amber-500" /> CEO Dashboard
+                              </button>
+                          )}
 
                           <button onClick={handleSwitchCompany} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-zinc-700/50 transition-colors text-left">
                             <Building2 className="w-4 h-4" /> Switch Organization

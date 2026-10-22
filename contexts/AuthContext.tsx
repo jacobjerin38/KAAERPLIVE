@@ -54,7 +54,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             setUserRole(roleName);
 
             // Explicit Admin or Super Admin bypass
-            if (['admin', 'super admin'].includes(roleName?.toLowerCase() || '')) {
+            if (['admin', 'super admin', 'managing director', 'ceo'].includes(roleName?.toLowerCase() || '')) {
                 setPermissions(['*']);
                 return;
             }
@@ -240,7 +240,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     const hasPermission = (permission: string) => {
         if (permissions.includes('*')) return true; // Super admin wildcard
-        if (['admin', 'super admin'].includes(userRole?.toLowerCase() || '')) return true; // Admin bypass
+        if (['admin', 'super admin', 'managing director', 'ceo'].includes(userRole?.toLowerCase() || '')) return true; // Admin & Executive bypass
         if (permissions.includes(permission)) return true;
         // If checking for a .view permission, having .manage grants view capability
         if (permission.endsWith('.view') && permissions.includes(permission.replace('.view', '.manage'))) {

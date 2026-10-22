@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   Clock,
   AlertTriangle,
+  ShieldAlert,
   Users,
   Layers,
   ExternalLink,
@@ -100,7 +101,11 @@ interface RevenueTrendPoint {
 
 export const CEODashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { currentCompanyId, user } = useAuth();
+    const { currentCompanyId, user, hasPermission, userRole } = useAuth();
+
+  // Permission Verification (Admin users and specific role permission rules)
+  const canAccess = hasPermission('ceo.dashboard.view') || ['admin', 'super admin', 'managing director', 'ceo'].includes(userRole?.toLowerCase() || '');
+  const canManageTargets = hasPermission('ceo.targets.manage') || canAccess;
 
   // Filters & State
   const [loading, setLoading] = useState(true);
@@ -163,6 +168,7 @@ export const CEODashboard: React.FC = () => {
 
   // Fetch all live CEO metrics
   const loadCEODashboardData = async () => {
+    if (!canAccess) return;
     try {
       setRefreshing(true);
       const companyId = currentCompanyId;
@@ -534,6 +540,28 @@ export const CEODashboard: React.FC = () => {
   const modalRateNum = parseFloat(modalIncentiveRate) || 0;
   const modalCompletionPct = modalTargetNum > 0 ? Math.round((modalAchievedNum / modalTargetNum) * 100) : 0;
   const modalCommission = (modalAchievedNum * modalRateNum) / 100;
+
+  // Access Restricted Guard
+  if (!canAccess) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center p-8 bg-slate-50 dark:bg-zinc-950 text-center">
+        <div className="p-4 rounded-3xl bg-rose-500/10 text-rose-500 mb-4 border border-rose-500/20 shadow-lg shadow-rose-500/5">
+          <ShieldAlert className="w-12 h-12" />
+        </div>
+        <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">Access Restricted</h2>
+        <p className="text-sm text-slate-500 dark:text-zinc-400 max-w-md mt-2 mb-6">
+          The CEO Executive Dashboard is restricted to Admin users and authorized management roles.
+          Please contact your system administrator if you require access.
+        </p>
+        <button
+          onClick={() => navigate('/')}
+          className="px-6 py-2.5 bg-slate-900 dark:bg-white text-white dark:text-black font-bold text-xs rounded-2xl hover:shadow-lg transition-all"
+        >
+          Return to Workspace
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full overflow-y-auto relative z-10 scroll-smooth bg-slate-50 dark:bg-zinc-950 selection:bg-indigo-500/30">
