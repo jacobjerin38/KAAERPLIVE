@@ -216,6 +216,7 @@ export const ESSP: React.FC = () => {
     // Dashboard State
     const [punchStatus, setPunchStatus] = useState<'In' | 'Out'>('Out');
     const [punchLoading, setPunchLoading] = useState(false);
+    const [dashboardLoading, setDashboardLoading] = useState(true);
     const [lastAttendanceId, setLastAttendanceId] = useState<string | null>(null);
     const [activePunchTime, setActivePunchTime] = useState<string | null>(null);
     const [activePunchNote, setActivePunchNote] = useState<string | null>(null);
@@ -238,87 +239,96 @@ export const ESSP: React.FC = () => {
     }, [currentEmployee]);
 
     const refreshDashboard = async (empId: string, companyId: string) => {
-        const sixteenHoursAgo = new Date(Date.now() - 16 * 60 * 60 * 1000).toISOString();
-        const todayStr = new Date().toISOString().split('T')[0];
+        try {
+            const sixteenHoursAgo = new Date(Date.now() - 16 * 60 * 60 * 1000).toISOString();
+            // Local date in Qatar (UTC+3)
+            const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Qatar' }).format(new Date());
 
-        // 1. Fetch all essential dashboard data concurrently in a single batch
-        const [
-            activePunchesRes,
-            todayShiftRes,
-            recentLogsRes,
-            ltRes,
-            empBalRes,
-            payRes,
-            annRes
-        ] = await Promise.all([
-            // Active session (uses new partial index idx_attendance_emp_active_checkin)
-            supabase.from('attendance')
-                .select('*')
-                .eq('employee_id', empId)
-                .is('check_out', null)
-                .not('check_in', 'is', null)
-                .gte('check_in', sixteenHoursAgo)
-                .order('check_in', { ascending: false })
-                .limit(1),
+            // 1. Fetch all essential dashboard data concurrently in a single batch
+            const [
+                activePunchesRes,
+                todayShiftRes,
+                recentLogsRes,
+                ltRes,
+                empBalRes,
+                payRes,
+                annRes
+            ] = await Promise.all([
+                // Active session (uses new partial index idx_attendance_emp_active_checkin)
+                supabase.from('attendance')
+                    .select('*')
+                    .eq('employee_id', empId)
+                    .is('check_out', null)
+                    .not('check_in', 'is', null)
+                    .gte('check_in', sixteenHoursAgo)
+                    .order('check_in', { ascending: false })
+                    .limit(1),
 
-            // Today's shift (uses idx_attendance_employee_date)
-            supabase.from('attendance')
-                .select('*')
-                .eq('employee_id', empId)
-                .eq('date', todayStr)
-                .maybeSingle(),
+                // Today's shift (uses idx_attendance_employee_date)
+                supabase.from('attendance')
+                    .select('*')
+                    .eq('employee_id', empId)
+                    .eq('date', todayStr)
+                    .maybeSingle(),
 
-            // Recent 3 attendance logs
-            supabase.from('attendance')
-                .select('*')
-                .eq('employee_id', empId)
-                .order('date', { ascending: false })
-                .limit(3),
+                // Recent 3 attendance logs
+                supabase.from('attendance')
+                    .select('*')
+                    .eq('employee_id', empId)
+                    .order('date', { ascending: false })
+                    .limit(3),
 
-            // Leave types (uses idx_org_leave_types_comp_id)
-            companyId
-                ? supabase.from('org_leave_types').select('*').eq('company_id', companyId)
-                : Promise.resolve({ data: null }),
+                // Leave types (uses idx_org_leave_types_comp_id)
+                companyId
+                    ? supabase.from('org_leave_types').select('*').eq('company_id', companyId)
+                    : Promise.resolve({ data: null }),
 
-            // Employee leave balances (uses idx_employee_leave_balances_employee_id)
-            supabase.from('employee_leave_balances')
-                .select('*')
-                .eq('employee_id', empId),
+                // Employee leave balances (uses idx_employee_leave_balances_employee_id)
+                supabase.from('employee_leave_balances')
+                    .select('*')
+                    .eq('employee_id', empId),
 
-            // Last pay record
-            supabase.from('payroll_records')
-                .select('net_pay')
-                .eq('employee_id', empId)
-                .order('created_at', { ascending: false })
-                .limit(1)
-                .maybeSingle(),
+                // Last pay record
+                supabase.from('payroll_records')
+                    .select('net_pay')
+                    .eq('employee_id', empId)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle(),
 
-            // Announcements (uses idx_announcements_comp_created)
-            companyId
-                ? supabase.from('announcements').select('*').eq('company_id', companyId).order('created_at', { ascending: false }).limit(5)
-                : Promise.resolve({ data: null })
-        ]);
+                // Announcements (uses idx_announcements_comp_created)
+                companyId
+                    ? supabase.from('announcements').select('*').eq('company_id', companyId).order('created_at', { ascending: false }).limit(5)
+                    : Promise.resolve({ data: null })
+            ]);
 
-        const activePunch = activePunchesRes.data && activePunchesRes.data.length > 0 ? activePunchesRes.data[0] : null;
-        const todayShiftData = todayShiftRes.data;
+            const activePunch = activePunchesRes.data && activePunchesRes.data.length > 0 ? activePunchesRes.data[0] : null;
+            const todayShiftData = todayShiftRes.data;
 
-        if (activePunch && activePunch.check_in) {
-            setPunchStatus('In');
-            setLastAttendanceId(activePunch.id);
-            setActivePunchTime(activePunch.check_in);
-            setActivePunchNote(activePunch.notes || null);
-            setTodayCompletedRecord(null);
-        } else {
-            setPunchStatus('Out');
-            setLastAttendanceId(null);
-            setActivePunchTime(null);
-            setActivePunchNote(null);
-            if (todayShiftData && todayShiftData.check_in && todayShiftData.check_out) {
-                setTodayCompletedRecord(todayShiftData);
-            } else {
+            if (activePunch && activePunch.check_in) {
+                setPunchStatus('In');
+                setLastAttendanceId(activePunch.id);
+                setActivePunchTime(activePunch.check_in);
+                setActivePunchNote(activePunch.notes || null);
                 setTodayCompletedRecord(null);
+            } else if (todayShiftData && todayShiftData.check_in && !todayShiftData.check_out) {
+                // Ground truth fallback: If today has check_in but no check_out, employee is checked in!
+                setPunchStatus('In');
+                setLastAttendanceId(todayShiftData.id);
+                setActivePunchTime(todayShiftData.check_in);
+                setActivePunchNote(todayShiftData.notes || null);
+                setTodayCompletedRecord(null);
+            } else {
+                setPunchStatus('Out');
+                setLastAttendanceId(null);
+                setActivePunchTime(null);
+                setActivePunchNote(null);
+                if (todayShiftData && todayShiftData.check_in && todayShiftData.check_out) {
+                    setTodayCompletedRecord(todayShiftData);
+                } else {
+                    setTodayCompletedRecord(null);
+                }
             }
-        }
 
         if (recentLogsRes.data) setAttendanceLog(recentLogsRes.data);
 
@@ -386,6 +396,9 @@ export const ESSP: React.FC = () => {
                     console.warn("Could not load project/site suggestions:", e);
                 }
             })();
+        }
+        } finally {
+            setDashboardLoading(false);
         }
     };
 
@@ -526,59 +539,119 @@ export const ESSP: React.FC = () => {
         }
 
         const now = new Date();
-        const today = now.toISOString().split('T')[0];
+        // Always determine date in Qatar local time (UTC+3)
+        const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Qatar' }).format(now);
         const isoNow = now.toISOString();
         const locStr = coords ? `${coords.lat},${coords.lng}` : null;
 
-        if (punchStatus === 'Out') {
-            // First check if there is an open overnight session from yesterday
-            const sixteenHoursAgo = new Date(Date.now() - 16 * 60 * 60 * 1000).toISOString();
-            const { data: openSessions } = await (supabase as any).from('attendance')
-                .select('id, check_in, date')
+        // 1. Resolve employee shift configuration to know if they are on an overnight shift
+        let isOvernightShift = false;
+        try {
+            const [drRes, empShiftRes] = await Promise.all([
+                (supabase as any).from('duty_roster')
+                    .select('shift_id, org_shift_timings(is_overnight, start_time, end_time)')
+                    .eq('employee_id', currentEmployee.id)
+                    .eq('date', today)
+                    .maybeSingle(),
+                currentEmployee.shift_timing_id
+                    ? (supabase as any).from('org_shift_timings').select('is_overnight, start_time, end_time').eq('id', currentEmployee.shift_timing_id).maybeSingle()
+                    : Promise.resolve({ data: null })
+            ]);
+            const shiftObj: any = drRes.data?.org_shift_timings || empShiftRes.data;
+            if (shiftObj) {
+                isOvernightShift = Boolean(shiftObj.is_overnight || (shiftObj.start_time && shiftObj.end_time && shiftObj.start_time > shiftObj.end_time));
+            }
+        } catch (err) {
+            console.warn("Shift check error:", err);
+        }
+
+        // 2. Query DB directly for active session to prevent any client-side race conditions
+        const eighteenHoursAgo = new Date(Date.now() - 18 * 60 * 60 * 1000).toISOString();
+        const [todayRecordRes, openPunchesRes] = await Promise.all([
+            (supabase as any).from('attendance')
+                .select('id, date, check_in, check_out, total_hours, duration, notes')
+                .eq('employee_id', currentEmployee.id)
+                .eq('date', today)
+                .maybeSingle(),
+            (supabase as any).from('attendance')
+                .select('id, date, check_in, check_out, notes')
                 .eq('employee_id', currentEmployee.id)
                 .is('check_out', null)
                 .not('check_in', 'is', null)
-                .gte('check_in', sixteenHoursAgo)
+                .gte('check_in', eighteenHoursAgo)
                 .order('check_in', { ascending: false })
-                .limit(1);
+                .limit(1)
+        ]);
 
-            const openNightSession = openSessions && openSessions.length > 0 ? openSessions[0] : null;
+        const todayRecord = todayRecordRes.data;
+        const openSession = openPunchesRes.data && openPunchesRes.data.length > 0 ? openPunchesRes.data[0] : null;
 
-            if (openNightSession && openNightSession.date !== today) {
-                await performPunchOut(openNightSession.id, openNightSession.check_in, isoNow, locStr, coords);
-                setPunchStatus('Out');
-                setLastAttendanceId(null);
-                setActivePunchTime(null);
-                setActivePunchNote(null);
-                alert("Night shift check-out recorded successfully!");
-            } else {
-                // Standard PUNCH IN or RE-PUNCH
-                if (todayCompletedRecord && (Number(todayCompletedRecord.total_hours) >= 4.0 || Number(todayCompletedRecord.duration) >= 4.0)) {
-                    const confirmRepunch = confirm(`You have already completed your shift today (${todayCompletedRecord.total_hours || todayCompletedRecord.duration || 0} hrs). Do you want to punch in again for an additional session or overtime?`);
+        // 3. Determine punch direction safely grounded in DB truth
+        // An active session for TODAY is waiting for check out:
+        const isTodayOpen = (todayRecord && todayRecord.check_in && !todayRecord.check_out) ||
+                            (openSession && openSession.date === today);
+
+        // An active session for YESTERDAY is waiting for overnight check out:
+        const isOvernightOpen = openSession && openSession.date !== today && isOvernightShift;
+
+        if (isTodayOpen || isOvernightOpen) {
+            // ==========================================
+            // ACTION: PUNCH OUT (Never overwrite check_in!)
+            // ==========================================
+            const targetSession = isTodayOpen
+                ? (todayRecord?.check_in && !todayRecord?.check_out ? todayRecord : openSession)
+                : openSession;
+
+            await performPunchOut(targetSession.id, targetSession.check_in, isoNow, locStr, coords);
+            alert(isOvernightOpen ? "Night shift check-out recorded successfully!" : "Punch Out recorded successfully!");
+        } else {
+            // ==========================================
+            // ACTION: PUNCH IN (Start new shift)
+            // ==========================================
+
+            // If an open session from yesterday exists for a DAY-SHIFT worker who forgot to check out,
+            // cleanly close it with a note so it does not remain an orphaned open session,
+            // but do NOT hijack today's morning punch to be yesterday's checkout!
+            if (openSession && openSession.date !== today && !isOvernightShift) {
+                try {
+                    await (supabase as any).from('attendance').update({
+                        notes: openSession.notes ? `${openSession.notes} | Auto-closed: missed day checkout` : 'Auto-closed: missed day checkout'
+                    }).eq('id', openSession.id);
+                } catch (e) {
+                    console.warn("Failed to auto-close previous day punch:", e);
+                }
+            }
+
+            // If employee already completed a full shift today, confirm re-punch / overtime
+            if (todayRecord && todayRecord.check_in && todayRecord.check_out) {
+                const completedHours = Number(todayRecord.total_hours || todayRecord.duration || 0);
+                if (completedHours >= 4.0) {
+                    const confirmRepunch = confirm(`You have already completed your shift today (${completedHours} hrs). Do you want to punch in again for an additional session or overtime?`);
                     if (!confirmRepunch) {
                         setPunchLoading(false);
                         return;
                     }
                 }
+            }
 
-                const siteOrProjectNote = punchSiteOrProject.trim();
-                let combinedNotes = siteOrProjectNote || null;
-                if (todayCompletedRecord?.notes && siteOrProjectNote) {
-                    if (!todayCompletedRecord.notes.includes(siteOrProjectNote)) {
-                        combinedNotes = `${todayCompletedRecord.notes} | ${siteOrProjectNote}`;
-                    } else {
-                        combinedNotes = todayCompletedRecord.notes;
-                    }
-                } else if (todayCompletedRecord?.notes && !siteOrProjectNote) {
-                    combinedNotes = todayCompletedRecord.notes;
+            const siteOrProjectNote = punchSiteOrProject.trim();
+            let combinedNotes = siteOrProjectNote || null;
+            const existingNotes = todayRecord?.notes || todayCompletedRecord?.notes;
+            if (existingNotes && siteOrProjectNote) {
+                if (!existingNotes.includes(siteOrProjectNote)) {
+                    combinedNotes = `${existingNotes} | ${siteOrProjectNote}`;
+                } else {
+                    combinedNotes = existingNotes;
                 }
+            } else if (existingNotes && !siteOrProjectNote) {
+                combinedNotes = existingNotes;
+            }
 
-                const insertPayload: any = {
-                    employee_id: currentEmployee.id,
-                    company_id: currentEmployee.company_id,
-                    date: today,
-                    check_in: isoNow,
-                    check_out: null, // Explicitly clear check_out for new active session
+            if (todayRecord) {
+                // Update today's existing record (preserves existing check_in if re-punching)
+                const updatePayload: any = {
+                    check_in: todayRecord.check_in && !todayRecord.check_out ? todayRecord.check_in : isoNow,
+                    check_out: null,
                     check_out_location: null,
                     check_out_lat: null,
                     check_out_lng: null,
@@ -592,11 +665,11 @@ export const ESSP: React.FC = () => {
                     source: 'punch'
                 };
 
-                const { data, error } = await (supabase as any).from('attendance').upsert([insertPayload], { onConflict: 'employee_id,date' }).select().single();
+                const { data, error } = await (supabase as any).from('attendance').update(updatePayload).eq('id', todayRecord.id).select().single();
 
                 if (error) {
                     console.error("Punch In Error:", error);
-                    alert("Failed to punch in: " + (error.message || error.details || "Please try again."));
+                    alert("Failed to punch in: " + (error.message || "Please try again."));
                 } else {
                     setPunchStatus('In');
                     setLastAttendanceId(data.id);
@@ -604,33 +677,44 @@ export const ESSP: React.FC = () => {
                     setActivePunchNote(combinedNotes || null);
                     setPunchSiteOrProject('');
                     setTodayCompletedRecord(null);
+                    alert("Punch In recorded successfully!");
+                }
+            } else {
+                // Insert brand new attendance record for today
+                const insertPayload: any = {
+                    employee_id: currentEmployee.id,
+                    company_id: currentEmployee.company_id,
+                    date: today,
+                    check_in: isoNow,
+                    check_out: null,
+                    check_out_location: null,
+                    check_out_lat: null,
+                    check_out_lng: null,
+                    check_in_lat: coords ? coords.lat : null,
+                    check_in_lng: coords ? coords.lng : null,
+                    check_in_location: locStr,
+                    notes: combinedNotes,
+                    punch_method: 'ONLINE',
+                    status: 'Present',
+                    total_hours: 0,
+                    source: 'punch'
+                };
+
+                const { data, error } = await (supabase as any).from('attendance').insert([insertPayload]).select().single();
+
+                if (error) {
+                    console.error("Punch In Error:", error);
+                    alert("Failed to punch in: " + (error.message || "Please try again."));
+                } else {
+                    setPunchStatus('In');
+                    setLastAttendanceId(data.id);
+                    setActivePunchTime(isoNow);
+                    setActivePunchNote(combinedNotes || null);
+                    setPunchSiteOrProject('');
+                    setTodayCompletedRecord(null);
+                    alert("Punch In recorded successfully!");
                 }
             }
-        } else {
-            // PUNCH OUT - Always query active open punch directly within the 16-hour session window
-            const sixteenHoursAgo = new Date(Date.now() - 16 * 60 * 60 * 1000).toISOString();
-            const { data: activePunches } = await (supabase as any).from('attendance')
-                .select('id, check_in')
-                .eq('employee_id', currentEmployee.id)
-                .is('check_out', null)
-                .not('check_in', 'is', null)
-                .gte('check_in', sixteenHoursAgo)
-                .order('check_in', { ascending: false })
-                .limit(1);
-
-            const activePunch = activePunches && activePunches.length > 0 ? activePunches[0] : null;
-
-            if (!activePunch) {
-                alert("No active session found to punch out from.");
-                setPunchLoading(false);
-                setPunchStatus('Out');
-                setLastAttendanceId(null);
-                setActivePunchTime(null);
-                setActivePunchNote(null);
-                return;
-            }
-
-            await performPunchOut(activePunch.id, activePunch.check_in, isoNow, locStr, coords);
         }
 
         await refreshDashboard(currentEmployee.id, currentEmployee.company_id);
@@ -827,20 +911,24 @@ export const ESSP: React.FC = () => {
 
                             <button
                                 onClick={handlePunch}
-                                disabled={punchLoading}
-                                className={`w-full md:w-auto px-10 py-5 rounded-2xl font-bold text-lg transition-transform active:scale-95 flex items-center justify-center gap-3 shrink-0 ${punchStatus === 'Out'
-                                    ? todayCompletedRecord
-                                        ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-xl shadow-indigo-900/30'
-                                        : 'bg-white text-slate-900 hover:bg-slate-50 shadow-xl'
-                                    : 'bg-rose-500 text-white hover:bg-rose-600 shadow-lg shadow-rose-900/50'
+                                disabled={punchLoading || dashboardLoading}
+                                className={`w-full md:w-auto px-10 py-5 rounded-2xl font-bold text-lg transition-transform active:scale-95 flex items-center justify-center gap-3 shrink-0 ${dashboardLoading
+                                    ? 'bg-slate-700 text-slate-300 opacity-60 cursor-not-allowed'
+                                    : punchStatus === 'Out'
+                                        ? todayCompletedRecord
+                                            ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-xl shadow-indigo-900/30'
+                                            : 'bg-white text-slate-900 hover:bg-slate-50 shadow-xl'
+                                        : 'bg-rose-500 text-white hover:bg-rose-600 shadow-lg shadow-rose-900/50'
                                     }`}
                             >
                                 <Fingerprint className="w-6 h-6" />
-                                {punchLoading
-                                    ? 'Processing...'
-                                    : punchStatus === 'Out'
-                                        ? (todayCompletedRecord ? 'Punch In (New Shift)' : 'Punch In')
-                                        : 'Punch Out'}
+                                {dashboardLoading
+                                    ? 'Checking Status...'
+                                    : punchLoading
+                                        ? 'Processing...'
+                                        : punchStatus === 'Out'
+                                            ? (todayCompletedRecord ? 'Punch In (New Shift)' : 'Punch In')
+                                            : 'Punch Out'}
                             </button>
                         </div>
                     </div>
