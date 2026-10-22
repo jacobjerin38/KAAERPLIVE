@@ -3,6 +3,7 @@ import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
 import { Plus, Search, Filter, ArrowRight, Save, Trash2, Edit, Eye, BookOpen, FileSpreadsheet, X } from 'lucide-react';
 import { Modal } from '../../ui/Modal';
+import { SearchableSelect, SearchableOption } from '../../ui/SearchableSelect';
 import { PrintButton } from '../../ui/PrintButton';
 import OpeningBalances from './OpeningBalances';
 import { PeriodFilter, PeriodPreset, getDatesForPreset } from '../common/PeriodFilter';
@@ -86,6 +87,16 @@ export const JournalEntries: React.FC<JournalEntriesProps> = ({ initialSearch, i
         if (ccRes.data) setCostCenters(ccRes.data);
         if (pRes.data) setPartners(pRes.data);
     };
+
+    const accountOptions: SearchableOption[] = useMemo(() => {
+        return accounts.map(a => ({
+            value: a.id,
+            label: `${a.name}${a.is_group ? ' (Group)' : ''}`,
+            code: a.code,
+            type: a.type || undefined,
+            sublabel: `${a.code} ${a.name}`
+        }));
+    }, [accounts]);
 
     const handleOpenCreate = () => {
         const defaultJournal = journals.find(j => j.type === 'General') || journals[0];
@@ -613,7 +624,7 @@ export const JournalEntries: React.FC<JournalEntriesProps> = ({ initialSearch, i
             {/* Create Modal */}
             {isModalOpen && (
                 <Modal title={currentEntry.state === 'Posted' ? "View Journal Entry" : currentEntry.id ? "Edit Journal Entry" : "New Journal Entry"} onClose={() => setIsModalOpen(false)} maxWidth="6xl">
-                    <div className="space-y-6">
+                    <div className="space-y-6 pb-28">
                         {/* Header Inputs */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-slate-50 dark:bg-zinc-800 rounded-lg">
                             <div>
@@ -651,11 +662,11 @@ export const JournalEntries: React.FC<JournalEntriesProps> = ({ initialSearch, i
                         </div>
 
                         {/* Lines Grid */}
-                        <div className="border border-slate-200 dark:border-zinc-700 rounded-lg overflow-hidden">
+                        <div className="border border-slate-200 dark:border-zinc-700 rounded-lg overflow-visible">
                             <table className="w-full text-sm">
                                 <thead className="bg-slate-100 dark:bg-zinc-800">
                                     <tr>
-                                        <th className="p-2 w-[18%] text-left">Account</th>
+                                        <th className="p-2 w-[22%] min-w-[200px] text-left">Account</th>
                                         <th className="p-2 w-[14%] text-left">Description</th>
                                         <th className="p-2 w-[14%] text-left">Partner</th>
                                         <th className="p-2 w-[11%] text-left">Cost Center</th>
@@ -669,16 +680,16 @@ export const JournalEntries: React.FC<JournalEntriesProps> = ({ initialSearch, i
                                 <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
                                     {currentEntry.lines?.map((line, idx) => (
                                         <tr key={idx}>
-                                            <td className="p-2">
-                                                <select
+                                            <td className="p-2 min-w-[200px]">
+                                                <SearchableSelect
                                                     disabled={currentEntry.state === 'Posted'}
-                                                    className="w-full p-1 border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 rounded text-xs disabled:opacity-75 disabled:bg-slate-100 dark:disabled:bg-zinc-800"
+                                                    options={accountOptions}
                                                     value={line.account_id}
-                                                    onChange={e => updateLine(idx, 'account_id', e.target.value)}
-                                                >
-                                                    <option value="">Select Account</option>
-                                                    {accounts.map(a => <option key={a.id} value={a.id}>{a.code} - {a.name}{a.is_group ? ' (Group)' : ''}</option>)}
-                                                </select>
+                                                    onChange={val => updateLine(idx, 'account_id', val)}
+                                                    placeholder="Select Account"
+                                                    buttonClassName="!h-[30px] !py-1 !px-2 !text-xs !font-normal !bg-white dark:!bg-zinc-900 !border-slate-200 dark:!border-zinc-700 !rounded"
+                                                    dropdownClassName="w-[360px]"
+                                                />
                                             </td>
                                             <td className="p-2">
                                                 <input
