@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, Search, Edit2, Package, QrCode, Scale, Tag, Upload, Download, Calendar, BarChart3, AlertTriangle, X, FileSpreadsheet, CheckCircle2 } from 'lucide-react';
+import { Plus, Search, Edit2, Package, QrCode, Scale, Tag, Upload, Download, Calendar, BarChart3, AlertTriangle, X, FileSpreadsheet, CheckCircle2, LayoutGrid, List, Coins, Boxes } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -26,6 +26,9 @@ interface Item {
     reorder_qty?: number;
     photo_url?: string;
     image_urls?: string[];
+    standard_cost?: number;
+    quantity_on_hand?: number;
+    total_value?: number;
 }
 
 export const ItemMaster: React.FC = () => {
@@ -33,6 +36,9 @@ export const ItemMaster: React.FC = () => {
     const [items, setItems] = useState<Item[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
+    const [viewMode, setViewMode] = useState<'grid' | 'table'>(() => {
+        return (localStorage.getItem('item_master_view_mode') as 'grid' | 'table') || 'grid';
+    });
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [currentItem, setCurrentItem] = useState<Partial<Item>>({});
     const [saving, setSaving] = useState(false);
@@ -153,14 +159,47 @@ export const ItemMaster: React.FC = () => {
     const fetchItems = async () => {
         try {
             setLoading(true);
-            const { data, error } = await supabase
-                .from('item_master')
-                .select('*')
-                .eq('company_id', currentCompanyId)
-                .order('name');
+            const [itemsRes, stockRes] = await Promise.all([
+                supabase
+                    .from('item_master')
+                    .select('*')
+                    .eq('company_id', currentCompanyId)
+                    .order('name'),
+                supabase
+                    .from('inventory_items')
+                    .select('id, quantity_on_hand, total_value, unit_cost')
+                    .eq('company_id', currentCompanyId)
+            ]);
 
-            if (error) throw error;
-            setItems((data || []) as any);
+            if (itemsRes.error) throw itemsRes.error;
+
+            const stockMap = new Map<string, { qty: number; val: number; cost: number }>();
+            if (stockRes.data) {
+                stockRes.data.forEach((s: any) => {
+                    stockMap.set(s.id, {
+                        qty: Number(s.quantity_on_hand) || 0,
+                        val: Number(s.total_value) || 0,
+                        cost: Number(s.unit_cost) || 0
+                    });
+                });
+            }
+
+            const merged = (itemsRes.data || []).map((item: any) => {
+                const stock = stockMap.get(item.id);
+                const rate = item.standard_cost !== null && item.standard_cost !== undefined 
+                    ? Number(item.standard_cost) 
+                    : (stock?.cost ?? 0);
+                const balance = stock?.qty ?? 0;
+                const totalVal = stock?.val || (balance * rate);
+                return {
+                    ...item,
+                    standard_cost: rate,
+                    quantity_on_hand: balance,
+                    total_value: totalVal
+                };
+            });
+
+            setItems(merged as Item[]);
         } catch (error) {
             console.error('Error fetching items:', error);
         } finally {
@@ -181,6 +220,11 @@ export const ItemMaster: React.FC = () => {
             if (saveData.weight === undefined || saveData.weight === null) saveData.weight = 0;
             if (saveData.reorder_level === undefined || saveData.reorder_level === null) saveData.reorder_level = 0;
             if (saveData.reorder_qty === undefined || saveData.reorder_qty === null) saveData.reorder_qty = 0;
+            saveData.standard_cost = Number(saveData.standard_cost) || 0;
+
+            // Remove non-table virtual UI fields
+            delete (saveData as any).quantity_on_hand;
+            delete (saveData as any).total_value;
 
             if (saveData.id) {
                 const { id, ...updateData } = saveData;
@@ -254,6 +298,7 @@ export const ItemMaster: React.FC = () => {
                             'barcode': 'barcode',
                             'reorder_level': 'reorder_level', 'min_stock': 'reorder_level', 'min_qty': 'reorder_level',
                             'reorder_qty': 'reorder_qty', 'order_qty': 'reorder_qty',
+                            'rate': 'standard_cost', 'cost': 'standard_cost', 'standard_cost': 'standard_cost', 'unit_cost': 'standard_cost', 'price': 'standard_cost',
                         };
                         const mappedField = fieldMap[header] || header;
                         if (values[idx]) row[mappedField] = values[idx];
@@ -292,8 +337,8 @@ export const ItemMaster: React.FC = () => {
     };
 
     const downloadTemplate = () => {
-        const headers = 'LAT Code,Item Name,Description,Category,UOM,Weight,Expiry Date,Barcode,Reorder Level,Reorder Qty';
-        const sample = 'LAT001,Sample Item,Description here,Raw Material,PCS,2.5,2027-12-31,,10,50';
+        const headers = 'LAT Code,Item Name,Description,Category,UOM,Rate,Weight,Expiry Date,Barcode,Reorder Level,Reorder Qty';
+        const sample = 'LAT001,Sample Item,Description here,Raw Material,PCS,150.00,2.5,2027-12-31,,10,50';
         const csv = headers + '\n' + sample;
         const blob = new Blob([csv], { type: 'text/csv' });
         const url = URL.createObjectURL(blob);
@@ -337,7 +382,7 @@ export const ItemMaster: React.FC = () => {
                         Excel Import
                     </button>
                     <button
-                        onClick={() => { setCurrentItem({ is_stockable: true, valuation_method: 'FIFO', status: 'Active', uom: 'PCS', weight: 0, reorder_level: 0, reorder_qty: 0 }); setIsModalOpen(true); }}
+                        onClick={() => { setCurrentItem({ is_stockable: true, valuation_method: 'FIFO', status: 'Active', uom: 'PCS', weight: 0, reorder_level: 0, reorder_qty: 0, standard_cost: 0, quantity_on_hand: 0 }); setIsModalOpen(true); }}
                         className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
                     >
                         <Plus className="w-4 h-4" />
@@ -346,22 +391,96 @@ export const ItemMaster: React.FC = () => {
                 </div>
             </div>
 
-            {/* Search Bar */}
-            <div className="relative max-w-md">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input
-                    type="text"
-                    placeholder="Search by name, LAT code, category, or barcode..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 border border-slate-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
+            {/* KPI Summary Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 shadow-sm">
+                    <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Total Items</span>
+                        <Package className="w-4 h-4 text-indigo-500" />
+                    </div>
+                    <p className="text-2xl font-bold text-slate-800 dark:text-white mt-1">{items.length}</p>
+                    <span className="text-[11px] text-slate-400">Active SKUs in catalog</span>
+                </div>
+
+                <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 shadow-sm">
+                    <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Total Balance</span>
+                        <Boxes className="w-4 h-4 text-emerald-500" />
+                    </div>
+                    <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">
+                        {items.reduce((acc, it) => acc + (it.quantity_on_hand || 0), 0).toLocaleString()}
+                    </p>
+                    <span className="text-[11px] text-slate-400">Total units in stock</span>
+                </div>
+
+                <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 shadow-sm">
+                    <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Total Valuation</span>
+                        <Coins className="w-4 h-4 text-amber-500" />
+                    </div>
+                    <p className="text-2xl font-bold text-slate-800 dark:text-white mt-1">
+                        QAR {items.reduce((acc, it) => acc + (it.total_value || ((it.quantity_on_hand || 0) * (it.standard_cost || 0))), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                    <span className="text-[11px] text-slate-400">At standard rate</span>
+                </div>
+
+                <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 shadow-sm">
+                    <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Low Stock</span>
+                        <AlertTriangle className="w-4 h-4 text-rose-500" />
+                    </div>
+                    <p className="text-2xl font-bold text-rose-600 dark:text-rose-400 mt-1">
+                        {items.filter(it => (it.reorder_level || 0) > 0 && (it.quantity_on_hand || 0) <= (it.reorder_level || 0)).length}
+                    </p>
+                    <span className="text-[11px] text-slate-400">At or below reorder level</span>
+                </div>
+            </div>
+
+            {/* Search Bar & View Mode Toggle */}
+            <div className="flex flex-col sm:flex-row justify-between gap-4 items-stretch sm:items-center">
+                <div className="relative flex-1 max-w-md">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                        type="text"
+                        placeholder="Search by name, LAT code, category, or barcode..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 border border-slate-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                </div>
+
+                <div className="flex items-center gap-1 bg-slate-100 dark:bg-zinc-800 p-1 rounded-lg border border-slate-200 dark:border-zinc-700 self-end sm:self-auto">
+                    <button
+                        type="button"
+                        onClick={() => { setViewMode('grid'); localStorage.setItem('item_master_view_mode', 'grid'); }}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                            viewMode === 'grid'
+                                ? 'bg-white dark:bg-zinc-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                        }`}
+                    >
+                        <LayoutGrid className="w-3.5 h-3.5" />
+                        Cards
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => { setViewMode('table'); localStorage.setItem('item_master_view_mode', 'table'); }}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                            viewMode === 'table'
+                                ? 'bg-white dark:bg-zinc-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                        }`}
+                    >
+                        <List className="w-3.5 h-3.5" />
+                        Table List
+                    </button>
+                </div>
             </div>
 
             {/* Items List */}
             {loading ? (
                 <div className="text-center py-12 text-slate-500">Loading items...</div>
-            ) : (
+            ) : viewMode === 'grid' ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {filteredItems.map(item => (
                         <div key={item.id} className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-5 hover:shadow-md transition-shadow group relative">
@@ -384,7 +503,7 @@ export const ItemMaster: React.FC = () => {
                                         </div>
                                     )}
                                     <div>
-                                        <h3 className="font-semibold text-slate-800 dark:text-white">{item.name}</h3>
+                                        <h3 className="font-semibold text-slate-800 dark:text-white leading-snug">{item.name}</h3>
                                         <div className="flex items-center gap-2 text-xs text-slate-500 font-mono mt-0.5">
                                             <QrCode className="w-3 h-3" />
                                             {item.code}
@@ -399,15 +518,46 @@ export const ItemMaster: React.FC = () => {
                                         )}
                                     </div>
                                 </div>
-                                <span className={`px-2 py-1 text-xs rounded-full ${item.status === 'Active' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-slate-100 text-slate-600'}`}>
+                                <span className={`px-2 py-1 text-xs rounded-full font-medium ${item.status === 'Active' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-slate-100 text-slate-600'}`}>
                                     {item.status}
                                 </span>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-y-2 text-sm text-slate-600 dark:text-slate-400 mt-4">
+                            {/* Stock Balance & Rate Box */}
+                            <div className="mt-3 p-3 bg-slate-50 dark:bg-zinc-800/60 rounded-xl border border-slate-100 dark:border-zinc-800/80">
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">Stock Balance</span>
+                                        <div className="flex items-baseline gap-1 mt-0.5">
+                                            <span className={`text-lg font-bold ${(item.quantity_on_hand ?? 0) > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'}`}>
+                                                {Number(item.quantity_on_hand ?? 0).toLocaleString()}
+                                            </span>
+                                            <span className="text-xs text-slate-500 font-medium">{item.uom}</span>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">Rate / Cost</span>
+                                        <div className="flex items-baseline gap-1 mt-0.5">
+                                            <span className="text-base font-bold text-slate-800 dark:text-white">
+                                                QAR {Number(item.standard_cost ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                {(item.quantity_on_hand ?? 0) > 0 && (
+                                    <div className="mt-2 pt-2 border-t border-slate-200/60 dark:border-zinc-700/60 flex justify-between items-center text-xs">
+                                        <span className="text-slate-400">Total Value:</span>
+                                        <span className="font-semibold text-slate-700 dark:text-slate-200">
+                                            QAR {Number(item.total_value ?? ((item.quantity_on_hand ?? 0) * (item.standard_cost ?? 0))).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-y-2 text-sm text-slate-600 dark:text-slate-400 mt-3">
                                 <div className="flex items-center gap-1.5" title="Category">
                                     <Tag className="w-3.5 h-3.5 text-slate-400" />
-                                    {item.category || '-'}
+                                    <span className="truncate">{item.category || '-'}</span>
                                 </div>
                                 <div className="flex items-center gap-1.5" title="Unit of Measure">
                                     <Scale className="w-3.5 h-3.5 text-slate-400" />
@@ -449,7 +599,7 @@ export const ItemMaster: React.FC = () => {
                                 </div>
                             )}
 
-                            <div className="mt-4 pt-3 border-t border-slate-100 dark:border-zinc-800 flex items-center gap-2 text-xs text-slate-500">
+                            <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800 flex items-center gap-2 text-xs text-slate-500">
                                 {item.is_stockable && <span className="px-2 py-0.5 bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400 rounded">Stockable</span>}
                                 {item.is_batch_tracked && <span className="px-2 py-0.5 bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400 rounded">Batch</span>}
                                 {item.is_serial_tracked && <span className="px-2 py-0.5 bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400 rounded">Serial</span>}
@@ -468,6 +618,101 @@ export const ItemMaster: React.FC = () => {
                             No items found matching your search.
                         </div>
                     )}
+                </div>
+            ) : (
+                /* Table View */
+                <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl overflow-hidden shadow-sm">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-slate-50 dark:bg-zinc-800/70 border-b border-slate-200 dark:border-zinc-700 text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                <tr>
+                                    <th className="py-3 px-4">Item & Code</th>
+                                    <th className="py-3 px-4">Category</th>
+                                    <th className="py-3 px-4 text-center">UOM</th>
+                                    <th className="py-3 px-4 text-right">Balance (Qty)</th>
+                                    <th className="py-3 px-4 text-right">Rate (Unit Cost)</th>
+                                    <th className="py-3 px-4 text-right">Total Value</th>
+                                    <th className="py-3 px-4 text-center">Status</th>
+                                    <th className="py-3 px-4 text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
+                                {filteredItems.map(item => (
+                                    <tr key={item.id} className="hover:bg-slate-50/60 dark:hover:bg-zinc-800/50 transition-colors">
+                                        <td className="py-3 px-4">
+                                            <div className="flex items-center gap-3">
+                                                {item.photo_url ? (
+                                                    <div 
+                                                        className="w-10 h-10 rounded-lg overflow-hidden bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 flex-shrink-0 cursor-pointer"
+                                                        onClick={() => setSelectedGalleryItem(item)}
+                                                    >
+                                                        <img src={imageUrls[item.id] || item.photo_url} alt={item.name} className="w-full h-full object-cover" />
+                                                    </div>
+                                                ) : (
+                                                    <div className="p-2.5 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg text-indigo-600 dark:text-indigo-400 flex-shrink-0">
+                                                        <Package className="w-4 h-4" />
+                                                    </div>
+                                                )}
+                                                <div>
+                                                    <span className="font-semibold text-slate-900 dark:text-white block">{item.name}</span>
+                                                    <div className="flex items-center gap-1.5 text-xs text-slate-400 font-mono mt-0.5">
+                                                        <QrCode className="w-3 h-3" />
+                                                        {item.code}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
+                                            {item.category || '-'}
+                                        </td>
+                                        <td className="py-3 px-4 text-center font-medium text-slate-600 dark:text-slate-400">
+                                            {item.uom}
+                                        </td>
+                                        <td className="py-3 px-4 text-right">
+                                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${
+                                                (item.quantity_on_hand ?? 0) > 0
+                                                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                                                    : 'bg-slate-100 text-slate-500 dark:bg-zinc-800 dark:text-slate-400'
+                                            }`}>
+                                                {Number(item.quantity_on_hand ?? 0).toLocaleString()} {item.uom}
+                                            </span>
+                                        </td>
+                                        <td className="py-3 px-4 text-right font-semibold text-slate-800 dark:text-slate-200">
+                                            QAR {Number(item.standard_cost ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </td>
+                                        <td className="py-3 px-4 text-right font-bold text-slate-900 dark:text-white">
+                                            QAR {Number(item.total_value ?? ((item.quantity_on_hand ?? 0) * (item.standard_cost ?? 0))).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </td>
+                                        <td className="py-3 px-4 text-center">
+                                            <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${
+                                                item.status === 'Active'
+                                                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                                    : 'bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-slate-400'
+                                            }`}>
+                                                {item.status}
+                                            </span>
+                                        </td>
+                                        <td className="py-3 px-4 text-right">
+                                            <button
+                                                onClick={() => { setCurrentItem(item); setIsModalOpen(true); }}
+                                                className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors inline-flex items-center gap-1 text-xs font-semibold"
+                                            >
+                                                <Edit2 className="w-3.5 h-3.5" />
+                                                Edit
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+                                {filteredItems.length === 0 && (
+                                    <tr>
+                                        <td colSpan={8} className="text-center py-12 text-slate-400 italic">
+                                            No items found matching your search.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             )}
 
@@ -644,6 +889,49 @@ export const ItemMaster: React.FC = () => {
                                     <option value="ROLL">ROLL - Roll</option>
                                     <option value="BAG">BAG - Bag</option>
                                 </select>
+                            </div>
+                        </div>
+
+                        {/* Rate / Standard Cost & Current Stock Balance */}
+                        <div className="grid grid-cols-2 gap-4 p-3 bg-slate-50 dark:bg-zinc-800/50 rounded-xl border border-slate-200/80 dark:border-zinc-700/80">
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1">
+                                    Rate / Standard Cost (QAR) *
+                                </label>
+                                <div className="relative">
+                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">QAR</span>
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        placeholder="0.00"
+                                        className="w-full pl-12 pr-3 py-2 border border-slate-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-slate-900 dark:text-white font-semibold focus:ring-2 focus:ring-indigo-500"
+                                        value={currentItem.standard_cost ?? ''}
+                                        onChange={e => setCurrentItem({ ...currentItem, standard_cost: parseFloat(e.target.value) || 0 })}
+                                    />
+                                </div>
+                                <p className="text-[11px] text-slate-500 mt-1">Default purchase rate / unit cost for stock valuation</p>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1">
+                                    Stock Balance
+                                </label>
+                                <div className="flex items-center justify-between h-[42px] px-3 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg">
+                                    <div className="flex items-center gap-1.5">
+                                        <span className={`font-bold ${(currentItem.quantity_on_hand ?? 0) > 0 ? 'text-emerald-600 dark:text-emerald-400 text-base' : 'text-slate-500 dark:text-slate-400'}`}>
+                                            {Number(currentItem.quantity_on_hand ?? 0).toLocaleString()}
+                                        </span>
+                                        <span className="text-xs text-slate-500 font-medium">{currentItem.uom || 'PCS'}</span>
+                                    </div>
+                                    {currentItem.id && (currentItem.quantity_on_hand ?? 0) > 0 && (
+                                        <span className="text-xs text-slate-500 font-medium">
+                                            Val: QAR {((Number(currentItem.quantity_on_hand) || 0) * (Number(currentItem.standard_cost) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </span>
+                                    )}
+                                </div>
+                                <p className="text-[11px] text-slate-500 mt-1">
+                                    {currentItem.id ? 'Live total units on hand from stock transactions' : 'Opening balance can be entered via stock ledger'}
+                                </p>
                             </div>
                         </div>
 
@@ -862,6 +1150,7 @@ export const ItemMaster: React.FC = () => {
                                                 <th className="px-3 py-2 text-left">Name</th>
                                                 <th className="px-3 py-2 text-left">Category</th>
                                                 <th className="px-3 py-2 text-left">UOM</th>
+                                                <th className="px-3 py-2 text-right">Rate</th>
                                                 <th className="px-3 py-2 text-right">Weight</th>
                                             </tr>
                                         </thead>
@@ -872,6 +1161,7 @@ export const ItemMaster: React.FC = () => {
                                                     <td className="px-3 py-2">{row.name}</td>
                                                     <td className="px-3 py-2">{row.category || '-'}</td>
                                                     <td className="px-3 py-2">{row.uom || 'PCS'}</td>
+                                                    <td className="px-3 py-2 text-right font-medium">{row.standard_cost ? `QAR ${Number(row.standard_cost).toFixed(2)}` : '-'}</td>
                                                     <td className="px-3 py-2 text-right">{row.weight || '-'}</td>
                                                 </tr>
                                             ))}
