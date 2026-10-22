@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavig
 import { Analytics } from '@vercel/analytics/react';
 import { GlobalHeader } from './components/GlobalHeader';
 import { Dashboard } from './components/Dashboard';
+import { CEODashboard } from './components/dashboard/CEODashboard';
 import { Login } from './components/Login';
 import { Employees } from './components/modules/Employees';
 import { AttendanceHub } from './components/modules/AttendanceHub';
@@ -109,6 +110,7 @@ const AppContent: React.FC = () => {
   const getCurrentView = (): AppView => {
     const path = normalizedPath.substring(1).toLowerCase();
     if (path === '' || path === 'dashboard') return AppView.DASHBOARD;
+    if (path === 'ceo-dashboard') return AppView.CEO_DASHBOARD;
     if (path === 'employees') return AppView.EMPLOYEES;
     if (path === 'attendance') return AppView.ATTENDANCE;
     if (path === 'leave') return AppView.LEAVE;
@@ -165,6 +167,7 @@ const AppContent: React.FC = () => {
   // Define modules for Keep-Alive
   const KEEPALIVE_MODULES = [
     { path: '/', element: <Dashboard />, id: 'dashboard' },
+    { path: '/ceo-dashboard', element: <CEODashboard />, id: 'ceo_dashboard' },
     { path: '/organisation', element: <Organisation />, id: 'organisation' },
     { path: '/employees', element: <Employees />, id: 'employees' },
     { path: '/attendance', element: <AttendanceHub />, id: 'attendance' },

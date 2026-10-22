@@ -2,6 +2,7 @@ import { LucideIcon } from 'lucide-react';
 
 export enum AppView {
   DASHBOARD = 'DASHBOARD',
+  CEO_DASHBOARD = 'CEO_DASHBOARD',
   ORGANISATION = 'ORGANISATION',
   HRMS = 'HRMS',
   EMPLOYEES = 'EMPLOYEES',
