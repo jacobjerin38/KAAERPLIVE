@@ -249,6 +249,7 @@ export const ReportBuilder: React.FC<ReportBuilderProps> = ({ onBack, companyId,
         if (table === 'crm_deals' || table === 'crm_opportunities' || table === 'vw_crm_opportunities') return 'vw_crm_opportunities';
         if (table === 'crm_leads' || table === 'vw_crm_leads') return 'vw_crm_leads';
         if (table === 'customers' || table === 'crm_customers' || table === 'vw_crm_customers') return 'vw_crm_customers';
+        if (table === 'inventory_items' || table === 'vw_inventory_items') return 'inventory_items';
         return table;
     };
 
