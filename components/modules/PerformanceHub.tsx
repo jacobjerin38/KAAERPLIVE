@@ -14,10 +14,11 @@ import {
   AlertCircle,
   FileText
 } from 'lucide-react';
+import { EmployeeTargetIncentiveReport } from '../reports/EmployeeTargetIncentiveReport';
 
 export const PerformanceHub: React.FC = () => {
   const { user, currentCompanyId } = useAuth();
-  const [activeTab, setActiveTab] = useState<'goals' | 'reviews'>('goals');
+  const [activeTab, setActiveTab] = useState<'goals' | 'reviews' | 'targets'>('goals');
   
   // Data State
   const [goals, setGoals] = useState<any[]>([]);
@@ -228,6 +229,16 @@ export const PerformanceHub: React.FC = () => {
         >
           <Star className="w-4 h-4" /> Performance Reviews
         </button>
+        <button
+          onClick={() => setActiveTab('targets')}
+          className={`px-4 py-2.5 font-semibold text-sm transition-all border-b-2 -mb-px flex items-center gap-2 ${
+            activeTab === 'targets'
+              ? 'border-violet-500 text-violet-600 dark:text-violet-400'
+              : 'border-transparent text-slate-500 dark:text-zinc-400 hover:text-slate-700'
+          }`}
+        >
+          <Award className="w-4 h-4" /> Staff Targets & Incentives
+        </button>
       </div>
 
       {/* Goals / KPIs List */}
@@ -328,6 +339,13 @@ export const PerformanceHub: React.FC = () => {
               )}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Staff Targets & Incentives Tab */}
+      {activeTab === 'targets' && (
+        <div className="pt-2">
+          <EmployeeTargetIncentiveReport companyId={currentCompanyId || undefined} />
         </div>
       )}
 

@@ -46,6 +46,13 @@ import {
   CartesianGrid,
   Cell
 } from 'recharts';
+import {
+  fetchEmployeeTargetAchievementData,
+  TargetAchievementRecord,
+  AchievementSummary
+} from '../../lib/targetAchievementService';
+import { TargetManagement } from '../performance/TargetManagement';
+import { EmployeeTargetIncentiveReport } from '../reports/EmployeeTargetIncentiveReport';
 
 interface EmployeeTargetRecord {
   id?: string;
@@ -134,16 +141,12 @@ export const CEODashboard: React.FC = () => {
   const [targetStatusFilter, setTargetStatusFilter] = useState<'ALL' | 'ACHIEVED' | 'ON_TRACK' | 'IN_PROGRESS' | 'BEHIND' | 'NOT_SET'>('ALL');
   const [workOrderStatusFilter, setWorkOrderStatusFilter] = useState<'ALL' | 'Completed' | 'In Progress'>('ALL');
 
-  // Modal State for Updating Target (Arun Ihits Qatar request)
-  const [isTargetModalOpen, setIsTargetModalOpen] = useState(false);
-  const [editingEmployee, setEditingEmployee] = useState<ActiveEmployee | null>(null);
-  const [modalPeriod, setModalPeriod] = useState<'Monthly' | 'Yearly'>('Monthly');
-  const [modalYear, setModalYear] = useState<number>(new Date().getFullYear());
-  const [modalMonth, setModalMonth] = useState<number>(new Date().getMonth() + 1);
-  const [modalTargetAmount, setModalTargetAmount] = useState<string>('0');
-  const [modalAchievedAmount, setModalAchievedAmount] = useState<string>('0');
-  const [modalIncentiveRate, setModalIncentiveRate] = useState<string>('0');
-  const [savingTarget, setSavingTarget] = useState(false);
+  // Live Target & Achievement Engine State
+  const [targetAchievementRows, setTargetAchievementRows] = useState<TargetAchievementRecord[]>([]);
+  const [achievementSummary, setAchievementSummary] = useState<AchievementSummary | null>(null);
+  const [isTargetManagementOpen, setIsTargetManagementOpen] = useState(false);
+  const [preSelectedEmpId, setPreSelectedEmpId] = useState<string | undefined>(undefined);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const months = [
@@ -316,6 +319,22 @@ export const CEODashboard: React.FC = () => {
           console.warn('Financial RPC error:', rpcErr);
         }
       }
+
+      // 7. Fetch Live Verified Target & Achievement calculations from single source of truth
+      if (companyId) {
+        try {
+          const achData = await fetchEmployeeTargetAchievementData(
+            companyId,
+            selectedPeriod,
+            selectedYear,
+            selectedPeriod === 'Monthly' ? selectedMonth : undefined
+          );
+          setTargetAchievementRows(achData.rows);
+          setAchievementSummary(achData.summary);
+        } catch (achErr) {
+          console.error('Error fetching verified target achievement data:', achErr);
+        }
+      }
     } catch (err) {
       console.error('Error loading CEO dashboard:', err);
     } finally {
@@ -326,7 +345,7 @@ export const CEODashboard: React.FC = () => {
 
   useEffect(() => {
     loadCEODashboardData();
-  }, [currentCompanyId]);
+  }, [currentCompanyId, selectedPeriod, selectedYear, selectedMonth]);
 
   // Formatter for Currency
   const formatQAR = (val: number | string | undefined | null) => {
@@ -355,191 +374,40 @@ export const CEODashboard: React.FC = () => {
     return workOrders.reduce((sum, wo) => sum + (Number(wo.amount) || 0), 0);
   }, [workOrders]);
 
-  // Employee vs Target Mapping for selected period
-  const employeeTargetRows = useMemo(() => {
-    return employees.map(emp => {
-      // Find matching target for employee in selected period
-      const targetMatch = targets.find(t => {
-        if (t.employee_id !== emp.id) return false;
-        if (t.target_period !== selectedPeriod) return false;
-        if (Number(t.target_year) !== Number(selectedYear)) return false;
-        if (selectedPeriod === 'Monthly') {
-          return Number(t.target_period_val) === Number(selectedMonth);
-        }
-        return true;
-      });
-
-      const targetAmount = Number(targetMatch?.target_amount) || 0;
-      const achievedAmount = Number(targetMatch?.achieved_amount) || 0;
-      const incentiveRate = Number(targetMatch?.incentive_rate) || 0;
-      const commissionEarned = (achievedAmount * incentiveRate) / 100;
-
-      const completionPercentage = targetAmount > 0 ? Math.round((achievedAmount / targetAmount) * 100) : 0;
-      const variance = achievedAmount - targetAmount;
-
-      let statusBadge: 'ACHIEVED' | 'ON_TRACK' | 'IN_PROGRESS' | 'BEHIND' | 'NOT_SET' = 'NOT_SET';
-      if (targetAmount > 0) {
-        if (completionPercentage >= 100) statusBadge = 'ACHIEVED';
-        else if (completionPercentage >= 75) statusBadge = 'ON_TRACK';
-        else if (completionPercentage >= 50) statusBadge = 'IN_PROGRESS';
-        else statusBadge = 'BEHIND';
-      }
-
-      // Also calculate related Work Orders delivered by this employee
-      const empWorkOrders = workOrders.filter(w => w.employee_id === emp.id || w.assigned_to === emp.id);
-      const empWoTotal = empWorkOrders.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
-      const empWoCompletedCount = empWorkOrders.filter(w => w.status?.toLowerCase() === 'completed').length;
-
-      return {
-        employee: emp,
-        targetRecord: targetMatch,
-        period: selectedPeriod,
-        year: selectedYear,
-        month: selectedMonth,
-        targetAmount,
-        achievedAmount,
-        variance,
-        completionPercentage,
-        statusBadge,
-        incentiveRate,
-        commissionEarned,
-        empWoTotal,
-        empWoCount: empWorkOrders.length,
-        empWoCompletedCount
-      };
-    });
-  }, [employees, targets, selectedPeriod, selectedYear, selectedMonth, workOrders]);
-
-  // Filtered rows based on search and status
+  // Filtered rows based on search and status from verified live transactions
   const filteredEmployeeTargets = useMemo(() => {
-    return employeeTargetRows.filter(row => {
+    return targetAchievementRows.filter(row => {
       const matchesSearch =
-        row.employee.name.toLowerCase().includes(searchEmployeeQuery.toLowerCase()) ||
-        row.employee.employee_code?.toLowerCase().includes(searchEmployeeQuery.toLowerCase()) ||
-        row.employee.designation?.toLowerCase().includes(searchEmployeeQuery.toLowerCase()) ||
-        row.employee.department?.toLowerCase().includes(searchEmployeeQuery.toLowerCase());
+        row.employeeName.toLowerCase().includes(searchEmployeeQuery.toLowerCase()) ||
+        row.employeeCode.toLowerCase().includes(searchEmployeeQuery.toLowerCase()) ||
+        row.designation.toLowerCase().includes(searchEmployeeQuery.toLowerCase()) ||
+        row.department.toLowerCase().includes(searchEmployeeQuery.toLowerCase());
 
       if (!matchesSearch) return false;
 
       if (targetStatusFilter === 'ALL') return true;
+      if (targetStatusFilter === 'NOT_SET') return !row.hasTargetAssigned || row.statusBadge === 'NO_TARGET';
       return row.statusBadge === targetStatusFilter;
     });
-  }, [employeeTargetRows, searchEmployeeQuery, targetStatusFilter]);
+  }, [targetAchievementRows, searchEmployeeQuery, targetStatusFilter]);
 
-  // Staff Achievement Leaderboard
+  // Staff Achievement Leaderboard sorted by actual live achievement
   const staffLeaderboard = useMemo(() => {
-    const list = [...employeeTargetRows];
-    // Sort primarily by achieved amount, then by work orders delivered
+    const list = [...targetAchievementRows];
     list.sort((a, b) => {
-      if (b.achievedAmount !== a.achievedAmount) {
-        return b.achievedAmount - a.achievedAmount;
+      if (b.actualAchievement !== a.actualAchievement) {
+        return b.actualAchievement - a.actualAchievement;
       }
-      return b.empWoTotal - a.empWoTotal;
+      return b.workOrdersValue - a.workOrdersValue;
     });
     return list;
-  }, [employeeTargetRows]);
+  }, [targetAchievementRows]);
 
-  // Handle Opening Target Modal for an employee
-  const handleOpenTargetModal = (emp?: ActiveEmployee) => {
-    const selectedEmp = emp || employees[0];
-    if (!selectedEmp) return;
-
-    setEditingEmployee(selectedEmp);
-    setModalPeriod(selectedPeriod);
-    setModalYear(selectedYear);
-    setModalMonth(selectedMonth);
-
-    // Look for existing target record
-    const existing = targets.find(t => {
-      if (t.employee_id !== selectedEmp.id) return false;
-      if (t.target_period !== selectedPeriod) return false;
-      if (Number(t.target_year) !== Number(selectedYear)) return false;
-      if (selectedPeriod === 'Monthly') {
-        return Number(t.target_period_val) === Number(selectedMonth);
-      }
-      return true;
-    });
-
-    if (existing) {
-      setModalTargetAmount(String(existing.target_amount || 0));
-      setModalAchievedAmount(String(existing.achieved_amount || 0));
-      setModalIncentiveRate(String(existing.incentive_rate || 0));
-    } else {
-      setModalTargetAmount('0');
-      setModalAchievedAmount('0');
-      setModalIncentiveRate('0');
-    }
-
-    setIsTargetModalOpen(true);
+  // Open Dedicated Target Management Form
+  const handleOpenTargetManagement = (empId?: string) => {
+    setPreSelectedEmpId(empId);
+    setIsTargetManagementOpen(true);
   };
-
-  // Save Target using RPC (Arun Ihits Qatar instruction)
-  const handleSaveTarget = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingEmployee || !currentCompanyId) {
-      showToast('Error: Company or Employee not selected');
-      return;
-    }
-
-    setSavingTarget(true);
-    try {
-      const targetAmt = parseFloat(modalTargetAmount) || 0;
-      const achievedAmt = parseFloat(modalAchievedAmount) || 0;
-      const rate = parseFloat(modalIncentiveRate) || 0;
-      const periodVal = modalPeriod === 'Monthly' ? modalMonth : 0;
-
-      const { data, error } = await supabase.rpc('rpc_upsert_employee_target', {
-        p_company_id: currentCompanyId,
-        p_employee_id: editingEmployee.id,
-        p_target_period: modalPeriod,
-        p_target_year: modalYear,
-        p_target_period_val: periodVal,
-        p_target_amount: targetAmt,
-        p_achieved_amount: achievedAmt,
-        p_incentive_rate: rate
-      });
-
-      if (error) {
-        console.error('Error saving target via RPC:', error);
-        // Fallback to direct upsert
-        const { error: upsertError } = await supabase
-          .from('employee_targets')
-          .upsert(
-            {
-              company_id: currentCompanyId,
-              employee_id: editingEmployee.id,
-              target_period: modalPeriod,
-              target_year: modalYear,
-              target_period_val: periodVal,
-              target_amount: targetAmt,
-              achieved_amount: achievedAmt,
-              incentive_rate: rate
-            },
-            {
-              onConflict: 'company_id,employee_id,target_period,target_year,target_period_val'
-            }
-          );
-        if (upsertError) throw upsertError;
-      }
-
-      showToast(`Target updated successfully for ${editingEmployee.name}!`);
-      setIsTargetModalOpen(false);
-      // Reload targets
-      await loadCEODashboardData();
-    } catch (err: any) {
-      console.error('Failed to save target:', err);
-      showToast(`Failed to update target: ${err.message || 'Unknown error'}`);
-    } finally {
-      setSavingTarget(false);
-    }
-  };
-
-  // Preview computations inside modal
-  const modalTargetNum = parseFloat(modalTargetAmount) || 0;
-  const modalAchievedNum = parseFloat(modalAchievedAmount) || 0;
-  const modalRateNum = parseFloat(modalIncentiveRate) || 0;
-  const modalCompletionPct = modalTargetNum > 0 ? Math.round((modalAchievedNum / modalTargetNum) * 100) : 0;
-  const modalCommission = (modalAchievedNum * modalRateNum) / 100;
 
   // Access Restricted Guard
   if (!canAccess) {
@@ -663,13 +531,24 @@ export const CEODashboard: React.FC = () => {
               <option value={2024}>2024</option>
             </select>
 
-            {/* Set/Update Target Button */}
+            {/* Target Management Form Button */}
             <button
-              onClick={() => handleOpenTargetModal()}
+              onClick={() => handleOpenTargetManagement()}
               className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white text-xs font-bold shadow-lg shadow-orange-500/20 active:scale-95 transition-all"
+              title="Open dedicated Target Management Form"
             >
               <Target className="w-4 h-4" />
-              <span>Update Targets</span>
+              <span>Target Management</span>
+            </button>
+
+            {/* Consolidated Report Button */}
+            <button
+              onClick={() => setIsReportModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-lg shadow-indigo-500/20 active:scale-95 transition-all"
+              title="View full Employee vs Target vs Incentive Report"
+            >
+              <FileText className="w-4 h-4" />
+              <span>Consolidated Report</span>
             </button>
 
             {/* Refresh Live Button */}
@@ -1054,7 +933,7 @@ export const CEODashboard: React.FC = () => {
             </div>
 
             <button
-              onClick={() => handleOpenTargetModal()}
+              onClick={() => handleOpenTargetManagement()}
               className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-800 dark:text-zinc-200 text-xs font-bold transition-all"
             >
               <Plus className="w-3.5 h-3.5" />
@@ -1073,15 +952,15 @@ export const CEODashboard: React.FC = () => {
               ];
 
               return (
-                <div key={item.employee.id} className={`p-5 rounded-2xl border ${borderColors[idx]} relative`}>
+                <div key={item.employeeId} className={`p-5 rounded-2xl border ${borderColors[idx]} relative`}>
                   <div className="flex items-start justify-between">
                     <span className="text-xs font-black tracking-wider text-amber-600 dark:text-amber-400 uppercase">
                       {medals[idx]}
                     </span>
                     <button
-                      onClick={() => handleOpenTargetModal(item.employee)}
+                      onClick={() => handleOpenTargetManagement(item.employeeId)}
                       className="text-xs font-semibold text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors p-1"
-                      title="Update target"
+                      title="Manage target"
                     >
                       <Edit3 className="w-3.5 h-3.5" />
                     </button>
@@ -1089,26 +968,28 @@ export const CEODashboard: React.FC = () => {
 
                   <div className="mt-3 flex items-center gap-3">
                     <div className="w-11 h-11 rounded-2xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-black text-sm uppercase">
-                      {item.employee.name.substring(0, 2)}
+                      {item.employeeName.substring(0, 2)}
                     </div>
                     <div>
                       <h4 className="text-sm font-bold text-slate-900 dark:text-white line-clamp-1">
-                        {item.employee.name}
+                        {item.employeeName}
                       </h4>
                       <p className="text-[11px] text-slate-500 dark:text-zinc-400 line-clamp-1">
-                        {item.employee.designation || 'Staff'} • {item.employee.department}
+                        {item.designation || 'Staff'} • {item.department}
                       </p>
                     </div>
                   </div>
 
                   <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-zinc-700/60 grid grid-cols-2 gap-2 text-xs">
                     <div>
-                      <span className="text-[10px] text-slate-400 uppercase font-semibold">Target Achieved</span>
-                      <p className="font-bold text-slate-900 dark:text-white">{formatQAR(item.achievedAmount)}</p>
+                      <span className="text-[10px] text-slate-400 uppercase font-semibold">Live Achievement</span>
+                      <p className="font-bold text-slate-900 dark:text-white">{formatQAR(item.actualAchievement)}</p>
                     </div>
                     <div>
-                      <span className="text-[10px] text-slate-400 uppercase font-semibold">Work Orders</span>
-                      <p className="font-bold text-emerald-600 dark:text-emerald-400">{formatQAR(item.empWoTotal)}</p>
+                      <span className="text-[10px] text-slate-400 uppercase font-semibold">Assigned Target</span>
+                      <p className="font-bold text-indigo-600 dark:text-indigo-400">
+                        {item.hasTargetAssigned && item.targetAmount !== null ? formatQAR(item.targetAmount) : 'Not Set'}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -1119,9 +1000,6 @@ export const CEODashboard: React.FC = () => {
 
         {/* ========================================================= */}
         {/* ROW 5: EMPLOYEE VS TARGET (MONTHLY & YEARLY)              */}
-        {/* CLIENT SPECIFIC REQUIREMENT: ARUN IHITS QATAR             */}
-        {/* "And monthly target completion status and amount need to  */}
-        {/*  update employee wise"                                    */}
         {/* ========================================================= */}
         <div className="p-6 md:p-8 rounded-3xl bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 shadow-xl shadow-slate-200/40 dark:shadow-black/40">
           <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
@@ -1135,7 +1013,7 @@ export const CEODashboard: React.FC = () => {
                     Employee vs Target ({selectedPeriod} View - {selectedPeriod === 'Monthly' ? months[selectedMonth - 1]?.name : ''} {selectedYear})
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-zinc-400">
-                    Real-time completion percentage, achieved amounts, and interactive employee-wise target management.
+                    Real-time completion percentage, verified actual achievements, and integrated target management.
                   </p>
                 </div>
               </div>
@@ -1171,14 +1049,63 @@ export const CEODashboard: React.FC = () => {
 
               {/* Set New Target Button */}
               <button
-                onClick={() => handleOpenTargetModal()}
+                onClick={() => handleOpenTargetManagement()}
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-md shadow-indigo-500/20"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>+ Set Target</span>
               </button>
+
+              {/* Open Consolidated Report Button */}
+              <button
+                onClick={() => setIsReportModalOpen(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-300 text-xs font-bold transition-all border border-slate-200 dark:border-zinc-700"
+                title="Open full audit report"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Audit Report</span>
+              </button>
             </div>
           </div>
+
+          {/* Quick Target KPI Summary Strip */}
+          {achievementSummary && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 p-4 rounded-2xl bg-slate-50 dark:bg-zinc-800/50 border border-slate-200/80 dark:border-zinc-800">
+              <div>
+                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Total Assigned Target</span>
+                <p className="text-lg font-black text-slate-900 dark:text-white mt-0.5">
+                  {formatQAR(achievementSummary.totalTarget)}
+                </p>
+                <span className="text-[10px] text-slate-500">
+                  {achievementSummary.employeesWithTargetCount} of {achievementSummary.totalActiveEmployeesCount} staff assigned
+                </span>
+              </div>
+
+              <div>
+                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Verified Live Achievement</span>
+                <p className="text-lg font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
+                  {formatQAR(achievementSummary.totalActualAchievement)}
+                </p>
+                <span className="text-[10px] text-slate-500">From actual client transactions</span>
+              </div>
+
+              <div>
+                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Target Completion Rate</span>
+                <p className="text-lg font-black text-indigo-600 dark:text-indigo-400 mt-0.5">
+                  {achievementSummary.overallCompletionPercentage !== null ? `${achievementSummary.overallCompletionPercentage}%` : '—'}
+                </p>
+                <span className="text-[10px] text-slate-500">Company-wide completion</span>
+              </div>
+
+              <div>
+                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Calculated Incentives</span>
+                <p className="text-lg font-black text-purple-600 dark:text-purple-400 mt-0.5">
+                  {formatQAR(achievementSummary.totalCalculatedIncentive)}
+                </p>
+                <span className="text-[10px] text-slate-500">Earned commission payable</span>
+              </div>
+            </div>
+          )}
 
           {/* Table of Employee Targets */}
           <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-zinc-800">
@@ -1199,10 +1126,10 @@ export const CEODashboard: React.FC = () => {
                   filteredEmployeeTargets.map(row => {
                     const pct = row.completionPercentage;
                     let badgeClass = 'bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-400';
-                    let badgeLabel = 'Not Set';
+                    let badgeLabel = '— Not Set';
                     let progressColor = 'bg-slate-400';
 
-                    if (row.targetAmount > 0) {
+                    if (row.hasTargetAssigned && pct !== null) {
                       if (pct >= 100) {
                         badgeClass =
                           'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800';
@@ -1228,21 +1155,21 @@ export const CEODashboard: React.FC = () => {
 
                     return (
                       <tr
-                        key={row.employee.id}
+                        key={row.employeeId}
                         className="hover:bg-slate-50/70 dark:hover:bg-zinc-800/40 transition-colors"
                       >
                         {/* Employee Name & Code */}
                         <td className="py-3.5 px-4">
                           <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-xs uppercase flex-shrink-0">
-                              {row.employee.name.substring(0, 2)}
+                              {row.employeeName.substring(0, 2)}
                             </div>
                             <div>
                               <p className="font-bold text-slate-900 dark:text-white leading-tight">
-                                {row.employee.name}
+                                {row.employeeName}
                               </p>
                               <span className="text-[10px] text-slate-400 font-mono">
-                                {row.employee.employee_code}
+                                {row.employeeCode}
                               </span>
                             </div>
                           </div>
@@ -1250,29 +1177,27 @@ export const CEODashboard: React.FC = () => {
 
                         {/* Department & Designation */}
                         <td className="py-3.5 px-4 text-slate-600 dark:text-zinc-300">
-                          <p className="font-semibold">{row.employee.designation || 'Staff'}</p>
+                          <p className="font-semibold">{row.designation || 'Staff'}</p>
                           <span className="text-[11px] text-slate-400 dark:text-zinc-500">
-                            {row.employee.department}
+                            {row.department}
                           </span>
                         </td>
 
                         {/* Target Amount */}
                         <td className="py-3.5 px-4 text-right font-bold text-slate-900 dark:text-white">
-                          {formatQAR(row.targetAmount)}
+                          {row.hasTargetAssigned && row.targetAmount !== null ? (
+                            formatQAR(row.targetAmount)
+                          ) : (
+                            <span className="text-slate-400 font-normal italic">— Not Set</span>
+                          )}
                         </td>
 
                         {/* Achieved Amount */}
                         <td className="py-3.5 px-4 text-right">
-                          <p className="font-black text-slate-900 dark:text-white">{formatQAR(row.achievedAmount)}</p>
-                          {row.targetAmount > 0 && (
-                            <span
-                              className={`text-[10px] font-bold ${
-                                row.variance >= 0 ? 'text-emerald-600' : 'text-slate-400'
-                              }`}
-                            >
-                              {row.variance >= 0 ? `+${formatQAR(row.variance)}` : `${formatQAR(row.variance)}`}
-                            </span>
-                          )}
+                          <p className="font-black text-slate-900 dark:text-white">{formatQAR(row.actualAchievement)}</p>
+                          <div className="text-[10px] text-slate-400">
+                            {row.workOrdersCount} WOs{row.wonOpportunitiesCount > 0 ? `, ${row.wonOpportunitiesCount} Won` : ''}
+                          </div>
                         </td>
 
                         {/* Completion Status & Progress Bar */}
@@ -1283,13 +1208,13 @@ export const CEODashboard: React.FC = () => {
                                 {badgeLabel}
                               </span>
                               <span className="font-extrabold text-[11px] text-slate-700 dark:text-zinc-300">
-                                {pct}%
+                                {pct !== null ? `${pct}%` : '—'}
                               </span>
                             </div>
                             <div className="w-full bg-slate-100 dark:bg-zinc-800 h-2 rounded-full overflow-hidden">
                               <div
                                 className={`h-full ${progressColor} transition-all duration-500`}
-                                style={{ width: `${Math.min(pct, 100)}%` }}
+                                style={{ width: `${Math.min(pct || 0, 100)}%` }}
                               />
                             </div>
                           </div>
@@ -1297,21 +1222,23 @@ export const CEODashboard: React.FC = () => {
 
                         {/* Commission */}
                         <td className="py-3.5 px-4 text-right">
-                          <p className="font-bold text-slate-900 dark:text-white">{formatQAR(row.commissionEarned)}</p>
+                          <p className="font-bold text-slate-900 dark:text-white">
+                            {row.calculatedIncentive > 0 ? formatQAR(row.calculatedIncentive) : '—'}
+                          </p>
                           {row.incentiveRate > 0 && (
                             <span className="text-[10px] text-slate-400">{row.incentiveRate}% rate</span>
                           )}
                         </td>
 
-                        {/* Action: Update Employee Target */}
+                        {/* Action: Manage Target in Dedicated Form */}
                         <td className="py-3.5 px-4 text-center">
                           <button
-                            onClick={() => handleOpenTargetModal(row.employee)}
+                            onClick={() => handleOpenTargetManagement(row.employeeId)}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-indigo-50 dark:bg-zinc-800 dark:hover:bg-indigo-950/60 text-slate-700 hover:text-indigo-600 dark:text-zinc-300 dark:hover:text-indigo-400 border border-slate-200 dark:border-zinc-700 text-xs font-bold transition-all shadow-sm"
-                            title="Update monthly target, amount and status"
+                            title="Manage target in dedicated form"
                           >
-                            <Edit3 className="w-3.5 h-3.5" />
-                            <span>Update</span>
+                            <Target className="w-3.5 h-3.5 text-indigo-500" />
+                            <span>Manage Target</span>
                           </button>
                         </td>
                       </tr>
@@ -1435,234 +1362,54 @@ export const CEODashboard: React.FC = () => {
       </div>
 
       {/* ========================================================= */}
-      {/* INTERACTIVE MODAL: UPDATE EMPLOYEE TARGET & MONTHLY STATUS */}
-      {/* FULFILLS CLIENT REQUIREMENT: ARUN IHITS QATAR             */}
+      {/* DEDICATED TARGET MANAGEMENT FORM MODAL                   */}
       {/* ========================================================= */}
-      {isTargetModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-lg bg-white dark:bg-zinc-900 rounded-3xl border border-slate-200 dark:border-zinc-800 shadow-2xl p-6 md:p-8 animate-scale-in">
-            {/* Modal Header */}
-            <div className="flex items-start justify-between pb-4 border-b border-slate-100 dark:border-zinc-800">
+      {isTargetManagementOpen && (
+        <TargetManagement
+          isOpen={isTargetManagementOpen}
+          onClose={() => {
+            setIsTargetManagementOpen(false);
+            setPreSelectedEmpId(undefined);
+          }}
+          preSelectedEmployeeId={preSelectedEmpId}
+          onTargetSaved={loadCEODashboardData}
+        />
+      )}
+
+      {/* ========================================================= */}
+      {/* CONSOLIDATED EMPLOYEE VS TARGET VS INCENTIVE REPORT MODAL */}
+      {/* ========================================================= */}
+      {isReportModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-7xl max-h-[92vh] bg-white dark:bg-zinc-900 rounded-3xl border border-slate-200 dark:border-zinc-800 shadow-2xl overflow-y-auto animate-scale-in p-6">
+            <div className="flex justify-between items-center mb-6 pb-4 border-b border-slate-100 dark:border-zinc-800">
               <div className="flex items-center gap-3">
                 <div className="p-3 rounded-2xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
-                  <Target className="w-6 h-6" />
+                  <FileText className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-black text-slate-900 dark:text-white">
-                    Update Employee Target & Status
-                  </h3>
+                  <h2 className="text-xl font-black text-slate-900 dark:text-white">
+                    Consolidated Target, Incentive & Achievement Report
+                  </h2>
                   <p className="text-xs text-slate-500 dark:text-zinc-400">
-                    Set monthly/yearly target amount and track real-time completion.
+                    Audited employee performance from verified live database transactions
                   </p>
                 </div>
               </div>
               <button
-                onClick={() => setIsTargetModalOpen(false)}
+                onClick={() => setIsReportModalOpen(false)}
                 className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
-
-            <form onSubmit={handleSaveTarget} className="mt-5 space-y-4">
-              {/* Select Employee */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-zinc-300 uppercase tracking-wider mb-1.5">
-                  Select Employee
-                </label>
-                <select
-                  value={editingEmployee?.id || ''}
-                  onChange={e => {
-                    const emp = employees.find(em => em.id === e.target.value);
-                    if (emp) {
-                      setEditingEmployee(emp);
-                      const ex = targets.find(t => {
-                        if (t.employee_id !== emp.id) return false;
-                        if (t.target_period !== modalPeriod) return false;
-                        if (Number(t.target_year) !== Number(modalYear)) return false;
-                        if (modalPeriod === 'Monthly') return Number(t.target_period_val) === Number(modalMonth);
-                        return true;
-                      });
-                      if (ex) {
-                        setModalTargetAmount(String(ex.target_amount || 0));
-                        setModalAchievedAmount(String(ex.achieved_amount || 0));
-                        setModalIncentiveRate(String(ex.incentive_rate || 0));
-                      } else {
-                        setModalTargetAmount('0');
-                        setModalAchievedAmount('0');
-                        setModalIncentiveRate('0');
-                      }
-                    }
-                  }}
-                  className="w-full p-3 rounded-2xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                >
-                  {employees.map(emp => (
-                    <option key={emp.id} value={emp.id}>
-                      {emp.name} ({emp.employee_code}) - {emp.designation || 'Staff'}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Target Period & Year/Month Selector */}
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-zinc-300 uppercase tracking-wider mb-1.5">
-                    Period
-                  </label>
-                  <select
-                    value={modalPeriod}
-                    onChange={e => setModalPeriod(e.target.value as any)}
-                    className="w-full p-3 rounded-2xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="Monthly">Monthly</option>
-                    <option value="Yearly">Yearly</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-zinc-300 uppercase tracking-wider mb-1.5">
-                    Year
-                  </label>
-                  <select
-                    value={modalYear}
-                    onChange={e => setModalYear(Number(e.target.value))}
-                    className="w-full p-3 rounded-2xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value={2026}>2026</option>
-                    <option value={2025}>2025</option>
-                    <option value={2024}>2024</option>
-                  </select>
-                </div>
-
-                {modalPeriod === 'Monthly' && (
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 dark:text-zinc-300 uppercase tracking-wider mb-1.5">
-                      Month
-                    </label>
-                    <select
-                      value={modalMonth}
-                      onChange={e => setModalMonth(Number(e.target.value))}
-                      className="w-full p-3 rounded-2xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    >
-                      {months.map(m => (
-                        <option key={m.val} value={m.val}>
-                          {m.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-              </div>
-
-              {/* Target Amount & Achieved Amount */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-zinc-300 uppercase tracking-wider mb-1.5">
-                    Target Amount (QAR)
-                  </label>
-                  <input
-                    type="number"
-                    step="any"
-                    value={modalTargetAmount}
-                    onChange={e => setModalTargetAmount(e.target.value)}
-                    required
-                    className="w-full p-3 rounded-2xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-xs font-black text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-zinc-300 uppercase tracking-wider mb-1.5">
-                    Achieved Amount (QAR)
-                  </label>
-                  <input
-                    type="number"
-                    step="any"
-                    value={modalAchievedAmount}
-                    onChange={e => setModalAchievedAmount(e.target.value)}
-                    required
-                    className="w-full p-3 rounded-2xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-xs font-black text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
-              </div>
-
-              {/* Commission Rate (%) */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-zinc-300 uppercase tracking-wider mb-1.5">
-                  Incentive / Commission Rate (%)
-                </label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={modalIncentiveRate}
-                  onChange={e => setModalIncentiveRate(e.target.value)}
-                  className="w-full p-3 rounded-2xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-xs font-black text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="e.g. 2.5"
-                />
-              </div>
-
-              {/* Real-time Computed Preview */}
-              <div className="p-4 rounded-2xl bg-slate-100 dark:bg-zinc-800/60 border border-slate-200/80 dark:border-zinc-700/80 space-y-2">
-                <span className="text-[11px] font-black uppercase text-slate-400 tracking-wider">
-                  Live Status Preview
-                </span>
-                <div className="grid grid-cols-3 gap-2 text-xs">
-                  <div>
-                    <span className="text-[10px] text-slate-500 block">Completion Rate</span>
-                    <span className="font-extrabold text-sm text-indigo-600 dark:text-indigo-400">
-                      {modalCompletionPct}%
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-500 block">Status Pill</span>
-                    <span
-                      className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                        modalCompletionPct >= 100
-                          ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400'
-                          : modalCompletionPct >= 75
-                          ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400'
-                          : modalCompletionPct >= 50
-                          ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400'
-                          : 'bg-rose-500/20 text-rose-600 dark:text-rose-400'
-                      }`}
-                    >
-                      {modalCompletionPct >= 100
-                        ? '🏆 Achieved'
-                        : modalCompletionPct >= 75
-                        ? '⚡ On Track'
-                        : modalCompletionPct >= 50
-                        ? '⏳ In Progress'
-                        : '⚠️ Behind'}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-500 block">Commission</span>
-                    <span className="font-extrabold text-sm text-slate-900 dark:text-white">
-                      {formatQAR(modalCommission)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex items-center justify-end gap-3 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setIsTargetModalOpen(false)}
-                  className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 text-xs font-bold hover:bg-slate-200 dark:hover:bg-zinc-700 transition-all"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={savingTarget}
-                  className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white text-xs font-bold shadow-lg shadow-indigo-500/20 active:scale-95 transition-all disabled:opacity-50"
-                >
-                  <Save className="w-4 h-4" />
-                  <span>{savingTarget ? 'Saving...' : 'Save & Sync Target'}</span>
-                </button>
-              </div>
-            </form>
+            <EmployeeTargetIncentiveReport
+              companyId={currentCompanyId || undefined}
+              onOpenTargetManagement={empId => {
+                setPreSelectedEmpId(empId);
+                setIsTargetManagementOpen(true);
+              }}
+            />
           </div>
         </div>
       )}
