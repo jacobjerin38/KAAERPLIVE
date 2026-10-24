@@ -3812,6 +3812,20 @@ export const Organisation: React.FC = () => {
                         onResetPassword={async (user: AppUser) => {
                             if (!confirm(`Reset password for "${user.name}" (${user.email}) to default (654321)?`)) return;
                             try {
+                                // 1. Try PostgreSQL RPC first
+                                const { data: rpcData, error: rpcError } = await (supabase.rpc as any)('admin_reset_user_password', {
+                                    p_user_id: user.id,
+                                    p_new_password: '654321'
+                                });
+
+                                if (!rpcError) {
+                                    alert(`Password for ${user.name} has been reset to 654321 successfully.`);
+                                    return;
+                                }
+
+                                console.warn('Database RPC failed, attempting edge function fallback:', rpcError);
+
+                                // 2. Fallback to Supabase Edge Function
                                 const { data: { session } } = await supabase.auth.getSession();
                                 const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/reset-user-password`, {
                                     method: 'POST',
@@ -3819,13 +3833,13 @@ export const Organisation: React.FC = () => {
                                         'Content-Type': 'application/json',
                                         'Authorization': `Bearer ${session?.access_token}`,
                                     },
-                                    body: JSON.stringify({ user_id: user.id }),
+                                    body: JSON.stringify({ user_id: user.id, new_password: '654321' }),
                                 });
                                 const result = await res.json();
                                 if (res.ok) {
-                                    alert(`Password for ${user.name} has been reset to 654321.`);
+                                    alert(`Password for ${user.name} has been reset to 654321 successfully.`);
                                 } else {
-                                    alert(`Error: ${result.error || 'Failed to reset password'}`);
+                                    alert(`Error: ${result.error || rpcError.message || 'Failed to reset password'}`);
                                 }
                             } catch (err: any) {
                                 alert(`Error: ${err.message}`);
