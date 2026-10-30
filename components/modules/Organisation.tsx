@@ -3818,31 +3818,28 @@ export const Organisation: React.FC = () => {
                                     p_new_password: '654321'
                                 });
 
-                                if (!rpcError) {
+                                if (!rpcError && (rpcData?.success || rpcData?.status === 'success' || rpcData === true || !rpcData?.error)) {
                                     alert(`Password for ${user.name} has been reset to 654321 successfully.`);
                                     return;
                                 }
 
                                 console.warn('Database RPC failed, attempting edge function fallback:', rpcError);
 
-                                // 2. Fallback to Supabase Edge Function
-                                const { data: { session } } = await supabase.auth.getSession();
-                                const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/reset-user-password`, {
-                                    method: 'POST',
-                                    headers: {
-                                        'Content-Type': 'application/json',
-                                        'Authorization': `Bearer ${session?.access_token}`,
-                                    },
-                                    body: JSON.stringify({ user_id: user.id, new_password: '654321' }),
+                                // 2. Fallback to Supabase Edge Function via official SDK invoke
+                                const { data: funcData, error: funcError } = await supabase.functions.invoke('reset-user-password', {
+                                    body: { user_id: user.id, new_password: '654321' }
                                 });
-                                const result = await res.json();
-                                if (res.ok) {
+
+                                if (!funcError && (funcData?.success || !funcData?.error)) {
                                     alert(`Password for ${user.name} has been reset to 654321 successfully.`);
-                                } else {
-                                    alert(`Error: ${result.error || rpcError.message || 'Failed to reset password'}`);
+                                    return;
                                 }
+
+                                const failureReason = funcError?.message || funcData?.error || rpcError?.message || 'Failed to reset password';
+                                alert(`Error: ${failureReason}`);
                             } catch (err: any) {
-                                alert(`Error: ${err.message}`);
+                                console.error('Password reset error:', err);
+                                alert(`Error: ${err.message || 'Failed to communicate with authentication service.'}`);
                             }
                         }}
                         onDeleteUser={handleDeleteUser}

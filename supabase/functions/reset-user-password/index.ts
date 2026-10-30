@@ -45,7 +45,7 @@ serve(async (req) => {
       })
     }
 
-    // 3. Verify Caller is Admin
+    // 3. Verify Caller is Admin or has user management privileges
     const { data: callerProfile } = await supabaseAdmin
       .from('profiles')
       .select('id, role, company_id')
@@ -53,7 +53,18 @@ serve(async (req) => {
       .maybeSingle()
 
     const roleStr = (callerProfile?.role || '').toLowerCase()
-    const isAllowed = ['admin', 'super admin', 'superadmin', 'managing director', 'ceo'].includes(roleStr)
+    let isAllowed = ['admin', 'super admin', 'superadmin', 'managing director', 'ceo', 'senior administrative officer'].includes(roleStr)
+
+    if (!isAllowed) {
+      const { data: userPerm } = await supabaseAdmin
+        .from('user_permissions')
+        .select('id')
+        .eq('user_id', callerUser.id)
+        .in('permission', ['org.users.manage', 'org.structure.view', '*'])
+        .eq('granted', true)
+        .maybeSingle()
+      if (userPerm) isAllowed = true
+    }
 
     if (!isAllowed) {
       return new Response(JSON.stringify({ error: 'Forbidden: Only administrators can reset passwords' }), {
