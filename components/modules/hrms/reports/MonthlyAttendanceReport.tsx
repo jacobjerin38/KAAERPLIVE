@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../../../lib/supabase';
 import { useAuth } from '../../../../contexts/AuthContext';
 import {
-    Calendar, Download, Search, Loader2, ChevronRight, ChevronDown,
+    Calendar, Download, Search, Loader2, ChevronRight, ChevronLeft, ChevronDown,
     Printer, Filter, RefreshCw, Users, Clock, AlertTriangle, CheckCircle2,
     XCircle, Award, FileSpreadsheet, Building2, MapPin, Layers
 } from 'lucide-react';
@@ -46,6 +46,52 @@ export const MonthlyAttendanceReport: React.FC = () => {
     }, [currentCompanyId, selectedMonth, selectedDept, selectedLocation, selectedShift]);
 
     const isValidMonthFormat = (val: string) => /^\d{4}-(0[1-9]|1[0-2])$/.test(val || '');
+    const monthsList = [
+        { value: '01', label: 'January' },
+        { value: '02', label: 'February' },
+        { value: '03', label: 'March' },
+        { value: '04', label: 'April' },
+        { value: '05', label: 'May' },
+        { value: '06', label: 'June' },
+        { value: '07', label: 'July' },
+        { value: '08', label: 'August' },
+        { value: '09', label: 'September' },
+        { value: '10', label: 'October' },
+        { value: '11', label: 'November' },
+        { value: '12', label: 'December' }
+    ];
+
+    const yearsList = [2023, 2024, 2025, 2026, 2027, 2028, 2029, 2030];
+
+    const handlePrevMonth = () => {
+        if (!selectedMonth || !isValidMonthFormat(selectedMonth)) return;
+        const [y, m] = selectedMonth.split('-').map(Number);
+        const prev = new Date(y, m - 2, 1);
+        setSelectedMonth(`${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`);
+    };
+
+    const handleNextMonth = () => {
+        if (!selectedMonth || !isValidMonthFormat(selectedMonth)) return;
+        const [y, m] = selectedMonth.split('-').map(Number);
+        const next = new Date(y, m, 1);
+        setSelectedMonth(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`);
+    };
+
+    const handleMonthSelect = (m: string) => {
+        const [y] = (selectedMonth || '2026-11').split('-');
+        setSelectedMonth(`${y}-${m}`);
+    };
+
+    const handleYearSelect = (y: string) => {
+        const [, m] = (selectedMonth || '2026-11').split('-');
+        setSelectedMonth(`${y}-${m}`);
+    };
+
+    const handleSetCurrentMonth = () => {
+        const now = new Date();
+        setSelectedMonth(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
+    };
+
 
     const fetchMasters = async () => {
         try {
@@ -64,7 +110,7 @@ export const MonthlyAttendanceReport: React.FC = () => {
         }
     };
 
-    // Synthesize full 30/31 calendar days for an employee so timesheets are 100% complete
+        // Synthesize full 30/31 calendar days for an employee so timesheets are 100% complete with approved leaves
     const getFullMonthRecords = (item: any, rData: any, selMonth: string) => {
         if (!selMonth || !/^\d{4}-\d{2}$/.test(selMonth)) return item?.records || [];
         const [yearStr, monthStr] = selMonth.split('-');
@@ -82,6 +128,9 @@ export const MonthlyAttendanceReport: React.FC = () => {
             if (h.date) holidaysMap[h.date] = h.name;
         });
 
+        // Collect employee approved leaves
+        const empLeaves: any[] = item?.leaves || (rData?.leaves || []).filter((l: any) => l.employee_id === item?.summary?.employee_id);
+
         const offDays = (rData?.default_off_days || '5,6')
             .split(',')
             .map((d: string) => parseInt(d.trim(), 10));
@@ -95,8 +144,16 @@ export const MonthlyAttendanceReport: React.FC = () => {
             const dateObj = new Date(year, month - 1, day);
             const dayOfWeek = dateObj.getDay();
 
+            const leaveMatch = empLeaves.find((l: any) => dateKey >= l.start_date && dateKey <= l.end_date);
+
             if (existingRecordsMap[dateKey]) {
-                fullRecords.push(existingRecordsMap[dateKey]);
+                const rec = { ...existingRecordsMap[dateKey] };
+                if (leaveMatch && (rec.status === 'Absent' || !rec.check_in)) {
+                    rec.status = leaveMatch.type || 'On Leave';
+                    rec.edit_reason = `Approved: ${leaveMatch.reason || leaveMatch.type}`;
+                    rec.source = 'LEAVE';
+                }
+                fullRecords.push(rec);
             } else {
                 const isHoliday = holidaysMap[dateKey];
                 const isWeekend = offDays.includes(dayOfWeek);
@@ -104,7 +161,13 @@ export const MonthlyAttendanceReport: React.FC = () => {
 
                 let status = 'Absent';
                 let remarks = 'No Punch Logged';
-                if (isHoliday) {
+                let source = 'SYSTEM';
+
+                if (leaveMatch) {
+                    status = leaveMatch.type || 'On Leave';
+                    remarks = `Approved: ${leaveMatch.reason || leaveMatch.type}`;
+                    source = 'LEAVE';
+                } else if (isHoliday) {
                     status = 'Holiday';
                     remarks = isHoliday;
                 } else if (isWeekend) {
@@ -129,7 +192,7 @@ export const MonthlyAttendanceReport: React.FC = () => {
                     late_minutes: 0,
                     early_minutes: 0,
                     ot_hours: 0,
-                    source: 'SYSTEM',
+                    source: source,
                     edit_reason: remarks
                 });
             }
@@ -358,8 +421,9 @@ export const MonthlyAttendanceReport: React.FC = () => {
     const [showPrintMenu, setShowPrintMenu] = useState(false);
 
     // Standalone HTML Generator for 100% Reliable Multi-Page Landscape Printing
-    const generatePrintHTML = (mode: 'summary' | 'detailed_all' | 'current') => {
-        const listToPrint = mode === 'current' ? filteredEmployees : (reportData?.employees || filteredEmployees);
+    const generatePrintHTML = (mode: 'summary' | 'detailed_all' | 'current' | 'contractor_timesheet', targetEmpId?: string) => {
+        let listToPrint = mode === 'current' ? filteredEmployees : (reportData?.employees || filteredEmployees);
+        if (targetEmpId) listToPrint = listToPrint.filter((i: any) => i.summary?.employee_id === targetEmpId);
         const monthTitle = selectedMonth;
         const generatedDate = new Date().toLocaleString('en-US', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
@@ -634,6 +698,10 @@ export const MonthlyAttendanceReport: React.FC = () => {
                     .badge-absent { background: #ffe4e6; color: #9f1239; border: 1px solid #fecdd3; }
                     .badge-half { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
                     .badge-leave { background: #e0e7ff; color: #3730a3; border: 1px solid #c7d2fe; }
+                    .badge-sick { background: #f3e8ff; color: #6b21a8; border: 1px solid #d8b4fe; }
+                    .badge-annual { background: #e0e7ff; color: #3730a3; border: 1px solid #c7d2fe; }
+                    .badge-casual { background: #ccfbf1; color: #0f766e; border: 1px solid #99f6e4; }
+
                     .badge-weekend { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
                     .badge-holiday { background: #f3e8ff; color: #6b21a8; border: 1px solid #e9d5ff; }
                     .badge-scheduled { background: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd; }
@@ -709,9 +777,9 @@ export const MonthlyAttendanceReport: React.FC = () => {
     };
 
     // Print Execution using Clean Isolated Iframe (Generates Full Multi-Page Document)
-    const handlePrintAction = (mode: 'summary' | 'detailed_all' | 'current') => {
+    const handlePrintAction = (mode: 'summary' | 'detailed_all' | 'current' | 'contractor_timesheet', targetEmpId?: string) => {
         setShowPrintMenu(false);
-        const html = generatePrintHTML(mode);
+        const html = generatePrintHTML(mode, targetEmpId);
 
         const iframe = document.createElement('iframe');
         iframe.style.position = 'fixed';
@@ -968,7 +1036,20 @@ export const MonthlyAttendanceReport: React.FC = () => {
                                             <div className="text-[11px] text-slate-500">Prints only the active filtered/viewing employees</div>
                                         </div>
                                     </button>
-                                </div>
+                                
+                                    <button
+                                        onClick={() => handlePrintAction('contractor_timesheet')}
+                                        className="w-full px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-zinc-700/50 flex items-start gap-3 transition-colors border-t border-slate-100 dark:border-zinc-700"
+                                    >
+                                        <div className="p-2 bg-sky-50 dark:bg-sky-950/30 text-sky-600 rounded-xl mt-0.5">
+                                            <Building2 className="w-4 h-4" />
+                                        </div>
+                                        <div>
+                                            <div className="text-xs font-bold text-slate-800 dark:text-white">Print Contractor Timesheet (QAFCO Layout)</div>
+                                            <div className="text-[11px] text-slate-500">Official contractor format with clock in/out, lower leave remarks & 125% OT</div>
+                                        </div>
+                                    </button>
+</div>
                             </>
                         )}
                     </div>
