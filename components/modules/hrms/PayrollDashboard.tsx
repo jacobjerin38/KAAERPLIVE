@@ -124,12 +124,19 @@ export const PayrollDashboard: React.FC = () => {
             return;
         }
 
-        if (attendancePeriod.status !== 'LOCKED' && attendancePeriod.status !== 'FINALIZED') {
-            alert(`Cannot import attendance:\n\nThe attendance period for ${selectedMonth} must be FINALIZED or LOCKED by HR first.\nCurrent Status: ${attendancePeriod.status}`);
+        const isStrictLocked = attendancePeriod.status === 'LOCKED' || attendancePeriod.status === 'FINALIZED';
+        const isReviewOrProcessed = attendancePeriod.status === 'REVIEW' || attendancePeriod.status === 'PROCESSED';
+
+        if (!isStrictLocked && !isReviewOrProcessed) {
+            alert(`Cannot import attendance:\n\nThe attendance period for ${selectedMonth} must be reviewed, finalized, or locked by HR first.\nCurrent Status: ${attendancePeriod.status}`);
             return;
         }
 
-        if (!confirm(`Import locked attendance snapshot for ${selectedMonth}? This creates an immutable snapshot of working days, LOP, and overtime.`)) return;
+        const confirmMsg = isStrictLocked
+            ? `Import locked attendance snapshot for ${selectedMonth}? This creates an immutable snapshot of working days, LOP, and overtime.`
+            : `The attendance period for ${selectedMonth} is currently in "${attendancePeriod.status}" status.\n\nDo you want to import this attendance snapshot now to proceed with payroll calculation?`;
+
+        if (!confirm(confirmMsg)) return;
 
         setActionLoading(true);
         try {

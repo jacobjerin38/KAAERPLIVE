@@ -50,7 +50,7 @@ export const StockMovements: React.FC = () => {
                 `)
                 .eq('company_id', currentCompanyId)
                 .order('created_at', { ascending: false })
-                .limit(50);
+                .limit(2000);
 
             if (error) throw error;
             setMovements((data || []) as any);

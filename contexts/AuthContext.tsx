@@ -14,6 +14,9 @@ interface AuthContextType {
     userEmployeeId: string | null;
     permissions: string[];
     hasPermission: (permission: string) => boolean;
+    isViewOnly: boolean;
+    canEdit: boolean;
+    canDelete: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -40,6 +43,27 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
                 if (profile?.employee_id) {
                     setUserEmployeeId(profile.employee_id);
+                }
+
+                // Auto-hydrate company_id if not currently active
+                let resolvedCompId = profile?.company_id;
+                if (!resolvedCompId) {
+                    const { data: uca } = await supabase
+                        .from('user_company_access')
+                        .select('company_id')
+                        .eq('user_id', userId)
+                        .eq('status', 'active')
+                        .maybeSingle();
+                    if (uca?.company_id) resolvedCompId = uca.company_id;
+                }
+                if (resolvedCompId) {
+                    setCurrentCompanyId(prev => {
+                        if (!prev) {
+                            localStorage.setItem('app.current_company', resolvedCompId);
+                            return resolvedCompId;
+                        }
+                        return prev;
+                    });
                 }
 
                 if (profileError || !profile) {
@@ -249,8 +273,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         return false;
     };
 
+    // Default safety: All existing users keep full edit and delete permissions.
+    // Restricted only when explicitly designated as view-only or restricted.
+    const isViewOnly = permissions.includes('data.view_only');
+    const canEdit = !isViewOnly && (permissions.includes('*') || permissions.includes('data.edit') || !permissions.some(p => p === 'data.no_edit'));
+    const canDelete = !isViewOnly && (permissions.includes('*') || permissions.includes('data.delete') || !permissions.some(p => p === 'data.no_delete'));
+
     return (
-        <AuthContext.Provider value={{ session, user, loading, signOut, currentCompanyId, selectCompany, userRole, userEmployeeId, permissions, hasPermission }}>
+        <AuthContext.Provider value={{ session, user, loading, signOut, currentCompanyId, selectCompany, userRole, userEmployeeId, permissions, hasPermission, isViewOnly, canEdit, canDelete }}>
             {children}
         </AuthContext.Provider>
     );

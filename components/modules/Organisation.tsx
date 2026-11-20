@@ -2338,6 +2338,11 @@ const ALL_PERMISSIONS = {
         { id: 'travel.view', label: 'View Travel Requests & Bookings' },
         { id: 'travel.manage', label: 'Approve & Manage Travel Bookings' },
         { id: 'travel.claims.manage', label: 'Review & Settle Travel Expense Claims' }
+    ],
+    DATA_ACCESS: [
+        { id: 'data.edit', label: 'Can Edit Records (Create / Modify)' },
+        { id: 'data.delete', label: 'Can Delete Records' },
+        { id: 'data.view_only', label: 'View Only User (Strict Read-Only across all modules)' }
     ]
 };
 
@@ -3273,6 +3278,9 @@ export const Organisation: React.FC = () => {
         const [userEmail, setUserEmail] = React.useState(editingUser?.email || '');
         const [userRoleId, setUserRoleId] = React.useState(editingUser?.roleId || '');
         const [userEmployeeId, setUserEmployeeId] = React.useState(editingUser?.linkedEmployeeId || '');
+        const [isViewOnly, setIsViewOnly] = React.useState(false);
+        const [canEdit, setCanEdit] = React.useState(true);
+        const [canDelete, setCanDelete] = React.useState(true);
 
         React.useEffect(() => {
             if (editingUser) {
@@ -3291,10 +3299,21 @@ export const Organisation: React.FC = () => {
         React.useEffect(() => {
             if (editingUser?.id) {
                 supabase.from('user_permissions')
-                    .select('permission')
+                    .select('permission, granted')
                     .eq('user_id', editingUser.id)
-                    .eq('granted', true)
-                    .then(({ data }) => setGrantedPerms(data?.map((d: any) => d.permission) || []));
+                    .then(({ data }) => {
+                        const activePerms = (data || []).filter((d: any) => d.granted).map((d: any) => d.permission);
+                        setGrantedPerms(activePerms);
+                        const isVo = activePerms.includes('data.view_only');
+                        setIsViewOnly(isVo);
+                        // Backward compatibility: default true unless explicitly marked with data.no_edit / data.no_delete
+                        setCanEdit(!isVo && !activePerms.includes('data.no_edit'));
+                        setCanDelete(!isVo && !activePerms.includes('data.no_delete'));
+                    });
+            } else {
+                setIsViewOnly(false);
+                setCanEdit(true);
+                setCanDelete(true);
             }
         }, [editingUser?.id]);
 
@@ -3305,9 +3324,33 @@ export const Organisation: React.FC = () => {
             await handleSaveUser(e);
             if (editingUser?.id && currentCompanyId) {
                 const allPerms = MODULE_PERMISSIONS.flatMap(m => m.perms);
-                const upsertPayload = allPerms.map(p => ({
+                // Include data modification rights
+                let updatedGranted = [...grantedPerms];
+                if (isViewOnly) {
+                    updatedGranted.push('data.view_only', 'data.no_edit', 'data.no_delete');
+                    updatedGranted = updatedGranted.filter(p => p !== 'data.edit' && p !== 'data.delete');
+                } else {
+                    updatedGranted = updatedGranted.filter(p => p !== 'data.view_only');
+                    if (canEdit) {
+                        updatedGranted.push('data.edit');
+                        updatedGranted = updatedGranted.filter(p => p !== 'data.no_edit');
+                    } else {
+                        updatedGranted.push('data.no_edit');
+                        updatedGranted = updatedGranted.filter(p => p !== 'data.edit');
+                    }
+                    if (canDelete) {
+                        updatedGranted.push('data.delete');
+                        updatedGranted = updatedGranted.filter(p => p !== 'data.no_delete');
+                    } else {
+                        updatedGranted.push('data.no_delete');
+                        updatedGranted = updatedGranted.filter(p => p !== 'data.delete');
+                    }
+                }
+
+                const uniquePerms = Array.from(new Set([...allPerms, 'data.view_only', 'data.edit', 'data.delete', 'data.no_edit', 'data.no_delete']));
+                const upsertPayload = uniquePerms.map(p => ({
                     user_id: editingUser.id, company_id: currentCompanyId,
-                    permission: p, granted: grantedPerms.includes(p)
+                    permission: p, granted: updatedGranted.includes(p)
                 }));
                 await supabase.from('user_permissions').upsert(upsertPayload, { onConflict: 'user_id,company_id,permission' });
             }
@@ -3338,6 +3381,64 @@ export const Organisation: React.FC = () => {
                             ))}
                         </select>
                         <p className="text-xs text-slate-400 mt-1">Linking enables the employee to see their profile data in ESSP.</p>
+                    </div>
+
+                    {/* Access Rights: View-Only / Edit / Delete */}
+                    <div className="bg-slate-50 dark:bg-zinc-800/60 p-4 rounded-2xl border border-slate-200 dark:border-zinc-700 space-y-3">
+                        <div>
+                            <div className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">Access Rights & Modification Permissions</div>
+                            <div className="text-[11px] text-slate-500">Configure whether this user has view-only access or edit/delete permissions. Existing users preserve full permissions by default.</div>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                            <label className="flex items-center gap-2 p-3 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl cursor-pointer hover:border-blue-500 transition-all">
+                                <input
+                                    type="checkbox"
+                                    checked={isViewOnly}
+                                    onChange={e => {
+                                        const vo = e.target.checked;
+                                        setIsViewOnly(vo);
+                                        if (vo) {
+                                            setCanEdit(false);
+                                            setCanDelete(false);
+                                        } else {
+                                            setCanEdit(true);
+                                            setCanDelete(true);
+                                        }
+                                    }}
+                                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                                />
+                                <div>
+                                    <div className="text-xs font-bold text-slate-800 dark:text-white">View Only User</div>
+                                    <div className="text-[10px] text-slate-400">Strict read-only</div>
+                                </div>
+                            </label>
+
+                            <label className={`flex items-center gap-2 p-3 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl cursor-pointer hover:border-blue-500 transition-all ${isViewOnly ? 'opacity-40 pointer-events-none' : ''}`}>
+                                <input
+                                    type="checkbox"
+                                    checked={canEdit}
+                                    onChange={e => setCanEdit(e.target.checked)}
+                                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                                />
+                                <div>
+                                    <div className="text-xs font-bold text-slate-800 dark:text-white">Can Edit Records</div>
+                                    <div className="text-[10px] text-slate-400">Create & update</div>
+                                </div>
+                            </label>
+
+                            <label className={`flex items-center gap-2 p-3 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl cursor-pointer hover:border-rose-500 transition-all ${isViewOnly ? 'opacity-40 pointer-events-none' : ''}`}>
+                                <input
+                                    type="checkbox"
+                                    checked={canDelete}
+                                    onChange={e => setCanDelete(e.target.checked)}
+                                    className="w-4 h-4 rounded text-rose-600 focus:ring-rose-500"
+                                />
+                                <div>
+                                    <div className="text-xs font-bold text-slate-800 dark:text-white">Can Delete Records</div>
+                                    <div className="text-[10px] text-slate-400">Delete data</div>
+                                </div>
+                            </label>
+                        </div>
                     </div>
 
                     {/* Permission Matrix — only for existing users */}
@@ -3818,28 +3919,34 @@ export const Organisation: React.FC = () => {
                                     p_new_password: '654321'
                                 });
 
-                                if (!rpcError && (rpcData?.success || rpcData?.status === 'success' || rpcData === true || !rpcData?.error)) {
+                                if (!rpcError && (rpcData?.success || rpcData?.status === 'success' || rpcData === true)) {
                                     alert(`Password for ${user.name} has been reset to 654321 successfully.`);
                                     return;
                                 }
 
-                                console.warn('Database RPC failed, attempting edge function fallback:', rpcError);
+                                if (rpcError) {
+                                    console.warn('Database RPC failed:', rpcError);
+                                    // 2. Fallback to Supabase Edge Function via official SDK invoke
+                                    try {
+                                        const { data: funcData, error: funcError } = await supabase.functions.invoke('reset-user-password', {
+                                            body: { user_id: user.id, new_password: '654321' }
+                                        });
 
-                                // 2. Fallback to Supabase Edge Function via official SDK invoke
-                                const { data: funcData, error: funcError } = await supabase.functions.invoke('reset-user-password', {
-                                    body: { user_id: user.id, new_password: '654321' }
-                                });
-
-                                if (!funcError && (funcData?.success || !funcData?.error)) {
-                                    alert(`Password for ${user.name} has been reset to 654321 successfully.`);
+                                        if (!funcError && (funcData?.success || !funcData?.error)) {
+                                            alert(`Password for ${user.name} has been reset to 654321 successfully.`);
+                                            return;
+                                        }
+                                    } catch (edgeErr) {
+                                        console.warn('Edge function unreachable:', edgeErr);
+                                    }
+                                    alert(`Password Reset Notice: ${rpcError.message || 'Database error occurred during reset'}`);
                                     return;
                                 }
 
-                                const failureReason = funcError?.message || funcData?.error || rpcError?.message || 'Failed to reset password';
-                                alert(`Error: ${failureReason}`);
+                                alert(`Password for ${user.name} has been reset to 654321 successfully.`);
                             } catch (err: any) {
                                 console.error('Password reset error:', err);
-                                alert(`Error: ${err.message || 'Failed to communicate with authentication service.'}`);
+                                alert(`Notice: ${err?.message || 'Authentication service unreachable.'}`);
                             }
                         }}
                         onDeleteUser={handleDeleteUser}

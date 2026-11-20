@@ -73,7 +73,7 @@ export const StockLedger: React.FC = () => {
                 `)
                 .order('created_at', { ascending: false })
                 .eq('company_id', currentCompanyId)
-                .limit(200);
+                .limit(2500);
 
             if (error) throw error;
             setTransactions((data || []) as any);
@@ -90,7 +90,7 @@ export const StockLedger: React.FC = () => {
                 supabase.from('stock_movements').select(`
                     *,
                     item:item_master(id, name, code, uom)
-                `).eq('company_id', currentCompanyId).limit(500),
+                `).eq('company_id', currentCompanyId).limit(2500),
                 supabase.from('warehouse_bins').select('id, name, code').eq('company_id', currentCompanyId)
             ]);
 

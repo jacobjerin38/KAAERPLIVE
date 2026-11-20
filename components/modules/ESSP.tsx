@@ -1722,28 +1722,110 @@ export const ESSP: React.FC = () => {
             const lastDay = new Date(year, month, 0).getDate();
             const startOfMonth = `${filterDate}-01`;
             const endOfMonth = `${filterDate}-${String(lastDay).padStart(2, '0')}`;
+            const todayStr = new Date().toISOString().split('T')[0];
 
-            const { data, error } = await supabase.from('attendance')
-                .select('*')
-                .eq('employee_id', currentEmployee.id)
-                .gte('date', startOfMonth)
-                .lte('date', endOfMonth)
-                .order('date', { ascending: false });
+            try {
+                // 1. Fetch existing attendance check-in records
+                const { data: attData } = await supabase.from('attendance')
+                    .select('*')
+                    .eq('employee_id', currentEmployee.id)
+                    .gte('date', startOfMonth)
+                    .lte('date', endOfMonth)
+                    .order('date', { ascending: false });
 
-            if (data) {
-                setRecords(data);
-                const stats = data.reduce((acc, curr) => {
-                    if (curr.status === 'Present') acc.present++;
-                    else if (curr.status === 'Absent') acc.absent++;
-                    else if (curr.status === 'Half Day') acc.halfDay++;
+                // 2. Fetch approved leaves for the employee
+                const { data: leavesData } = await (supabase as any).from('leaves')
+                    .select('*')
+                    .eq('employee_id', currentEmployee.id)
+                    .eq('status', 'Approved')
+                    .lte('start_date', endOfMonth)
+                    .gte('end_date', startOfMonth);
+
+                // 3. Fetch holidays
+                const { data: holidaysData } = await (supabase as any).from('org_holidays')
+                    .select('date, name')
+                    .eq('company_id', currentEmployee.company_id)
+                    .gte('date', startOfMonth)
+                    .lte('date', endOfMonth);
+
+                const holidaysMap: Record<string, string> = {};
+                (holidaysData || []).forEach((h: any) => { if (h.date) holidaysMap[h.date] = h.name; });
+
+                const attMap: Record<string, any> = {};
+                (attData || []).forEach((a: any) => { if (a.date) attMap[a.date] = a; });
+
+                const leavesList = leavesData || [];
+
+                // Synthesize all calendar days of the month (descending order)
+                const allDaysRecords: any[] = [];
+                for (let d = lastDay; d >= 1; d--) {
+                    const dayStr = String(d).padStart(2, '0');
+                    const dateKey = `${filterDate}-${dayStr}`;
+                    const dateObj = new Date(year, month - 1, d);
+                    const dayOfWeek = dateObj.getDay();
+
+                    const leaveMatch = leavesList.find((l: any) => dateKey >= l.start_date && dateKey <= l.end_date);
+
+                    if (attMap[dateKey]) {
+                        const rec = { ...attMap[dateKey] };
+                        if (leaveMatch && (rec.status === 'Absent' || !rec.check_in)) {
+                            rec.status = leaveMatch.type || 'On Leave';
+                            rec.notes = rec.notes ? `${rec.notes} (Approved: ${leaveMatch.reason || leaveMatch.type})` : `Approved: ${leaveMatch.reason || leaveMatch.type}`;
+                        }
+                        allDaysRecords.push(rec);
+                    } else {
+                        const isHoliday = holidaysMap[dateKey];
+                        const isWeekend = (dayOfWeek === 5 || dayOfWeek === 6);
+                        const isFuture = dateKey > todayStr;
+
+                        let status = 'Absent';
+                        let notes = 'No Punch Logged';
+
+                        if (leaveMatch) {
+                            status = leaveMatch.type || 'On Leave';
+                            notes = `Approved: ${leaveMatch.reason || leaveMatch.type}`;
+                        } else if (isHoliday) {
+                            status = 'Holiday';
+                            notes = isHoliday;
+                        } else if (isWeekend) {
+                            status = 'Weekend';
+                            notes = 'Weekly Off';
+                        } else if (isFuture) {
+                            status = 'Scheduled';
+                            notes = 'Upcoming';
+                        }
+
+                        allDaysRecords.push({
+                            id: `auto_${dateKey}`,
+                            date: dateKey,
+                            check_in: null,
+                            check_out: null,
+                            total_hours: 0,
+                            status: status,
+                            late_minutes: 0,
+                            notes: notes
+                        });
+                    }
+                }
+
+                setRecords(allDaysRecords);
+
+                const stats = allDaysRecords.reduce((acc, curr) => {
+                    const st = (curr.status || '').toLowerCase();
+                    if (st === 'present') acc.present++;
+                    else if (st === 'absent') acc.absent++;
+                    else if (st === 'half day') acc.halfDay++;
+                    else if (st.includes('sick') || st.includes('leave') || st.includes('annual') || st.includes('casual') || st.includes('personal')) acc.leaves++;
                     if ((curr.late_minutes || 0) > 0) acc.late++;
                     return acc;
-                }, { present: 0, absent: 0, late: 0, halfDay: 0 });
+                }, { present: 0, absent: 0, late: 0, halfDay: 0, leaves: 0 });
+
                 setStats(stats);
-            } else if (error) {
-                console.error('Fetch attendance error:', error);
+            } catch (err: any) {
+                console.error('Fetch attendance error:', err);
+            } finally {
+                setLoading(false);
             }
-            setLoading(false);
         };
 
         const fetchMissedRequests = async () => {
@@ -2018,10 +2100,18 @@ export const ESSP: React.FC = () => {
                                             {new Date(record.date).toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' })}
                                         </td>
                                         <td className="p-6">
-                                            <span className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wide ${record.status === 'Present' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                                            <span className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wide ${
+                                                record.status === 'Present' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
                                                 record.status === 'Absent' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400' :
-                                                    'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                                                }`}>
+                                                record.status === 'Half Day' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+                                                record.status?.toLowerCase().includes('sick') ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 border border-purple-200' :
+                                                record.status?.toLowerCase().includes('annual') ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border border-blue-200' :
+                                                record.status?.toLowerCase().includes('leave') || record.status?.toLowerCase().includes('casual') || record.status?.toLowerCase().includes('personal') ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 border border-indigo-200' :
+                                                record.status === 'Weekend' ? 'bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-slate-400' :
+                                                record.status === 'Holiday' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' :
+                                                record.status === 'Scheduled' ? 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400' :
+                                                'bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-slate-300'
+                                            }`}>
                                                 {record.status}
                                             </span>
                                         </td>

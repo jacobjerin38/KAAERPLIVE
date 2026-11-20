@@ -15,6 +15,10 @@ import { OvertimeReport } from '../hrms/reports/OvertimeReport';
 import { LateEarlyReport } from '../hrms/reports/LateEarlyReport';
 import { EmployeeWiseCrmReport } from '../../crm/reports/EmployeeWiseCrmReport';
 import CustomersView from '../../crm/CustomersView';
+import { InventoryOverview } from '../../inventory/InventoryOverview';
+import { StockLedger } from '../../inventory/StockLedger';
+import { StockAlerts } from '../../inventory/StockAlerts';
+import { StockMovements } from '../../inventory/StockMovements';
 
 interface ReportsListViewProps {
     moduleFilter?: string;   // e.g. "CRM" — show only CRM modules
@@ -43,6 +47,10 @@ export const ReportsListView: React.FC<ReportsListViewProps> = ({ moduleFilter, 
         { id: 'LEAVE_ANALYTICS', name: 'Leave Analytics', desc: 'Visual trends and departmental distribution', icon: BarChart3, color: 'emerald', module: 'LEAVE' },
         { id: 'SALARY_STATEMENT', name: 'Monthly Salary Statement', desc: 'Detailed earnings and deductions breakdown', icon: DollarSign, color: 'indigo', module: 'PAYROLL' },
         { id: 'BONUS_GRATUITY', name: 'Bonus & Gratuity Valuation', desc: 'Tenure-based liability and accruals', icon: FileText, color: 'amber', module: 'PAYROLL' },
+        { id: 'INVENTORY_STOCK_VALUATION', name: 'Inventory Stock Valuation Report', desc: 'Comprehensive stock on hand, valuation, categories, and warehouse balances', icon: BarChart3, color: 'emerald', module: 'INVENTORY' },
+        { id: 'INVENTORY_STOCK_LEDGER', name: 'Stock Ledger & Transaction Register', desc: 'Chronological GRN, issue, transfer, and transaction history', icon: FileText, color: 'blue', module: 'INVENTORY' },
+        { id: 'INVENTORY_LOW_STOCK', name: 'Low Stock & Reorder Level Report', desc: 'Critical alerts for items near or below minimum safety thresholds', icon: AlertTriangle, color: 'rose', module: 'INVENTORY' },
+        { id: 'INVENTORY_MOVEMENTS', name: 'Stock Movement & Transfer Register', desc: 'Bin-to-bin and warehouse-to-warehouse stock movements', icon: Clock, color: 'indigo', module: 'INVENTORY' },
     ], []);
 
     const standardReports = useMemo(() => allStandardReports.filter(r => !moduleFilter || r.module === moduleFilter), [allStandardReports, moduleFilter]);
@@ -122,6 +130,10 @@ export const ReportsListView: React.FC<ReportsListViewProps> = ({ moduleFilter, 
                     {selectedStandardReport === 'LEAVE_ANALYTICS' && <LeaveAnalyticsReport />}
                     {selectedStandardReport === 'SALARY_STATEMENT' && <SalaryStatementReport />}
                     {selectedStandardReport === 'BONUS_GRATUITY' && <BonusGratuityReport />}
+                    {selectedStandardReport === 'INVENTORY_STOCK_VALUATION' && <InventoryOverview />}
+                    {selectedStandardReport === 'INVENTORY_STOCK_LEDGER' && <StockLedger />}
+                    {selectedStandardReport === 'INVENTORY_LOW_STOCK' && <StockAlerts />}
+                    {selectedStandardReport === 'INVENTORY_MOVEMENTS' && <StockMovements />}
                 </div>
             );
         }

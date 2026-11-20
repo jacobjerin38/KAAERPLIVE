@@ -82,6 +82,9 @@ const TABLE_LABELS: Record<string, string> = {
     purchase_orders: 'Purchase Orders',
     vendors: 'Vendors & Suppliers',
     inventory_items: 'Inventory Stock & Valuation',
+    item_master: 'Item Master Catalog & Pricing',
+    inventory_transactions: 'Inventory Transactions & Stock Ledger',
+    vw_inventory_items: 'Inventory Stock Valuation',
     stock_movements: 'Stock Movements & Ledger',
     pro_applications: 'PRO Service Applications',
     pro_tasks: 'PRO Field Tasks & Reminders',
@@ -313,7 +316,7 @@ export const ReportBuilder: React.FC<ReportBuilderProps> = ({ onBack, companyId,
 
             if (sortConfig) query = query.order(sortConfig.field_key, { ascending: sortConfig.direction === 'asc' });
 
-            const { data, count, error } = await query.limit(200);
+            const { data, count, error } = await query.limit(3000);
             if (error) throw error;
 
             let results = data || [];

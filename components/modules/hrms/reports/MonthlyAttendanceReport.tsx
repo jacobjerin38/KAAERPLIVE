@@ -225,7 +225,20 @@ export const MonthlyAttendanceReport: React.FC = () => {
             });
 
             if (error) throw error;
-            setReportData(data);
+
+            // Also fetch all approved leaves for this period to guarantee complete display of leaves
+            const { data: leavesData } = await (supabase as any)
+                .from('leaves')
+                .select('*')
+                .eq('company_id', currentCompanyId)
+                .eq('status', 'Approved')
+                .lte('start_date', endDate)
+                .gte('end_date', startDate);
+
+            if (data) {
+                data.leaves = leavesData || [];
+                setReportData(data);
+            }
         } catch (err: any) {
             console.error('Error loading Monthly Attendance Report:', err);
             if (!err.message?.includes('out of range')) {
@@ -484,6 +497,145 @@ export const MonthlyAttendanceReport: React.FC = () => {
                     </tbody>
                 </table>
             `;
+        } else if (mode === 'contractor_timesheet') {
+            // OFFICIAL QAFCO CONTRACTOR TIMESHEET LAYOUT
+            contentHtml = listToPrint.map((item: any, empIdx: number) => {
+                const s = item.summary;
+                const fullRecords = getFullMonthRecords(item, reportData, selectedMonth);
+                const [yearStr, monthNumStr] = selectedMonth.split('-');
+                const monthName = monthsList.find(m => m.value === monthNumStr)?.label || 'October';
+
+                // Include all days with punch or approved leave or scheduled
+                const activeRecords = fullRecords.filter((r: any) => r.check_in || (r.status !== 'Weekend' && r.status !== 'Scheduled'));
+
+                const empLeaves: any[] = item?.leaves || (reportData?.leaves || []).filter((l: any) => l.employee_id === s.employee_id);
+                let totalOt125 = Number(s.total_ot_hours || 0);
+
+                const tableRows = activeRecords.map((r: any, idx: number) => {
+                    const dateObj = new Date(r.date);
+                    const formattedDate = `${String(dateObj.getDate()).padStart(2, '0')}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${dateObj.getFullYear()}`;
+                    const cin = r.check_in ? new Date(r.check_in).toLocaleTimeString('en-GB', { hour12: false }) : '—';
+                    const cout = r.check_out ? new Date(r.check_out).toLocaleTimeString('en-GB', { hour12: false }) : '—';
+
+                    const totalHoursNum = Number(r.total_hours || 0);
+                    const hoursInt = Math.floor(totalHoursNum);
+                    const minutesInt = Math.round((totalHoursNum - hoursInt) * 60);
+
+                    let remarks = '';
+                    if (r.ot_hours > 0) remarks = `+${Number(r.ot_hours).toFixed(1)} Hrs`;
+                    else if (r.status?.toLowerCase().includes('sick')) remarks = 'Sick Leave';
+                    else if (r.status?.toLowerCase().includes('annual')) remarks = 'Annual Leave';
+                    else if (r.status === 'Half Day') remarks = '-3.5 Hrs';
+                    else if (r.early_minutes > 0) remarks = `-${(r.early_minutes / 60).toFixed(1)} Hrs`;
+
+                    return `
+                        <tr>
+                            <td style="text-align: center; font-weight: bold; width: 35px; border: 1px solid #000; padding: 3px;">${idx + 1}</td>
+                            <td style="text-align: center; width: 85px; border: 1px solid #000; padding: 3px;">${formattedDate}</td>
+                            <td style="text-align: center; width: 50px; border: 1px solid #000; padding: 3px;">${s.location_name || '17'}</td>
+                            <td style="text-align: center; width: 65px; font-family: monospace; border: 1px solid #000; padding: 3px;">${cin}</td>
+                            <td style="text-align: center; width: 85px; border: 1px solid #000; padding: 3px;">${formattedDate}</td>
+                            <td style="text-align: center; width: 65px; font-family: monospace; border: 1px solid #000; padding: 3px;">${cout}</td>
+                            <td style="text-align: center; width: 45px; font-weight: bold; border: 1px solid #000; padding: 3px;">${hoursInt > 0 ? hoursInt : '—'}</td>
+                            <td style="text-align: center; width: 45px; border: 1px solid #000; padding: 3px;">${minutesInt > 0 ? minutesInt : '—'}</td>
+                            <td style="text-align: center; width: 80px; font-weight: bold; color: ${remarks.startsWith('+') ? '#059669' : remarks.startsWith('-') ? '#dc2626' : '#475569'}; border: 1px solid #000; padding: 3px;">${remarks}</td>
+                        </tr>
+                    `;
+                }).join('');
+
+                const leaveRemarksHtml = (empLeaves || []).map((l: any) => {
+                    const startObj = new Date(l.start_date);
+                    const startFormatted = `${String(startObj.getDate()).padStart(2, '0')}-${String(startObj.getMonth() + 1).padStart(2, '0')}-${String(startObj.getFullYear()).slice(-2)}`;
+                    return `<div style="font-size: 8.5pt; font-weight: bold; margin-bottom: 2px;">${startFormatted} : ${l.type} with approval</div>`;
+                }).join('') || '<div style="font-size: 8pt; color: #94a3b8;">No leave on record</div>';
+
+                return `
+                    <div class="qafco-timesheet-page" style="${empIdx > 0 ? 'page-break-before: always;' : ''} padding: 10px 15px; font-family: sans-serif;">
+                        <!-- Header -->
+                        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 6px;">
+                            <div style="flex: 1;"></div>
+                            <h2 style="font-size: 13pt; font-weight: 900; text-align: center; margin: 0; color: #000; letter-spacing: -0.2px;">
+                                Contractor Timesheet for - ${monthName}, ${yearStr}
+                            </h2>
+                            <div style="flex: 1; text-align: right; font-size: 7.5pt; color: #475569; font-weight: bold;">
+                                Print Date: ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                            </div>
+                        </div>
+
+                        <!-- Info Box -->
+                        <div style="border: 1.5px solid #38bdf8; border-radius: 2px; padding: 6px 12px; margin-bottom: 8px; font-size: 8pt; background: #fafafa;">
+                            <table style="width: 100%; border-collapse: collapse;">
+                                <tr>
+                                    <td style="width: 15%; padding: 2px 0; color: #334155;"><strong>Badge No</strong></td>
+                                    <td style="width: 35%; padding: 2px 0; font-weight: bold;">${s.employee_code || '—'}</td>
+                                    <td style="width: 18%; padding: 2px 0; color: #334155;"><strong>Contractor Name</strong></td>
+                                    <td style="width: 32%; padding: 2px 0; font-weight: bold; text-transform: uppercase;">${s.employee_name || '—'}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 2px 0; color: #334155;"><strong>QAFCO Contact</strong></td>
+                                    <td style="padding: 2px 0; font-weight: bold;">${s.manager_name || 'Achmad Hadi'}</td>
+                                    <td style="padding: 2px 0; color: #334155;"><strong>Sect/Dept</strong></td>
+                                    <td style="padding: 2px 0; font-weight: bold;">${s.department_name || 'IT Infrastructure Operations / Information Technology Departmen'}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 2px 0; color: #334155;"><strong>PO Number</strong></td>
+                                    <td style="padding: 2px 0; font-weight: bold;">—</td>
+                                    <td style="padding: 2px 0; color: #334155;"><strong>Sponsor</strong></td>
+                                    <td style="padding: 2px 0; font-weight: bold;">POWER ENGINEERING CORPORATION W.L.L.</td>
+                                </tr>
+                            </table>
+                        </div>
+
+                        <!-- Data Table -->
+                        <table style="width: 100%; border-collapse: collapse; font-size: 7.5pt; border: 1.5px solid #000; margin-bottom: 12px;">
+                            <thead>
+                                <tr style="background: #f8fafc; border-bottom: 1.5px solid #000;">
+                                    <th style="border: 1px solid #000; padding: 4px; text-align: center;">SNo</th>
+                                    <th style="border: 1px solid #000; padding: 4px; text-align: center;">ClockIn Date</th>
+                                    <th style="border: 1px solid #000; padding: 4px; text-align: center;">Location</th>
+                                    <th style="border: 1px solid #000; padding: 4px; text-align: center;">Clock In</th>
+                                    <th style="border: 1px solid #000; padding: 4px; text-align: center;">ClockOut Date</th>
+                                    <th style="border: 1px solid #000; padding: 4px; text-align: center;">Clock Out</th>
+                                    <th style="border: 1px solid #000; padding: 4px; text-align: center;">Hours</th>
+                                    <th style="border: 1px solid #000; padding: 4px; text-align: center;">Minutes</th>
+                                    <th style="border: 1px solid #000; padding: 4px; text-align: center;">Remarks</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${tableRows || '<tr><td colspan="9" style="text-align: center; padding: 10px;">No attendance logged</td></tr>'}
+                            </tbody>
+                        </table>
+
+                        <!-- Signatures -->
+                        <div style="display: flex; justify-content: space-around; text-align: center; margin-top: 15px; margin-bottom: 25px;">
+                            <div style="width: 180px;">
+                                <div style="border-bottom: 1.5px solid #000; margin-bottom: 4px; height: 25px;"></div>
+                                <div style="font-size: 8pt; font-weight: bold;">Prepared By</div>
+                            </div>
+                            <div style="width: 180px;">
+                                <div style="border-bottom: 1.5px solid #000; margin-bottom: 4px; height: 25px;"></div>
+                                <div style="font-size: 8pt; font-weight: bold;">Approved By</div>
+                            </div>
+                            <div style="width: 180px;">
+                                <div style="border-bottom: 1.5px solid #000; margin-bottom: 4px; height: 25px;"></div>
+                                <div style="font-size: 8pt; font-weight: bold;">Contractor Representative</div>
+                            </div>
+                        </div>
+
+                        <!-- Footer: Leave remarks on left, OT total on right -->
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-top: 8px;">
+                            <div>
+                                ${leaveRemarksHtml}
+                            </div>
+                            <div style="text-align: right;">
+                                <div style="font-size: 8.5pt; font-weight: 900; color: #000;">
+                                    TOTAL OVER TIME: 1. Working Day OT 125% = ${totalOt125.toFixed(1)} Hrs
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
         } else {
             // DETAILED DAILY TIMESHEET DOSSIER FOR EMPLOYEES
             contentHtml = listToPrint.map((item: any, empIdx: number) => {
@@ -943,14 +1095,62 @@ export const MonthlyAttendanceReport: React.FC = () => {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
-                    {/* Month Picker */}
-                    <div className="relative">
-                        <input
-                            type="month"
-                            value={selectedMonth}
-                            onChange={(e) => setSelectedMonth(e.target.value)}
-                            className="px-4 py-2.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-cyan-500/20 outline-none"
-                        />
+                    {/* Month & Year Picker */}
+                    <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-zinc-800/80 p-1 rounded-2xl border border-slate-200 dark:border-zinc-700 shadow-sm">
+                        <button
+                            type="button"
+                            onClick={handlePrevMonth}
+                            title="Previous Month"
+                            className="p-2 hover:bg-white dark:hover:bg-zinc-700 text-slate-600 dark:text-slate-300 rounded-xl transition-all font-bold"
+                        >
+                            <ChevronLeft className="w-4 h-4" />
+                        </button>
+
+                        {/* Month Select */}
+                        <div className="relative">
+                            <select
+                                value={(selectedMonth || '').split('-')[1] || '11'}
+                                onChange={(e) => handleMonthSelect(e.target.value)}
+                                className="appearance-none pl-3 pr-7 py-2 bg-white dark:bg-zinc-700 border border-slate-200 dark:border-zinc-600 rounded-xl text-xs font-bold text-slate-800 dark:text-white outline-none cursor-pointer hover:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 shadow-sm"
+                            >
+                                {monthsList.map(m => (
+                                    <option key={m.value} value={m.value}>{m.label}</option>
+                                ))}
+                            </select>
+                            <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        </div>
+
+                        {/* Year Select */}
+                        <div className="relative">
+                            <select
+                                value={(selectedMonth || '').split('-')[0] || '2026'}
+                                onChange={(e) => handleYearSelect(e.target.value)}
+                                className="appearance-none pl-3 pr-7 py-2 bg-white dark:bg-zinc-700 border border-slate-200 dark:border-zinc-600 rounded-xl text-xs font-bold text-slate-800 dark:text-white outline-none cursor-pointer hover:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 shadow-sm"
+                            >
+                                {yearsList.map(y => (
+                                    <option key={y} value={String(y)}>{y}</option>
+                                ))}
+                            </select>
+                            <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={handleNextMonth}
+                            title="Next Month"
+                            className="p-2 hover:bg-white dark:hover:bg-zinc-700 text-slate-600 dark:text-slate-300 rounded-xl transition-all font-bold"
+                        >
+                            <ChevronRight className="w-4 h-4" />
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={handleSetCurrentMonth}
+                            title="Jump to Current Month"
+                            className="px-2.5 py-1.5 text-[11px] font-bold text-cyan-600 hover:text-cyan-700 hover:bg-cyan-50 dark:hover:bg-cyan-950/30 rounded-lg transition-all"
+                        >
+                            Today
+                        </button>
                     </div>
 
                     <button
@@ -1326,7 +1526,10 @@ export const MonthlyAttendanceReport: React.FC = () => {
                                                                                                 r.status === 'Present' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30' :
                                                                                                 r.status === 'Absent' ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/30' :
                                                                                                 r.status === 'Half Day' ? 'bg-amber-50 text-amber-600 dark:bg-amber-950/30' :
-                                                                                                (r.status === 'On Leave' || r.status === 'Leave') ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/30' :
+                                                                                                r.status?.toLowerCase().includes('sick') ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 border border-purple-200' :
+                                                                                                r.status?.toLowerCase().includes('annual') ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border border-blue-200' :
+                                                                                                r.status?.toLowerCase().includes('casual') || r.status?.toLowerCase().includes('personal') ? 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400 border border-teal-200' :
+                                                                                                (r.status === 'On Leave' || r.status === 'Leave') ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/30 border border-indigo-200' :
                                                                                                 r.status === 'Weekend' ? 'bg-slate-100 text-slate-500 border border-slate-200 dark:bg-zinc-800 dark:text-zinc-400 dark:border-zinc-700' :
                                                                                                 r.status === 'Holiday' ? 'bg-purple-50 text-purple-600 dark:bg-purple-950/30' :
                                                                                                 r.status === 'Scheduled' ? 'bg-sky-50 text-sky-600 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800' :
