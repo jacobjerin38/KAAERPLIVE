@@ -128,8 +128,36 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
 
     useEffect(() => {
+        let isMounted = true;
+        let fetchedUserId: string | null = null;
+        let inFlightUserId: string | null = null;
+        let inFlightPromise: Promise<void> | null = null;
+
+        const syncUserRoleAndPermissions = async (userId: string) => {
+            if (fetchedUserId === userId) return;
+            if (inFlightUserId === userId && inFlightPromise) {
+                return inFlightPromise;
+            }
+            inFlightUserId = userId;
+            const promise = Promise.resolve(fetchUserRoleAndPermissions(userId))
+                .then(() => {
+                    if (isMounted) {
+                        fetchedUserId = userId;
+                    }
+                })
+                .finally(() => {
+                    if (inFlightUserId === userId) {
+                        inFlightUserId = null;
+                        inFlightPromise = null;
+                    }
+                });
+            inFlightPromise = promise;
+            return promise;
+        };
+
         // Init Session
         supabase.auth.getSession().then(async ({ data: { session } }) => {
+            if (!isMounted) return;
             setSession(session);
             setUser(session?.user ?? null);
 
@@ -139,30 +167,42 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
             // Fetch user role from profile
             if (session?.user) {
-                await fetchUserRoleAndPermissions(session.user.id);
+                await syncUserRoleAndPermissions(session.user.id);
             }
 
-            setLoading(false);
+            if (isMounted) setLoading(false);
         });
 
         // Listen for changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+            if (!isMounted) return;
             setSession(session);
             setUser(session?.user ?? null);
             setLoading(false);
 
-            if (!session) {
+            if (!session || event === 'SIGNED_OUT') {
+                fetchedUserId = null;
+                inFlightUserId = null;
+                inFlightPromise = null;
                 localStorage.removeItem('app.current_company');
                 setCurrentCompanyId(null);
                 setUserRole(null);
                 setUserEmployeeId(null);
                 setPermissions([]);
+            } else if (event === 'TOKEN_REFRESHED' && fetchedUserId === session.user.id) {
+                return;
             } else {
-                fetchUserRoleAndPermissions(session.user.id);
+                if (event === 'USER_UPDATED') {
+                    fetchedUserId = null;
+                }
+                syncUserRoleAndPermissions(session.user.id);
             }
         });
 
-        return () => subscription.unsubscribe();
+        return () => {
+            isMounted = false;
+            subscription.unsubscribe();
+        };
     }, []);
 
     // ===== Session Timeout (15 min inactivity) =====

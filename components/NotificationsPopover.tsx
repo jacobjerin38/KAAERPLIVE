@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Bell, CheckCircle, Info, AlertTriangle, AlertOctagon, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useUI } from '../contexts/UIContext';
+import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
 interface Notification {
@@ -16,46 +17,41 @@ interface Notification {
 
 export const NotificationsPopover: React.FC = () => {
     const { isNotificationsOpen, toggleNotifications } = useUI();
+    const { user, userEmployeeId } = useAuth();
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
 
-    useEffect(() => {
-        if (isNotificationsOpen) {
-            fetchNotifications();
-        }
-    }, [isNotificationsOpen]);
-
-    const fetchNotifications = async () => {
+    const fetchNotifications = useCallback(async () => {
+        if (!user?.id) return;
         setLoading(true);
         try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
-                const { data: prof } = await supabase
-                    .from('profiles')
-                    .select('employee_id')
-                    .eq('id', user.id)
-                    .maybeSingle();
-
-                let query = supabase.from('notifications').select('*');
-                if (prof?.employee_id) {
-                    query = query.or(`user_id.eq.${user.id},user_id.eq.${prof.employee_id}`);
-                } else {
-                    query = query.eq('user_id', user.id);
-                }
-
-                const { data } = await query
-                    .order('created_at', { ascending: false })
-                    .limit(30);
-
-                if (data) setNotifications(data as Notification[]);
+            let query = supabase
+                .from('notifications')
+                .select('id, title, message, type, link, is_read, created_at');
+            if (userEmployeeId) {
+                query = query.or(`user_id.eq.${user.id},user_id.eq.${userEmployeeId}`);
+            } else {
+                query = query.eq('user_id', user.id);
             }
+
+            const { data } = await query
+                .order('created_at', { ascending: false })
+                .limit(30);
+
+            if (data) setNotifications(data as Notification[]);
         } catch (err) {
             console.warn('Error fetching notifications:', err);
         } finally {
             setLoading(false);
         }
-    };
+    }, [user?.id, userEmployeeId]);
+
+    useEffect(() => {
+        if (isNotificationsOpen && user?.id) {
+            fetchNotifications();
+        }
+    }, [isNotificationsOpen, user?.id, fetchNotifications]);
 
     const markAsRead = async (id: string) => {
         await supabase.from('notifications').update({ is_read: true }).eq('id', id);
@@ -63,18 +59,11 @@ export const NotificationsPopover: React.FC = () => {
     };
 
     const markAllAsRead = async () => {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-
-        const { data: prof } = await supabase
-            .from('profiles')
-            .select('employee_id')
-            .eq('id', user.id)
-            .maybeSingle();
+        if (!user?.id) return;
 
         let updateQuery = supabase.from('notifications').update({ is_read: true });
-        if (prof?.employee_id) {
-            updateQuery = updateQuery.or(`user_id.eq.${user.id},user_id.eq.${prof.employee_id}`);
+        if (userEmployeeId) {
+            updateQuery = updateQuery.or(`user_id.eq.${user.id},user_id.eq.${userEmployeeId}`);
         } else {
             updateQuery = updateQuery.eq('user_id', user.id);
         }
@@ -82,38 +71,8 @@ export const NotificationsPopover: React.FC = () => {
         setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
     };
 
-    useEffect(() => {
-        let subscription: any;
-
-        const setupMsgListener = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) return;
-
-            const { data: prof } = await supabase
-                .from('profiles')
-                .select('employee_id')
-                .eq('id', user.id)
-                .maybeSingle();
-
-            const empId = prof?.employee_id;
-
-            subscription = supabase
-                .channel('public:notifications')
-                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, (payload) => {
-                    const newNotif = payload.new as any;
-                    if (newNotif && (newNotif.user_id === user.id || (empId && newNotif.user_id === empId))) {
-                        setNotifications(prev => [newNotif as Notification, ...prev]);
-                    }
-                })
-                .subscribe();
-        };
-
-        setupMsgListener();
-
-        return () => {
-            if (subscription) subscription.unsubscribe();
-        };
-    }, []);
+    // Note: Notifications are loaded on demand when opening the popover.
+    // Avoid keeping an unfiltered postgres_changes Realtime channel open on every client.
 
     const handleItemClick = (notification: Notification) => {
         if (!notification.is_read) markAsRead(notification.id);

@@ -132,6 +132,11 @@ export const TeamChat: React.FC = () => {
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const profilesRef = useRef<any[]>([]);
+
+    useEffect(() => {
+        profilesRef.current = profiles;
+    }, [profiles]);
 
     // 1. Fetch Rooms, Profiles and Departments
     const loadInitialData = async () => {
@@ -253,7 +258,7 @@ export const TeamChat: React.FC = () => {
                     const raw = payload.new as any;
                     if (!raw) return;
 
-                    let sender = profiles.find(p => p.id === raw.sender_id);
+                    let sender = profilesRef.current.find(p => p.id === raw.sender_id);
                     if (!sender && raw.sender_id === user?.id) {
                         sender = { id: user.id, full_name: 'You', avatar_url: (user as any).avatar_url };
                     }
@@ -291,7 +296,7 @@ export const TeamChat: React.FC = () => {
         return () => {
             supabase.removeChannel(roomChannel);
         };
-    }, [activeRoom?.id, profiles]);
+    }, [activeRoom?.id]);
 
     // 3. Realtime Presence Subscription
     useEffect(() => {

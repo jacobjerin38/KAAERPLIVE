@@ -24,8 +24,8 @@ interface ActivityLog {
   action: 'INSERT' | 'UPDATE' | 'DELETE' | 'LOGIN' | 'LOGOUT';
   table_name: string | null;
   record_id: string | null;
-  old_data: any;
-  new_data: any;
+  old_data?: any;
+  new_data?: any;
   description: string | null;
   created_at: string;
 }
@@ -44,13 +44,47 @@ export const ActivityLogs: React.FC = () => {
   
   // Details Modal
   const [selectedLog, setSelectedLog] = useState<ActivityLog | null>(null);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+
+  const handleInspectLog = async (log: ActivityLog) => {
+    setSelectedLog(log);
+    if (
+      log.action !== 'LOGIN' &&
+      log.action !== 'LOGOUT' &&
+      log.old_data === undefined &&
+      log.new_data === undefined
+    ) {
+      setLoadingDetails(true);
+      try {
+        const { data, error } = await supabase
+          .from('activity_logs' as any)
+          .select('old_data, new_data')
+          .eq('id', log.id)
+          .maybeSingle();
+        if (!error && data) {
+          const payload = data as { old_data?: any; new_data?: any };
+          const enriched: ActivityLog = {
+            ...log,
+            old_data: payload.old_data ?? null,
+            new_data: payload.new_data ?? null
+          };
+          setSelectedLog(prev => (prev?.id === log.id ? enriched : prev));
+          setLogs(prev => prev.map(item => (item.id === log.id ? enriched : item)));
+        }
+      } catch (err) {
+        console.warn('Error loading activity log payload:', err);
+      } finally {
+        setLoadingDetails(false);
+      }
+    }
+  };
 
   const fetchLogs = async () => {
     try {
       setLoading(true);
       let query: any = supabase
         .from('activity_logs' as any)
-        .select('*', { count: 'exact' });
+        .select('id, company_id, user_id, user_email, action, table_name, record_id, description, created_at', { count: 'estimated' });
 
       // Apply search filter
       if (search.trim()) {
@@ -88,7 +122,7 @@ export const ActivityLogs: React.FC = () => {
       if (error) throw error;
 
       setLogs((data as ActivityLog[]) || []);
-      setTotalCount(count || 0);
+      setTotalCount(Math.max(count || 0, data?.length ? page * limit + data.length : 0));
     } catch (err) {
       console.error('Error fetching activity logs:', err);
     } finally {
@@ -265,7 +299,7 @@ export const ActivityLogs: React.FC = () => {
                   {/* View Details Button */}
                   <td className="p-4 pr-6 text-right">
                     <button
-                      onClick={() => setSelectedLog(log)}
+                      onClick={() => handleInspectLog(log)}
                       className="inline-flex items-center justify-center p-2 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-100 dark:border-zinc-700/50 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition-all duration-200"
                     >
                       <Eye className="w-4 h-4" />
@@ -372,7 +406,14 @@ export const ActivityLogs: React.FC = () => {
                     </h4>
                   </div>
                   
-                  <JSONDiffViewer oldData={selectedLog.old_data} newData={selectedLog.new_data} />
+                  {loadingDetails ? (
+                    <div className="flex items-center gap-2 text-xs text-slate-400 py-4">
+                      <RefreshCw className="w-4 h-4 animate-spin text-indigo-500" />
+                      Loading payload details...
+                    </div>
+                  ) : (
+                    <JSONDiffViewer oldData={selectedLog.old_data} newData={selectedLog.new_data} />
+                  )}
                 </div>
               )}
             </div>

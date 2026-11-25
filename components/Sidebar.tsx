@@ -22,7 +22,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => 
     AppView.TRAVEL
   ].includes(currentView)) return null;
 
-  const { signOut, hasPermission } = useAuth();
+  const { signOut, hasPermission, user } = useAuth();
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -45,11 +45,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => 
     if (!currentPass) { setShowMenu(false); return; }
 
     // Verify current password by re-authenticating
-    const { data: { user: currentUser } } = await supabase.auth.getUser();
-    if (!currentUser?.email) { alert("Could not verify user."); setShowMenu(false); return; }
+    if (!user?.email) { alert("Could not verify user."); setShowMenu(false); return; }
 
     const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: currentUser.email,
+      email: user.email,
       password: currentPass,
     });
 

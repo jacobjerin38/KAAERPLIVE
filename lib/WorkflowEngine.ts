@@ -213,30 +213,22 @@ export class WorkflowEngine {
 
         if (!requests || requests.length === 0) return [];
 
-        // Enrich each request with entity-specific details
-        const enriched = await Promise.all(requests.map(async (req: any) => {
-            try {
-                const details = await this.fetchEntityDetails(req.trigger_type, req.entity_id);
-                return { ...req, entity_details: details };
-            } catch {
-                return { ...req, entity_details: null };
-            }
+        // Batch-enrich requests by trigger type (eliminates N+1 per-request queries)
+        const detailsByKey = await this.fetchEntityDetailsBatch(requests);
+        return requests.map((req: any) => ({
+            ...req,
+            entity_details: detailsByKey.get(`${req.trigger_type}:${req.entity_id}`) ?? null
         }));
-
-        return enriched;
     }
 
-    /**
-     * Fetch entity-specific details based on trigger type.
-     * Returns a normalized object with common fields: reason, dates, type_label, extra.
-     */
-    private static async fetchEntityDetails(triggerType: string, entityId: string): Promise<any> {
+    private static formatEntityDetails(
+        triggerType: string,
+        data: any,
+        overtimeEmpMap?: Map<string, string>
+    ): any {
+        if (!data) return null;
+
         if (triggerType === 'LEAVE_REQUEST') {
-            const { data } = await (supabase as any).from('leaves')
-                .select('*, leave_type:leave_type_id(name)')
-                .eq('id', entityId)
-                .maybeSingle();
-            if (!data) return null;
             return {
                 reason: data.reason,
                 start_date: data.start_date,
@@ -245,11 +237,6 @@ export class WorkflowEngine {
                 status: data.status
             };
         } else if (triggerType === 'RESIGNATION') {
-            const { data } = await (supabase as any).from('resignations')
-                .select('*')
-                .eq('id', entityId)
-                .maybeSingle();
-            if (!data) return null;
             return {
                 reason: data.reason_text,
                 type_label: data.reason_category || 'Resignation',
@@ -257,11 +244,6 @@ export class WorkflowEngine {
                 status: data.status
             };
         } else if (triggerType === 'MISSED_PUNCH') {
-            const { data } = await (supabase as any).from('missed_punch_requests')
-                .select('*')
-                .eq('id', entityId)
-                .maybeSingle();
-            if (!data) return null;
             return {
                 reason: data.reason,
                 request_date: data.request_date,
@@ -271,11 +253,6 @@ export class WorkflowEngine {
                 status: data.status
             };
         } else if (triggerType === 'SUPPORT_TICKET') {
-            const { data } = await (supabase as any).from('tickets')
-                .select('*')
-                .eq('id', entityId)
-                .maybeSingle();
-            if (!data) return null;
             return {
                 reason: data.description,
                 subject: data.subject,
@@ -285,11 +262,6 @@ export class WorkflowEngine {
                 status: data.status
             };
         } else if (triggerType === 'PRO_SERVICE_REQUEST' || triggerType === 'PRO') {
-            const { data } = await (supabase as any).from('pro_applications')
-                .select('*, applicant:employees!applicant_employee_id(name)')
-                .eq('id', entityId)
-                .maybeSingle();
-            if (!data) return null;
             return {
                 reason: data.remarks || data.title,
                 subject: data.title,
@@ -302,11 +274,6 @@ export class WorkflowEngine {
                 status: data.status
             };
         } else if (triggerType === 'EXPENSE_CLAIM') {
-            const { data } = await (supabase as any).from('expenses')
-                .select('*')
-                .eq('id', entityId)
-                .maybeSingle();
-            if (!data) return null;
             return {
                 reason: data.description || data.reason,
                 type_label: 'Expense Claim',
@@ -314,26 +281,16 @@ export class WorkflowEngine {
                 status: data.status
             };
         } else if (triggerType === 'OVERTIME_REQUEST') {
-            const { data } = await (supabase as any).from('overtime_requests')
-                .select('*, employee:employees!employee_id(name)')
-                .eq('id', entityId)
-                .maybeSingle();
-            if (!data) return null;
             return {
                 reason: data.reason,
                 request_date: data.request_date,
                 ot_hours: data.ot_hours,
                 approved_hours: data.approved_hours,
-                employee_name: data.employee?.name,
+                employee_name: overtimeEmpMap?.get(data.employee_id) ?? data.employee?.name,
                 type_label: 'Overtime Request',
                 status: data.status
             };
         } else if (triggerType === 'TECHNICAL_PROPOSAL' || triggerType === 'COMMERCIAL_PROPOSAL') {
-            const { data } = await (supabase as any).from('project_proposals')
-                .select('*, client:client_id(name), first_reviewer:first_reviewer_id(name)')
-                .eq('id', entityId)
-                .maybeSingle();
-            if (!data) return null;
             return {
                 reason: data.remarks || data.title,
                 subject: data.title,
@@ -347,11 +304,6 @@ export class WorkflowEngine {
                 status: data.status
             };
         } else if (triggerType === 'PROJECT_APPROVAL') {
-            const { data } = await (supabase as any).from('pm_projects')
-                .select('*, client:client_id(name), project_manager:project_manager_id(name)')
-                .eq('id', entityId)
-                .maybeSingle();
-            if (!data) return null;
             return {
                 reason: data.remarks || data.name,
                 subject: data.name,
@@ -365,11 +317,6 @@ export class WorkflowEngine {
                 status: data.status
             };
         } else if (triggerType === 'PROJECT_COMPLETION') {
-            const { data } = await (supabase as any).from('project_completion_requests')
-                .select('*, project:project_id(name, client:client_id(name))')
-                .eq('id', entityId)
-                .maybeSingle();
-            if (!data) return null;
             return {
                 reason: data.completion_summary,
                 subject: `Completion: ${data.project?.name || 'Project'}`,
@@ -381,6 +328,166 @@ export class WorkflowEngine {
                 type_label: 'Project Completion',
                 status: data.status
             };
+        }
+        return null;
+    }
+
+    private static async fetchEntityDetailsBatch(
+        requests: Array<{ trigger_type: string; entity_id: string }>
+    ): Promise<Map<string, any>> {
+        const resultMap = new Map<string, any>();
+        const groups = new Map<string, Array<{ trigger_type: string; entity_id: string }>>();
+
+        const resolveBucket = (triggerType: string) => {
+            if (triggerType === 'PRO_SERVICE_REQUEST' || triggerType === 'PRO') return 'PRO_GROUP';
+            if (triggerType === 'TECHNICAL_PROPOSAL' || triggerType === 'COMMERCIAL_PROPOSAL') return 'PROPOSAL_GROUP';
+            return triggerType;
+        };
+
+        for (const req of requests) {
+            if (!req.entity_id || !req.trigger_type) continue;
+            const bucket = resolveBucket(req.trigger_type);
+            const list = groups.get(bucket) || [];
+            list.push(req);
+            groups.set(bucket, list);
+        }
+
+        const querySpec: Record<string, { table: string; select: string }> = {
+            LEAVE_REQUEST: { table: 'leaves', select: '*, leave_type:leave_type_id(name)' },
+            RESIGNATION: { table: 'resignations', select: '*' },
+            MISSED_PUNCH: { table: 'missed_punch_requests', select: '*' },
+            SUPPORT_TICKET: { table: 'tickets', select: '*' },
+            PRO_GROUP: { table: 'pro_applications', select: '*, applicant:employees!applicant_employee_id(name)' },
+            EXPENSE_CLAIM: { table: 'expenses', select: '*' },
+            OVERTIME_REQUEST: { table: 'overtime_requests', select: '*' },
+            PROPOSAL_GROUP: { table: 'project_proposals', select: '*, client:client_id(name), first_reviewer:first_reviewer_id(name)' },
+            PROJECT_APPROVAL: { table: 'pm_projects', select: '*, client:client_id(name), project_manager:project_manager_id(name)' },
+            PROJECT_COMPLETION: { table: 'project_completion_requests', select: '*, project:project_id(name, client:client_id(name))' }
+        };
+
+        await Promise.all(
+            Array.from(groups.entries()).map(async ([bucket, bucketRequests]) => {
+                const spec = querySpec[bucket];
+                if (!spec) return;
+                const ids = Array.from(new Set(bucketRequests.map(r => r.entity_id)));
+                if (ids.length === 0) return;
+
+                try {
+                    const { data, error } = await (supabase as any)
+                        .from(spec.table)
+                        .select(spec.select)
+                        .in('id', ids);
+
+                    if (error || !data) return;
+
+                    let overtimeEmpMap: Map<string, string> | undefined;
+                    if (bucket === 'OVERTIME_REQUEST') {
+                        const empIds = Array.from(new Set(data.map((row: any) => row.employee_id).filter(Boolean)));
+                        if (empIds.length > 0) {
+                            const { data: empRows } = await (supabase as any)
+                                .from('employees')
+                                .select('id, name')
+                                .in('id', empIds);
+                            if (empRows) {
+                                overtimeEmpMap = new Map(empRows.map((e: any) => [e.id, e.name]));
+                            }
+                        }
+                    }
+
+                    const rowsById = new Map<string, any>(data.map((row: any) => [row.id, row]));
+                    for (const req of bucketRequests) {
+                        const row = rowsById.get(req.entity_id);
+                        if (row) {
+                            resultMap.set(
+                                `${req.trigger_type}:${req.entity_id}`,
+                                this.formatEntityDetails(req.trigger_type, row, overtimeEmpMap)
+                            );
+                        }
+                    }
+                } catch {
+                    // Preserve per-bucket resilience without blocking remaining approvals
+                }
+            })
+        );
+
+        return resultMap;
+    }
+
+    /**
+     * Fetch entity-specific details based on trigger type.
+     * Returns a normalized object with common fields: reason, dates, type_label, extra.
+     */
+    private static async fetchEntityDetails(triggerType: string, entityId: string): Promise<any> {
+        if (triggerType === 'LEAVE_REQUEST') {
+            const { data } = await (supabase as any).from('leaves')
+                .select('*, leave_type:leave_type_id(name)')
+                .eq('id', entityId)
+                .maybeSingle();
+            return this.formatEntityDetails(triggerType, data);
+        } else if (triggerType === 'RESIGNATION') {
+            const { data } = await (supabase as any).from('resignations')
+                .select('*')
+                .eq('id', entityId)
+                .maybeSingle();
+            return this.formatEntityDetails(triggerType, data);
+        } else if (triggerType === 'MISSED_PUNCH') {
+            const { data } = await (supabase as any).from('missed_punch_requests')
+                .select('*')
+                .eq('id', entityId)
+                .maybeSingle();
+            return this.formatEntityDetails(triggerType, data);
+        } else if (triggerType === 'SUPPORT_TICKET') {
+            const { data } = await (supabase as any).from('tickets')
+                .select('*')
+                .eq('id', entityId)
+                .maybeSingle();
+            return this.formatEntityDetails(triggerType, data);
+        } else if (triggerType === 'PRO_SERVICE_REQUEST' || triggerType === 'PRO') {
+            const { data } = await (supabase as any).from('pro_applications')
+                .select('*, applicant:employees!applicant_employee_id(name)')
+                .eq('id', entityId)
+                .maybeSingle();
+            return this.formatEntityDetails(triggerType, data);
+        } else if (triggerType === 'EXPENSE_CLAIM') {
+            const { data } = await (supabase as any).from('expenses')
+                .select('*')
+                .eq('id', entityId)
+                .maybeSingle();
+            return this.formatEntityDetails(triggerType, data);
+        } else if (triggerType === 'OVERTIME_REQUEST') {
+            const { data } = await (supabase as any).from('overtime_requests')
+                .select('*')
+                .eq('id', entityId)
+                .maybeSingle();
+            if (!data) return null;
+            const overtimeEmpMap = new Map<string, string>();
+            if (data.employee_id) {
+                const { data: emp } = await (supabase as any)
+                    .from('employees')
+                    .select('name')
+                    .eq('id', data.employee_id)
+                    .maybeSingle();
+                if (emp?.name) overtimeEmpMap.set(data.employee_id, emp.name);
+            }
+            return this.formatEntityDetails(triggerType, data, overtimeEmpMap);
+        } else if (triggerType === 'TECHNICAL_PROPOSAL' || triggerType === 'COMMERCIAL_PROPOSAL') {
+            const { data } = await (supabase as any).from('project_proposals')
+                .select('*, client:client_id(name), first_reviewer:first_reviewer_id(name)')
+                .eq('id', entityId)
+                .maybeSingle();
+            return this.formatEntityDetails(triggerType, data);
+        } else if (triggerType === 'PROJECT_APPROVAL') {
+            const { data } = await (supabase as any).from('pm_projects')
+                .select('*, client:client_id(name), project_manager:project_manager_id(name)')
+                .eq('id', entityId)
+                .maybeSingle();
+            return this.formatEntityDetails(triggerType, data);
+        } else if (triggerType === 'PROJECT_COMPLETION') {
+            const { data } = await (supabase as any).from('project_completion_requests')
+                .select('*, project:project_id(name, client:client_id(name))')
+                .eq('id', entityId)
+                .maybeSingle();
+            return this.formatEntityDetails(triggerType, data);
         }
         return null;
     }
